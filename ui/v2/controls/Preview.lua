@@ -434,6 +434,10 @@ function Controls:CreatePreview(options)
                     thickness = readSetting("borderThickness", 1),
                     insetH = readSetting("borderInsetH", 0),
                     insetV = readSetting("borderInsetV", 0),
+                    -- The preview owns its icon, so a rounded style rounds it
+                    -- as the live icon is.
+                    maskTarget = previewIcon.Icon,
+                    maskOwner = previewIcon,
                 })
                 reachX, reachY = ex, ey
             end
@@ -562,11 +566,7 @@ function Controls:CreatePreview(options)
 
         -- Background (sublevel -1, matching the live bar)
         local barBg = previewBar:CreateTexture(nil, "BACKGROUND", nil, -1)
-        barBg:SetAllPoints()
-        local bgTexPath = addon.Media.ResolveBarTexturePath(barBGTexKey)
-        if bgTexPath then
-            barBg:SetTexture(bgTexPath)
-        else
+        if not addon.Media.ApplyBarBackground(barBg, barBGTexKey, previewBar) then
             barBg:SetColorTexture(0, 0, 0, 1)
         end
 
@@ -583,12 +583,7 @@ function Controls:CreatePreview(options)
         barFill:SetAllPoints()
         barFill:SetMinMaxValues(0, 1)
         barFill:SetValue(options.fillFraction or 0.5)
-        local fgTexPath = addon.Media.ResolveBarTexturePath(barFGTexKey)
-        if fgTexPath then
-            barFill:SetStatusBarTexture(fgTexPath)
-        else
-            barFill:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-        end
+        addon.Media.ApplyBarFill(barFill, barFGTexKey, "Interface\\TargetingFrame\\UI-StatusBar")
 
         local fgColorMode = readSetting("barForegroundColorMode", "class")
         if fgColorMode == "custom" then
@@ -618,9 +613,8 @@ function Controls:CreatePreview(options)
             else
                 barFill:SetValue(0)
             end
-            -- Per-segment colors: each full segment is its own stretched copy
-            -- of the fill texture over the fill, the way the live segments are
-            -- their own bars.
+            -- Per-segment colors: each full segment is its own slice of the
+            -- fill texture over the fill, the way the live segments are.
             local pipColors = options.pipColors
             if pipColors and pipFilled > 0 then
                 local segFrame = CreateFrame("Frame", nil, previewBar)
@@ -630,22 +624,29 @@ function Controls:CreatePreview(options)
                     local c = pipColors[i]
                     if c then
                         local seg = segFrame:CreateTexture(nil, "ARTWORK")
-                        if fgTexPath then
-                            seg:SetTexture(fgTexPath)
-                        else
-                            seg:SetColorTexture(1, 1, 1, 1)
-                        end
-                        seg:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
                         local x0 = math.floor((i - 1) * (segW + tickThickness) + 0.5)
                         local x1 = math.floor(i * segW + (i - 1) * tickThickness + 0.5)
+                        local w = math.max(barWidth, 1)
+                        addon.Media.ApplyBarFillSlice(seg, barFGTexKey, x0 / w, x1 / w)
+                        seg:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
                         seg:SetPoint("TOPLEFT", previewBar, "TOPLEFT", x0, 0)
                         seg:SetPoint("BOTTOMLEFT", previewBar, "BOTTOMLEFT", x0, 0)
                         seg:SetWidth(math.max(1, x1 - x0))
+                        -- The live segment's additive lift (classresource.lua).
+                        local brighten = tonumber(addon.AurasHost and addon.AurasHost.segmentBrighten) or 0
+                        if brighten > 0 then
+                            local lift = segFrame:CreateTexture(nil, "ARTWORK", nil, 1)
+                            addon.Media.ApplyBarFillSlice(lift, barFGTexKey, x0 / w, x1 / w)
+                            lift:SetBlendMode("ADD")
+                            lift:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, brighten * (c[4] or 1))
+                            lift:SetAllPoints(seg)
+                        end
                     end
                 end
             end
             if tickThickness > 0 and pipCount > 1 then
                 local tickColor = readSetting("tickColor", { 0, 0, 0, 1 })
+                local tickTop, tickBottom = addon.Media.BarInteriorInsets(barBGTexKey, barHeight)
                 local tickFrame = CreateFrame("Frame", nil, previewBar)
                 tickFrame:SetAllPoints(previewBar)
                 tickFrame:SetFrameLevel(barFill:GetFrameLevel() + 2)
@@ -653,8 +654,8 @@ function Controls:CreatePreview(options)
                     local tick = tickFrame:CreateTexture(nil, "ARTWORK")
                     tick:SetColorTexture(tickColor[1] or 0, tickColor[2] or 0, tickColor[3] or 0, tickColor[4] or 1)
                     local x = math.floor(i * segW + (i - 1) * tickThickness + 0.5)
-                    tick:SetPoint("TOPLEFT", previewBar, "TOPLEFT", x, 0)
-                    tick:SetPoint("BOTTOMLEFT", previewBar, "BOTTOMLEFT", x, 0)
+                    tick:SetPoint("TOPLEFT", previewBar, "TOPLEFT", x, -tickTop)
+                    tick:SetPoint("BOTTOMLEFT", previewBar, "BOTTOMLEFT", x, tickBottom)
                     tick:SetWidth(tickThickness)
                 end
             end

@@ -74,11 +74,21 @@ function addon.ApplyIconMask(iconTexture, ownerFrame, styleKey, iconW, iconH)
     -- dimensions rather than edge anchors. Prefer the caller's values, then the icon,
     -- then the owner frame; bail rather than apply a wrongly-sized mask that would
     -- crop the icon.
-    local w = tonumber(iconW) or (iconTexture.GetWidth and iconTexture:GetWidth()) or 0
-    local h = tonumber(iconH) or (iconTexture.GetHeight and iconTexture:GetHeight()) or 0
+    -- A texture inside an engine-bound button (an aura container) reads its
+    -- size back secret; a secret read counts as unknown.
+    local function plain(v)
+        if type(v) ~= "number" or (issecretvalue and issecretvalue(v)) then return 0 end
+        return v
+    end
+    local w = plain(tonumber(iconW)) or 0
+    local h = plain(tonumber(iconH)) or 0
     if w <= 0 or h <= 0 then
-        w = (owner.GetWidth and owner:GetWidth()) or 0
-        h = (owner.GetHeight and owner:GetHeight()) or 0
+        w = plain(iconTexture.GetWidth and iconTexture:GetWidth())
+        h = plain(iconTexture.GetHeight and iconTexture:GetHeight())
+    end
+    if w <= 0 or h <= 0 then
+        w = plain(owner.GetWidth and owner:GetWidth())
+        h = plain(owner.GetHeight and owner:GetHeight())
     end
     if w <= 0 or h <= 0 then
         addon.ClearIconMask(iconTexture)
@@ -431,8 +441,9 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
     -- Round the icon to match rounded frame art. Only callers that own their icon
     -- texture pass maskTarget; Blizzard-owned icons (action buttons, CooldownViewer)
     -- already ship their own mask and must not be touched from addon context.
+    -- maskWidth and maskHeight size the mask where the icon cannot be measured.
     if opts and opts.maskTarget then
-        addon.ApplyIconMask(opts.maskTarget, opts.maskOwner or targetFrame, key)
+        addon.ApplyIconMask(opts.maskTarget, opts.maskOwner or targetFrame, key, opts.maskWidth, opts.maskHeight)
     end
 
     local appliedTexture

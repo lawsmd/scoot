@@ -523,6 +523,17 @@ local function AddRowChromeV2(row, opts)
 
     if not hasDesc then
         labelFS:SetPoint("LEFT", row, "LEFT", padLeft, 0)
+        -- A name too long for its row truncates before the control instead
+        -- of running under it. Only then is the width set: a name that fits
+        -- keeps its own width, which an info icon at its right edge follows.
+        local room = opts.rowWidth - padLeft - (opts.controlReserve or 0)
+        local wide = labelFS.GetUnboundedStringWidth and labelFS:GetUnboundedStringWidth()
+            or labelFS:GetStringWidth() or 0
+        if room > 0 and wide > room then
+            labelFS:SetWordWrap(false)
+            labelFS:SetWidth(room)
+            labelFS:SetJustifyH("LEFT")
+        end
         row:SetHeight(baseHeight)
         return labelFS, nil
     end

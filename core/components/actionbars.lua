@@ -10,7 +10,7 @@ local Component = addon.ComponentPrototype
 local BAR_OPACITY_OPTS = { fallback = "combat" }
 
 -- Alpha driver: hooks SetAlpha to enforce addon opacity settings over Blizzard's visibility transitions
-local actionBarState = {}  -- per-frame state (component, baseOpacity, isMousedOver, desiredAlpha, hoverButtons)
+local actionBarState = {}  -- per-frame state (component, baseOpacity, desiredAlpha)
 local alphaHooked = {}     -- frames with SetAlpha hooks
 local settingAlpha = {}    -- recursion guard for SetAlpha calls
 local iconShapedButtons = setmetatable({}, { __mode = "k" })  -- tracks buttons modified by icon shape
@@ -94,40 +94,22 @@ local function hookBarAlpha(bar)
     end)
 end
 
-local function isBarMousedOver(bar, buttons)
-    if bar:IsMouseOver() then return true end
-    for _, btn in ipairs(buttons) do
-        if btn:IsMouseOver() then return true end
+-- Mouseover fade (core/hoverfade.lua): the bar shows at 1 while the cursor is
+-- over it or a button, at its resolved opacity otherwise. Returns the alpha
+-- to write now.
+local function applyBarHover(bar, state, enabled, buttons)
+    if not enabled then
+        addon.HoverFade.Unwatch(bar)
+        return state.baseOpacity
     end
-    return false
-end
-
--- Mouseover fade: one ticker polls every bar with the setting on.
--- HookScript("OnEnter") on a bar or button taints its script handlers, and
--- the button's own event handlers then read secret values in combat.
-local hoverTicker = nil
-local function startHoverTicker()
-    if hoverTicker then return end
-    hoverTicker = C_Timer.NewTicker(0.15, function(ticker)
-        local anyEnabled = false
-        for bar, state in pairs(actionBarState) do
-            local db = state.component and state.component.db
-            if db and db.mouseoverMode and state.hoverButtons then
-                anyEnabled = true
-                if bar:IsShown() then
-                    local isOver = isBarMousedOver(bar, state.hoverButtons)
-                    if isOver ~= (state.isMousedOver == true) then
-                        state.isMousedOver = isOver
-                        setBarDesiredAlpha(bar, isOver and 1 or (state.baseOpacity or 1))
-                    end
-                end
-            end
-        end
-        if not anyEnabled then
-            ticker:Cancel()
-            hoverTicker = nil
-        end
-    end)
+    local over = addon.HoverFade.Watch(bar, {
+        frame = bar,
+        extra = buttons,
+        onChange = function(isOver)
+            setBarDesiredAlpha(bar, isOver and 1 or (state.baseOpacity or 1))
+        end,
+    })
+    return over and 1 or state.baseOpacity
 end
 
 -- OPT-21: Hoisted from inside ApplyActionBarStyling with region classification caching.
@@ -203,16 +185,8 @@ local function ApplyActionBarStyling(self)
     
     state.component = self
     state.baseOpacity = appliedAlpha
-
-    if mouseoverEnabled then
-        state.hoverButtons = enumerateButtonsForBar()
-        state.isMousedOver = isBarMousedOver(bar, state.hoverButtons)
-        startHoverTicker()
-    else
-        state.hoverButtons = nil
-        state.isMousedOver = false
-    end
-    setBarDesiredAlpha(bar, state.isMousedOver and 1 or appliedAlpha)
+    setBarDesiredAlpha(bar, applyBarHover(bar, state, mouseoverEnabled,
+        mouseoverEnabled and enumerateButtonsForBar() or nil))
 
     -- OPT-21: Skip per-button visual styling when no visual DB keys have changed.
     -- Subsumes OPT-05 epoch guard: opacity-only changes (RefreshOpacityState) don't alter
@@ -624,16 +598,9 @@ local function ApplyMicroBarStyling(self)
     local state = getBarState(bar)
     state.component = self
     state.baseOpacity = appliedAlpha
-
-    if self.db and self.db.mouseoverMode then
-        state.hoverButtons = enumerateMicroButtons()
-        state.isMousedOver = isBarMousedOver(bar, state.hoverButtons)
-        startHoverTicker()
-    else
-        state.hoverButtons = nil
-        state.isMousedOver = false
-    end
-    setBarDesiredAlpha(bar, state.isMousedOver and 1 or appliedAlpha)
+    local mouseoverEnabled = self.db and self.db.mouseoverMode and true or false
+    setBarDesiredAlpha(bar, applyBarHover(bar, state, mouseoverEnabled,
+        mouseoverEnabled and enumerateMicroButtons() or nil))
 end
 
 addon:RegisterComponentInitializer(function(self)

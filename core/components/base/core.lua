@@ -71,13 +71,21 @@ end
 --   store.link(component)     -> the table that becomes component.db
 --   store.sub(component, key) -> the table for one settings group (textTitle)
 -- With no store set, storage is profile.components and the zero-touch proxy
--- below. The module gate is a second seam by name: the host defines
--- addon:IsModuleEnabled and addon:GetComponentCategory.
+-- below. A component that carries GetContainer owns its storage and takes
+-- the same path under either host: the store defers to it at every entry
+-- point below (storeFor). The module gate is a second seam by name: the host
+-- defines addon:IsModuleEnabled and addon:GetComponentCategory.
 local function hostStore()
     local store = addon.ComponentStore
     if type(store) == "table" and type(store.link) == "function" then
         return store
     end
+end
+
+-- The host store for one component, or nil when the component owns its storage.
+local function storeFor(component)
+    if component and component.GetContainer then return nil end
+    return hostStore()
 end
 
 -- Most components persist into profile.components. A component that carries
@@ -251,19 +259,14 @@ function addon:InitializeComponents()
 end
 
 function addon:LinkComponentsToDB()
-    if hostStore() then
-        for _, component in pairs(self.Components) do
-            self:LinkComponent(component)
-        end
-        return
-    end
-
-    -- Zero-Touch: only assign pre-existing persisted tables.
-    local profile = self.db and self.db.profile
+    -- Zero-Touch: only assign pre-existing persisted tables. Under a host
+    -- store the profile holds no component tables, so the only containers to
+    -- prune are the ones components own.
+    local profile = (not hostStore()) and self.db and self.db.profile or nil
     local components = profile and rawget(profile, "components") or nil
 
     -- Every distinct container backing a registered component. Components that
-    -- own their storage (ScootAuras trackers) must be pruned and linked too, or
+    -- own their storage (the aura trackers) must be pruned and linked too, or
     -- their saved styling reads as "nothing persisted" and resolves to defaults.
     local containers = {}
     if components then containers[components] = true end
@@ -313,7 +316,7 @@ end
 function addon:LinkComponent(component, profileComponents)
     local id = component and component.id
     if not id then return end
-    local store = hostStore()
+    local store = storeFor(component)
     if store then
         component.db = store.link(component)
         return
@@ -410,7 +413,7 @@ function addon:EnsureComponentDB(componentOrId)
     if not component or not component.id then
         return nil
     end
-    local store = hostStore()
+    local store = storeFor(component)
     if store then
         component.db = store.link(component)
         return component.db
@@ -441,7 +444,7 @@ end
 -- Allocates only when the stored table really is partial; the common cases
 -- (nothing stored, or a complete table) return an existing table as-is.
 function addon:ResolveComponentSubTable(component, key)
-    local store = hostStore()
+    local store = storeFor(component)
     if store then return store.sub(component, key) end
 
     local def = registeredDefault(component, key)
@@ -475,12 +478,12 @@ end
 -- mutated comp.settings[key].default for every other profile in the session
 -- and serialized the result into SavedVariables.
 function addon:EnsureComponentSubTable(componentOrId, key)
-    local store = hostStore()
+    local comp = componentOrId
+    if type(comp) == "string" then
+        comp = self.Components and self.Components[comp]
+    end
+    local store = storeFor(comp)
     if store then
-        local comp = componentOrId
-        if type(comp) == "string" then
-            comp = self.Components and self.Components[comp]
-        end
         return comp and store.sub(comp, key) or nil
     end
 

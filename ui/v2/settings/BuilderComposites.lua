@@ -40,7 +40,8 @@ local function NOOP() end
 --   apply       : optional; called after every write. Omit it when set
 --                 applies on its own (a self-applying API, or a setSetting
 --                 that applies).
---   label, description, key, disabled : forwarded
+--   label, description, key, disabled, infoIcon : forwarded; the icon sits by
+--                 the row's label, as AddSlider's does
 --   min, max    : explicit bounds (override the method's default range)
 --   step        : default 1
 --   precision   : forwarded to both sliders
@@ -87,6 +88,7 @@ local function addAxisPair(self, opts, spec)
         description = opts.description,
         key = opts.key,
         disabled = opts.disabled,
+        infoIcon = opts.infoIcon,
         sliderA = slider(spec.axes[1], spec.axisLabels[1]),
         sliderB = slider(spec.axes[2], spec.axisLabels[2]),
     })
@@ -456,6 +458,9 @@ end
 --
 -- Options:
 --   get, set, apply, disabled : as AddTextStyleBlock
+--   atlases    : true lists the atlas textures (addon.Media.BarAtlasKeys) in
+--                both pickers, for a caller that paints through
+--                addon.Media.ApplyBarFill and ApplyBarBackground
 --   foreground : { label = "Foreground", description, key, values, order,
 --                  infoIcons (false for none), customValue = "custom",
 --                  hasAlpha = true, textureDefault = "default",
@@ -494,6 +499,7 @@ local function addBarStyleRow(self, opts, row, defaultLabel, fields, catalog, co
             set(fields.texture, v or textureDefault)
             apply()
         end,
+        textureAtlases = opts.atlases,
         colorValues = row.values or catalog.values,
         colorOrder = row.order or catalog.order,
         colorInfoIcons = infoIcons,
@@ -514,7 +520,8 @@ local function addBarStyleRow(self, opts, row, defaultLabel, fields, catalog, co
 end
 
 function Builder:AddBarStyleBlock(opts)
-    local o = { get = opts.get, set = opts.set, apply = opts.apply or NOOP, disabled = opts.disabled }
+    local o = { get = opts.get, set = opts.set, apply = opts.apply or NOOP, disabled = opts.disabled,
+        atlases = opts.atlases }
     local Catalogs = addon.Catalogs
 
     addBarStyleRow(self, o, norm(opts.foreground) or {}, "Foreground",

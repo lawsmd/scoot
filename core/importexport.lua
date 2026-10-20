@@ -20,6 +20,12 @@ local function brand()
     return addon.Brand
 end
 
+--- The addon that wrote an envelope; each importer refuses the other's.
+-- Kept off addon.Brand: an envelope with no writer field predates the field, and every one of those was written by Scoot.
+function IE.WriterOf(envelope)
+    return type(envelope) == "table" and envelope.addon or "Scoot"
+end
+
 --------------------------------------------------------------------------------
 -- Library references (resolved lazily)
 --------------------------------------------------------------------------------
@@ -186,8 +192,7 @@ function IE:ImportProfile(importStr)
         return false, envelope
     end
 
-    -- Kept off addon.Brand: an envelope with no writer field predates the field, and every one of those was written by Scoot.
-    local writer = envelope.addon or "Scoot"
+    local writer = IE.WriterOf(envelope)
     if writer ~= brand() then
         return false, "That is a " .. tostring(writer) .. " profile string. " .. brand()
             .. " profiles are separate and cannot import it."

@@ -71,6 +71,8 @@ Skin.Register("tui", {
             noise = { texture = "NOISE_OVERLAY", size = 512, alpha = 0.25, blend = "ADD" },
         },
         dialog        = { kind = "flat", background = "solid" },
+        -- subWindow, the aura editor's surface, is left out: its flat default
+        -- is the window descriptor above, the look the editor shipped with.
         titleBar      = { kind = "ascii", fontRole = "label" },
         closeButton   = { kind = "flat", glyph = "X" },
         button        = { kind = "flat", labelColors = { normal = "accent", hover = "black", active = "background", disabled = "accent" } },
@@ -252,6 +254,11 @@ Skin.Register("tui", {
 
         sublevels = { bg = -8, fill = -7, hover = -6 },
         alphas = { hover = 0.08, emphasis = 0.03, selected = 0.12, borderNormal = 0.6, borderFocus = 1.0 },
+
+        -- The Aura List's drag color (AuraListDrag.lua): green, apart from
+        -- the accent, since a red accent would make "drop here" read as
+        -- forbidden.
+        auraList = { colors = { drop = { 0.3, 0.9, 0.3 } } },
     },
 })
 

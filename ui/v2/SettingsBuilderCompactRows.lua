@@ -19,6 +19,8 @@ local Controls = addon.UI.Controls
 --   debounceKey    : Unique key for debounce timer (optional)
 --   onEditModeSync : Function(aVal, bVal) for Edit Mode sync (debounced)
 --   key            : Optional unique key for dynamic updates
+--   infoIcon       : Optional info icon spec (Controls.InfoIconOptions), placed
+--                    by the row's label as AddSlider's is
 --
 -- Slider A/B options:
 --   axisLabel  : Small prefix label (e.g., "X" or "Y")
@@ -54,6 +56,7 @@ function Builder:AddDualSlider(options)
         isDisabled = options.isDisabled,
     })
 
+    self:_AttachInfoIcon(dualSlider, options)
     self:_PlaceRow(dualSlider, options)
 
     return self
@@ -174,6 +177,57 @@ function Builder:AddToggleSliderRow(options)
     })
 
     self:_PlaceRow(toggleSlider, options)
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddToggleGateRow: a toggle gating a toggle + selector compact row
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Row label text, the gate's own name
+--   description : Optional description below label
+--   gate        : Table with toggle options (get, set, label)
+--   toggle      : Table with toggle options (get, set, label)
+--   selector    : Table with selector options (values, order, get, set, label)
+--   gateOpen    : "off" (default) or "on": the gate state that frees the pair
+--   disabled / isDisabled : Function returning disabled state
+--   key         : Optional unique key for dynamic updates
+--------------------------------------------------------------------------------
+
+function Builder:AddToggleGateRow(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    if Builder._scanMode and options.label then
+        -- Fold the slot labels into the indexed text so searching for any
+        -- control surfaces the row.
+        local searchText = options.description or ""
+        for _, part in ipairs({ options.gate, options.toggle, options.selector }) do
+            if type(part) == "table" and part.label and part.label ~= "" then
+                searchText = searchText .. " " .. part.label
+            end
+        end
+        self:_ScanRecord("toggle gate", options.label, searchText)
+        return self
+    end
+
+    local toggleGate = Controls:CreateToggleGateRow({
+        parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
+        label = options.label,
+        description = options.description,
+        gate = options.gate,
+        toggle = options.toggle,
+        selector = options.selector,
+        gateOpen = options.gateOpen,
+        useLightDim = self._useLightDim,
+        disabled = options.disabled,
+        isDisabled = options.isDisabled,
+        name = options.name,
+    })
+
+    self:_PlaceRow(toggleGate, options)
 
     return self
 end
@@ -350,6 +404,7 @@ function Builder:AddDualBarStyleRow(options)
         description = options.description,
         getTexture = options.getTexture,
         setTexture = options.setTexture,
+        textureAtlases = options.textureAtlases,
         colorValues = options.colorValues,
         colorOrder = options.colorOrder,
         colorInfoIcons = options.colorInfoIcons,

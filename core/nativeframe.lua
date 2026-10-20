@@ -45,6 +45,12 @@
 -- Blizzard's layout code depends on intact. Rule of thumb: park top-level frames,
 -- dim frames that are children of a system.
 --
+-- Parking a SHOWN frame also runs its OnHide, and its visible children's, inside
+-- the caller's execution. A handler that writes fields or dispatcher entries
+-- (an action button's CheckNeedsUpdate and range-frame unregister) leaves them
+-- tainted, and Blizzard's next combat pass over them is blocked. Those frames
+-- take "alpha" too.
+--
 -- THE COMBAT GAP. Blizzard re-parents some parked frames itself. The Edit Mode
 -- layout pass moves every frame the frame manager owns
 -- (ApplySystemAnchor -> BreakFromFrameManager -> SetParent(UIParent),

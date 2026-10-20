@@ -188,6 +188,7 @@ local function enumerateExtraAbilityButtons()
     return cachedButtons
 end
 
+-- Kept off addon.HoverFade: it tests the pooled zone ability buttons the styling pass re-caches, never the container.
 -- Hover detection via polling (avoids HookScript taint on Blizzard frames)
 local hoverTicker = nil
 local function startHoverDetection(container)

@@ -5,8 +5,9 @@
 -- that the CDM viewers, custom groups, PRD, ScootAuras, auras, action bars,
 -- extra abilities, the damage meters, unit frame visibility, and Unit Frames Z
 -- each wrote for themselves, plus the two player-state probes they open-coded.
--- The trigger side (addon:RefreshOpacityState in core/init.lua) is unchanged;
--- it asks DeclaresAny which components carry a triple.
+-- The component walk is RefreshComponents below. Scoot's trigger,
+-- addon:RefreshOpacityState in core/init.lua, runs its unit frame lines and
+-- then calls it; Camelot's host wires it to the same edges.
 -- Resolve works in percent space, clamps every value it reads, and converts
 -- once, so a string, a nil, or a 250 in a profile never reaches SetAlpha.
 --------------------------------------------------------------------------------
@@ -162,6 +163,30 @@ function Opacity.Resolve(db, keys, opts)
     local alphaFloor = opts.alphaFloor or 0
     if alpha < alphaFloor then alpha = alphaFloor end
     return alpha, state
+end
+
+-- The component walk behind the triple: every configured component whose
+-- settings declare a state opacity key (or the objective tracker's compound
+-- key) gets RefreshOpacity when it defines one and ApplyStyling otherwise,
+-- each inside pcall. Unconfigured components are skipped: the zero-touch gate
+-- belongs to this styling site, not to event delivery. SetAlpha is
+-- unprotected, so the walk runs in combat.
+function Opacity.RefreshComponents()
+    for _, component in pairs(addon.Components or EMPTY) do
+        if not addon.IsComponentUnconfigured(component)
+            and (component.RefreshOpacity or component.ApplyStyling)
+            and component.settings then
+            local hasOpacity = Opacity.DeclaresAny(component.settings) or
+                component.settings.opacityInInstanceCombat
+            if hasOpacity then
+                if component.RefreshOpacity then
+                    pcall(component.RefreshOpacity, component)
+                else
+                    pcall(component.ApplyStyling, component)
+                end
+            end
+        end
+    end
 end
 
 -- Introspection for verification: /run ScootAddon.Opacity.Dump()

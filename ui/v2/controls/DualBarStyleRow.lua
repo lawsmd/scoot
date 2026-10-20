@@ -71,6 +71,7 @@ end
 local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     local getTexture = opts.getTexture or function() return "default" end
     local setTexture = opts.setTexture or function() end
+    local pickerOpts = opts.atlases and { atlases = true } or nil
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -200,7 +201,7 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
             end
         }
 
-        addon.ShowBarTexturePicker(self, pseudoSetting, nil, function(selectedValue)
+        addon.ShowBarTexturePicker(self, pseudoSetting, pickerOpts, function(selectedValue)
             mini._currentValue = selectedValue
             mini._setTexture(selectedValue)
             UpdateDisplay()
@@ -600,6 +601,7 @@ function Controls:CreateDualBarStyleRow(options)
     local textureMini = CreateTextureMini({
         getTexture = options.getTexture,
         setTexture = options.setTexture,
+        atlases = options.textureAtlases,
     }, slotFrames[1], theme, useLightDim)
     textureMini:SetAllPoints(slotFrames[1])
     row._textureMini = textureMini

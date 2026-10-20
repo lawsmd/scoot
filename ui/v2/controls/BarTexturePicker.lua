@@ -106,6 +106,9 @@ end
 
 local function GetCategoryForTexture(textureKey)
     if addon.IsLSMKey and addon.IsLSMKey(textureKey) then return "shared" end
+    if addon.Media.ResolveBarTextureAtlas and addon.Media.ResolveBarTextureAtlas(textureKey) then
+        return "blizzard"
+    end
     for _, key in ipairs(STANDARD_TEXTURES) do
         if key == textureKey then return "standard" end
     end
@@ -352,8 +355,9 @@ local function CreateBarTexturePicker()
 
             -- Set texture preview
             local texturePath = GetTexturePath(textureKey)
-            if texturePath then
-                btn._preview:SetTexture(texturePath)
+            local atlas = addon.Media.ResolveBarTextureAtlas and addon.Media.ResolveBarTextureAtlas(textureKey)
+            if texturePath or atlas then
+                addon.Media.ApplyBarFillTexture(btn._preview, textureKey)
                 btn._preview:Show()
             else
                 -- Default has no preview
@@ -444,6 +448,17 @@ function addon.ShowBarTexturePicker(anchor, setting, opts, callback)
     local workingTabs = {}
     for i, tabData in ipairs(TABS) do
         workingTabs[i] = tabData
+    end
+    -- A caller that paints atlases (addon.Media.ApplyBarFill) asks for them;
+    -- they lead the Blizzard tab.
+    if type(opts) == "table" and opts.atlases and addon.Media.BarAtlasKeys then
+        local textures = addon.Media.BarAtlasKeys()
+        for _, key in ipairs(BLIZZARD_TEXTURES) do textures[#textures + 1] = key end
+        for i, tabData in ipairs(workingTabs) do
+            if tabData.key == "blizzard" then
+                workingTabs[i] = { key = tabData.key, label = tabData.label, textures = textures }
+            end
+        end
     end
     if addon.LSMAvailable then
         -- Build dedup set from Scoot-internal texture paths

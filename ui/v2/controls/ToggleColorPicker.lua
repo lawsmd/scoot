@@ -1,4 +1,5 @@
--- ToggleColorPicker.lua - Toggle with inline color swatch (visible when ON)
+-- ToggleColorPicker.lua - Toggle with inline color swatch (visible when ON,
+-- or always with swatchWhenOff = "shown")
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -42,6 +43,9 @@ function Controls:CreateToggleColorPicker(options)
     local getColor = options.getColor or function() return 1, 1, 1, 1 end
     local setColor = options.setColor or function() end
     local hasAlpha = options.hasAlpha ~= false  -- Default true
+    -- "hidden" drops the swatch while the toggle is off; "shown" keeps it,
+    -- for a row whose color is a setting of its own beside the toggle
+    local swatchWhenOff = options.swatchWhenOff or "hidden"
     local swatchWidth = options.swatchWidth or TOGGLE_COLOR_SWATCH_WIDTH
     local swatchHeight = options.swatchHeight or TOGGLE_COLOR_SWATCH_HEIGHT
     local name = options.name
@@ -113,7 +117,8 @@ function Controls:CreateToggleColorPicker(options)
     -- Centered in the top band
     Controls.AnchorCluster(row, indicator.frame, { x = -TOGGLE_PADDING })
 
-    -- Color swatch (between indicator and content, hidden when OFF)
+    -- Color swatch (between indicator and content, hidden when OFF unless
+    -- swatchWhenOff is "shown")
     local swatch = CreateFrame("Button", nil, row)
     swatch:SetSize(swatchWidth, swatchHeight)
     swatch:SetPoint("RIGHT", indicator.frame, "LEFT", -TOGGLE_COLOR_SWATCH_GAP, 0)
@@ -167,6 +172,7 @@ function Controls:CreateToggleColorPicker(options)
         local r, g, b = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()
 
+        local keepSwatch = swatchWhenOff == "shown"
         if isDisabled then
             -- Disabled state: everything grayed out
             local disabledAlpha = 0.35
@@ -174,7 +180,12 @@ function Controls:CreateToggleColorPicker(options)
             if row._description then
                 row._description:SetAlpha(disabledAlpha)
             end
-            swatch:Hide()
+            if keepSwatch then
+                swatch:Show()
+                UpdateSwatchColor()
+            else
+                swatch:Hide()
+            end
         else
             -- Restore description alpha
             if row._description then
@@ -183,7 +194,7 @@ function Controls:CreateToggleColorPicker(options)
             -- Label always uses accent color
             labelFS:SetTextColor(r, g, b, 1)
 
-            if isOn then
+            if isOn or keepSwatch then
                 -- Show color swatch
                 swatch:Show()
                 UpdateSwatchColor()

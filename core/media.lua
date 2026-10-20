@@ -112,6 +112,8 @@ local BAR_DISPLAY_NAMES = {
 	-- Blizzard labs textures
 	blizzardLabs1 = "Blizzard Labs 1",
 	blizzardLabs2 = "Blizzard Labs 2",
+	-- Atlas art (BAR_ATLASES below)
+	blizzardCooldownManager = "Blizzard Cooldown Manager",
 }
 
 local BAR_TEXTURE_ORDER = {
@@ -149,6 +151,152 @@ local BAR_TEXTURE_ORDER = {
 	"blizzardLabs1",
 	"blizzardLabs2",
 }
+
+-- Bar art the client draws from an atlas instead of a bundled file: the fill,
+-- and the background that carries its own frame past the bar's rect by
+-- Blizzard's anchors (Blizzard_PersonalResourceDisplay.xml). Forever answers
+-- both names with its own art. ResolveBarTexturePath answers nil for these
+-- keys and BarTextureKeys never lists them, so only a caller that paints
+-- through ApplyBarFill and ApplyBarBackground, and asks the picker for them
+-- (opts.atlases), ever meets one.
+local BAR_ATLASES = {
+	blizzardCooldownManager = {
+		fill = "UI-HUD-CoolDownManager-Bar",
+		background = "UI-HUD-CoolDownManager-Bar-BG",
+		outset = { left = 2, top = 3, right = 6, bottom = 7 },
+		-- The member rows between the background's rims: the top rim is row 1,
+		-- the bottom rim row 12 of 19, so the bottom rim lies inside the rect.
+		interior = { top = 2, bottom = 12 },
+		-- The bottom rim with its dark lines either side, 2x rows 23 to 26 of
+		-- 38, drawn 3 tall: the seam between two bars in one frame, heavier
+		-- than the art's own rim so the two bars read apart (owner ask).
+		seam = { top = 23 / 38, bottom = 27 / 38, height = 3 },
+	},
+}
+
+local BAR_ATLAS_ORDER = { "blizzardCooldownManager" }
+
+local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8x8"
+
+--- The atlas entry a bar texture key names ({ fill, background, outset }), or
+--- nil for a file key or the stock key.
+function addon.Media.ResolveBarTextureAtlas(key)
+	if type(key) ~= "string" then return nil end
+	return BAR_ATLASES[addon.Media.NormalizeBarTextureKey(key)]
+end
+
+--- The atlas bar texture keys in picker order, a copy.
+function addon.Media.BarAtlasKeys()
+	local keys = {}
+	for i, key in ipairs(BAR_ATLAS_ORDER) do keys[i] = key end
+	return keys
+end
+
+--- Paints a StatusBar's fill from a texture key: the atlas, the file, or
+--- `fallback` (a file path, white when nil) for a key that names neither.
+function addon.Media.ApplyBarFill(statusBar, key, fallback)
+	local atlas = addon.Media.ResolveBarTextureAtlas(key)
+	if atlas then
+		statusBar:SetStatusBarTexture(atlas.fill)
+		return
+	end
+	statusBar:SetStatusBarTexture(addon.Media.ResolveBarTexturePath(key) or fallback or WHITE_TEXTURE)
+end
+
+--- Paints a plain texture with a key's fill art across its current anchors,
+--- for a copy of the fill (the aura bar's cadence overlay, a picker swatch).
+function addon.Media.ApplyBarFillTexture(tex, key, fallback)
+	local atlas = addon.Media.ResolveBarTextureAtlas(key)
+	-- SetAtlas keeps the texture's old texcoords and applies them inside the
+	-- atlas rect, and a file keeps them too, so both start from the whole.
+	tex:SetTexCoord(0, 1, 0, 1)
+	if atlas then
+		tex:SetAtlas(atlas.fill)
+		return
+	end
+	tex:SetTexture(addon.Media.ResolveBarTexturePath(key) or fallback or WHITE_TEXTURE)
+end
+
+-- The texcoords a texture shows now: left, right, top, bottom.
+local function TexRect(tex)
+	local ulx, uly, _, lly, urx = tex:GetTexCoord()
+	return ulx, urx, uly, lly
+end
+
+--- Paints a plain texture with the part of a key's fill art from `f0` to `f1`
+--- of its width, so segments side by side show one fill between them.
+function addon.Media.ApplyBarFillSlice(tex, key, f0, f1, fallback)
+	addon.Media.ApplyBarFillTexture(tex, key, fallback)
+	local l, r, t, b = TexRect(tex)
+	tex:SetTexCoord(l + (r - l) * f0, l + (r - l) * f1, t, b)
+end
+
+--- How far a mark drawn over a bar of inner height `innerH` must stay in from
+--- the rect's top and bottom so it never covers the rims of background `key`,
+--- rounded to whole pixels. 0, 0 for a background with no frame.
+function addon.Media.BarInteriorInsets(key, innerH)
+	local atlas = addon.Media.ResolveBarTextureAtlas(key)
+	local rows = atlas and atlas.interior
+	local info = rows and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas.background)
+	if not (info and (info.height or 0) > 0) then return 0, 0 end
+	local o = atlas.outset
+	local bgH = (innerH or 0) + o.top + o.bottom
+	local top = bgH * rows.top / info.height - o.top
+	local bottom = (innerH or 0) - (bgH * rows.bottom / info.height - o.top)
+	return math.max(0, math.floor(top + 0.5)), math.max(0, math.floor(bottom + 0.5))
+end
+
+--- Paints a background texture from a key across `rect`: an atlas past the
+--- rect by its outset, else the file on the rect itself. Returns false when
+--- the key names neither, for the caller's own color fill.
+---
+--- opts.to is a region under `rect` the atlas's frame runs on to the bottom
+--- of: one frame around two bars, which ApplyBarSeam divides. The atlas
+--- carries its own slice margins (UiTextureAtlasElementSliceData for element
+--- 30191: 121, 7, 10 and 11, tiled), so SetAtlas draws it nine-sliced: the
+--- rims and corners keep their size at any height, and a texcoord crop does
+--- not remove them.
+function addon.Media.ApplyBarBackground(tex, key, rect, opts)
+	local atlas = addon.Media.ResolveBarTextureAtlas(key)
+	tex:ClearAllPoints()
+	if atlas then
+		local o = atlas.outset
+		tex:SetTexCoord(0, 1, 0, 1)
+		tex:SetAtlas(atlas.background)
+		tex:SetPoint("TOPLEFT", rect, "TOPLEFT", -o.left, o.top)
+		tex:SetPoint("BOTTOMRIGHT", (opts and opts.to) or rect, "BOTTOMRIGHT", o.right, -o.bottom)
+		return true
+	end
+	tex:SetAllPoints(rect)
+	tex:SetTexCoord(0, 1, 0, 1)
+	local path = addon.Media.ResolveBarTexturePath(key)
+	if not path then return false end
+	tex:SetTexture(path)
+	return true
+end
+
+--- The seam between two bars in one frame (ApplyBarBackground, opts.to):
+--- the frame's bottom rim across `upper`'s bottom edge, centered on it, with
+--- the art's slicing off so the crop holds. Hides `line` and returns false
+--- for a key with no frame. The caller keeps it over the bars' fills.
+function addon.Media.ApplyBarSeam(line, key, upper)
+	local atlas = addon.Media.ResolveBarTextureAtlas(key)
+	local seam = atlas and atlas.seam
+	if not seam then
+		line:Hide()
+		return false
+	end
+	line:ClearAllPoints()
+	line:SetPoint("TOPLEFT", upper, "BOTTOMLEFT", 0, seam.height / 2)
+	line:SetPoint("BOTTOMRIGHT", upper, "BOTTOMRIGHT", 0, -seam.height / 2)
+	line:SetTexCoord(0, 1, 0, 1)
+	line:SetAtlas(atlas.background)
+	if line.SetTextureSliceMargins then line:SetTextureSliceMargins(0, 0, 0, 0) end
+	local l, r, t, b = TexRect(line)
+	line:SetTexCoord(l + (r - l) * 0.25, l + (r - l) * 0.75, t + (b - t) * seam.top, t + (b - t) * seam.bottom)
+	line:Show()
+	return true
+end
 
 -- Public: build a Settings container for dropdowns listing bar textures
 function addon.BuildBarTextureOptionsContainer()

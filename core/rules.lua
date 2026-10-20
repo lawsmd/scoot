@@ -5,8 +5,6 @@ addon.Rules = addon.Rules or {}
 local Rules = addon.Rules
 
 local ACTIONS = {}
-local SPEC_CACHE = nil
-local SPEC_BY_ID = nil
 
 -- Tracks which actionIds are currently overridden by active rules (in-memory).
 -- Used to detect when an action was previously overridden but is no longer.
@@ -113,62 +111,11 @@ local function normalizeValue(value, valueType)
     end
 end
 
+-- The class and spec catalog is addon.Specs (core/specs.lua), shared with the
+-- aura tracker; the call sites below keep their shape. Buckets caches only
+-- once the build is non-empty, so calling it again after login fills it.
 local function buildSpecCache()
-    if SPEC_CACHE then
-        return SPEC_CACHE, SPEC_BY_ID
-    end
-    SPEC_BY_ID = {}
-    SPEC_CACHE = {}
-
-    if type(GetNumClasses) ~= "function" or type(GetClassInfo) ~= "function" then
-        return SPEC_CACHE, SPEC_BY_ID
-    end
-
-    local totalClasses = GetNumClasses()
-    for classIndex = 1, totalClasses do
-        local className, classFile, classID = GetClassInfo(classIndex)
-        if classID then
-            local classEntry = {
-                classID = classID,
-                name = className or ("Class " .. tostring(classIndex)),
-                file = classFile,
-                specs = {},
-            }
-
-            local count = GetNumSpecializationsForClassID(classID) or 0
-            for specIndex = 1, count do
-                local specID, specName, _, specIcon = GetSpecializationInfoForClassID(classID, specIndex)
-                if specID then
-                    local specEntry = {
-                        classID = classID,
-                        className = classEntry.name,
-                        file = classFile,
-                        specID = specID,
-                        name = specName or ("Spec " .. tostring(specIndex)),
-                        icon = specIcon,
-                    }
-                    table.insert(classEntry.specs, specEntry)
-                    SPEC_BY_ID[specID] = specEntry
-                end
-            end
-
-            table.insert(SPEC_CACHE, classEntry)
-        end
-    end
-
-    table.sort(SPEC_CACHE, function(a, b)
-        return tostring(a.name) < tostring(b.name)
-    end)
-
-    -- Cache only once the class data is really there: an empty build captured
-    -- before login would stick for the session and strand every caller.
-    if #SPEC_CACHE == 0 then
-        local empty, emptyById = SPEC_CACHE, SPEC_BY_ID
-        SPEC_CACHE, SPEC_BY_ID = nil, nil
-        return empty, emptyById
-    end
-
-    return SPEC_CACHE, SPEC_BY_ID
+    return addon.Specs.Buckets()
 end
 
 local function currentSpecID()

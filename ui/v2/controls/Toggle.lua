@@ -40,42 +40,52 @@ local EMPHASIZED_INDICATOR_WIDTH = 70
 local EMPHASIZED_INDICATOR_HEIGHT = 26
 
 --------------------------------------------------------------------------------
--- The indicator: the ON/OFF pill, or a Blizzard checkbox
+-- The indicator: the ON/OFF pill, a Blizzard checkbox, or a Blizzard button
 --------------------------------------------------------------------------------
 
 -- Controls.CreateToggleIndicator(parent, opts) builds the box that shows a
 -- toggle's state, wherever one is drawn: a settings row's indicator, the
--- compact pill in a selector row, the Features page's. The toggle chrome role
--- decides what it is. Flat is the framework's pill: an accent border, a fill
--- while on, and the word in the toggle font role. A template kind is a
--- Blizzard CheckButton on the skin's template, centered in a frame of the
--- box's drawn size; the template's tooltip scripts are replaced by the
--- caller's hover, and the checked flag the button flips on its own is put
--- back from the caller's value on every SetState.
+-- compact pill in a selector row, the Features page's, a list row's. The
+-- toggle chrome role decides what it is. Flat is the framework's pill: an
+-- accent border, a fill while on, and the word in the toggle font role. A
+-- template kind is a Blizzard CheckButton on the skin's template, centered in
+-- a frame of the box's drawn size; the template's tooltip scripts are
+-- replaced by the caller's hover, and the checked flag the button flips on
+-- its own is put back from the caller's value on every SetState. A button
+-- kind is Blizzard's panel button at the role's one size, drawn from the
+-- descriptor's sliced faces: the on face with the on word, the off face with
+-- the off word, each face's pressed member while the mouse is held, and the
+-- additive highlight over the face under the cursor; disabled keeps the
+-- state's face at a dim alpha and takes no click.
 --
 -- opts:
 --   width, height   the pill's box; a template keeps the template's own size
---   fit             a height the box must fit: a taller template scales down
+--                   and a button the role's
+--   fit             a height the box must fit: a taller template or button
+--                   scales down
 --   clickable       the frame takes clicks itself (a Button); otherwise a
 --                   Frame with no mouse, which a row clicks through
 --   onClick, onEnter, onLeave
---                   the box's scripts. A template's box always carries all
---                   three, and one left out forwards to the frame's own
---                   script of that name, so a caller that sets its handlers on
---                   the frame afterwards is reached from the box as well
+--                   the box's scripts. A template's or a button's box always
+--                   carries all three, and one left out forwards to the
+--                   frame's own script of that name, so a caller that sets
+--                   its handlers on the frame afterwards is reached from the
+--                   box as well
+--   role            the chrome role to draw, "toggle" unless given; "checkbox"
+--                   asks for a checkbox where the skin declares one
 --   hover           the pill lights a faint fill under the cursor while off
 --   fontSize        the pill's text size where the skin names no toggle role
 --   useLightDim     the pill's first dim text from the light dim color
 -- Returns a handle: frame (the region to anchor), width and height (the drawn
--- size), kind ("flat" or "template"), SetState(isOn, isDisabled, tint) with
--- tint an { r, g, b } that colors the lit pill or the check, and
--- SetText(word) for the lit pill's word, "ON" unless a caller says otherwise;
--- a template ignores it.
+-- size), kind ("flat", "template" or "button"), SetState(isOn, isDisabled,
+-- tint) with tint an { r, g, b } that colors the lit pill, the check or the
+-- button's on word, and SetText(word) for the lit state's word, the skin's
+-- unless a caller says otherwise; a template ignores it.
 function Controls.CreateToggleIndicator(parent, opts)
     opts = opts or {}
     local theme = GetTheme()
     local Chrome = addon.UI.Chrome
-    local spec = (Chrome and Chrome.Spec) and Chrome.Spec("toggle") or { kind = "flat" }
+    local spec = (Chrome and Chrome.Spec) and Chrome.Spec(opts.role or "toggle") or { kind = "flat" }
     local handle = { kind = spec.kind, _word = "ON" }
 
     -- The frame's own script of a name, run from the box
@@ -134,6 +144,114 @@ function Controls.CreateToggleIndicator(parent, opts)
         end
 
         function handle:SetText() end
+        return handle
+    end
+
+    if spec.kind == "button" then
+        local words = spec.words or {}
+        local colors = spec.labelColors or {}
+        local frame = CreateFrame(opts.clickable and "Button" or "Frame", nil, parent)
+        local box = CreateFrame("Button", nil, frame)
+        box:RegisterForClicks("AnyUp")
+        local w, h = spec.width, spec.height
+        local scale = 1
+        if opts.fit and h > opts.fit then scale = opts.fit / h end
+        box:SetSize(w, h)
+        box:SetScale(scale)
+        box:SetPoint("CENTER", frame, "CENTER", 0, 0)
+        frame:SetSize(w * scale, h * scale)
+        if opts.clickable then
+            frame:RegisterForClicks("AnyUp")
+            if opts.onClick then frame:SetScript("OnClick", opts.onClick) end
+            if opts.onEnter then frame:SetScript("OnEnter", opts.onEnter) end
+            if opts.onLeave then frame:SetScript("OnLeave", opts.onLeave) end
+        end
+
+        -- One set of slices, re-pointed at the face the state calls for
+        local function Member(face)
+            return { texture = face.texture, atlas = face.atlas, size = face.size,
+                texCoords = face.texCoords, slice = spec.slice, edge = spec.edge }
+        end
+        local art = Chrome.SlicedAtlas(box, Member(spec.on), "BACKGROUND")
+        local glow
+        if spec.highlight then
+            local file, _, _, L, R, T, B = Chrome.AtlasSource(spec.highlight)
+            if file then
+                glow = box:CreateTexture(nil, "ARTWORK")
+                glow:SetTexture(file)
+                glow:SetTexCoord(L, R, T, B)
+                glow:SetAllPoints()
+                glow:SetBlendMode("ADD")
+                glow:Hide()
+            end
+        end
+        local text = box:CreateFontString(nil, "OVERLAY")
+        theme:ApplyFont(text, spec.fontRole or "toggle")
+        text:SetPoint("CENTER", box, "CENTER", 0, 0)
+
+        local on, disabled, hover, pressed = false, false, false, false
+        local function Paint()
+            local face
+            if on then
+                face = (pressed and spec.onPressed) or spec.on
+            else
+                face = (pressed and spec.offPressed) or spec.off
+            end
+            if art then art:SetSource(Member(face)) end
+            if glow then glow:SetShown(hover and not disabled) end
+            text:SetText(on and (handle._word or words.on or "ON") or (words.off or "OFF"))
+            local r, g, b, a = Chrome.Color(on and (colors.on or "accent") or (colors.off or "white"))
+            if on and not disabled then r, g, b = TintRGB(handle._tint, r, g, b) end
+            text:SetTextColor(r, g, b, a)
+            frame:SetAlpha(disabled and 0.35 or 1)
+        end
+
+        local function BoxScript(name)
+            local fn = opts[name]
+            if fn then
+                return function(_, ...) fn(frame, ...) end
+            end
+            return Forward(frame, (name:gsub("^on", "On")))
+        end
+        local enter, leave = BoxScript("onEnter"), BoxScript("onLeave")
+        box:SetScript("OnClick", BoxScript("onClick"))
+        box:SetScript("OnEnter", function(self, ...)
+            hover = true
+            Paint()
+            enter(self, ...)
+        end)
+        box:SetScript("OnLeave", function(self, ...)
+            hover, pressed = false, false
+            Paint()
+            leave(self, ...)
+        end)
+        box:SetScript("OnMouseDown", function()
+            if disabled then return end
+            pressed = true
+            Paint()
+        end)
+        box:SetScript("OnMouseUp", function()
+            pressed = false
+            Paint()
+        end)
+
+        handle._word = nil
+        handle.frame, handle.box = frame, box
+        handle.width, handle.height = w * scale, h * scale
+
+        function handle:SetState(isOn, isDisabled, tint)
+            on, disabled = isOn and true or false, isDisabled and true or false
+            self._tint = tint
+            box:SetEnabled(not disabled)
+            if disabled then pressed = false end
+            Paint()
+        end
+
+        function handle:SetText(word)
+            self._word = word
+            Paint()
+        end
+        Paint()
         return handle
     end
 
@@ -334,6 +452,7 @@ function Controls:CreateToggle(options)
     -- State indicator (right side), built before the label so the chrome
     -- keeps the width it draws at free
     local indicator = Controls.CreateToggleIndicator(row, {
+        role = options.indicatorRole,
         width = indicatorWidth,
         height = indicatorHeight,
         onClick = Toggle,

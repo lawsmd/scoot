@@ -83,6 +83,7 @@ function Brand:Register(frame, opts)
         pageState     = opts.pageState,
         label         = opts.label,
         mirror        = opts.mirror,
+        dialogWidth   = opts.dialogWidth,
         selection     = selection,
     }
 

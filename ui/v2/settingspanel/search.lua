@@ -80,7 +80,7 @@ local SKIP_SCAN = {
     profilesImportExport = true,
     applyAllFonts = true,
     applyAllTextures = true,
-    scootAurasList = true,
+    auraList = true,
     search = true,
 }
 
@@ -116,19 +116,19 @@ local MANUAL_ENTRIES = {
         type = "button",
         label = "Add Aura",
         description = "Create a custom aura tracker from a spell ID or the cooldown catalog.",
-        rendererKey = "scootAurasList",
+        rendererKey = "auraList",
     },
     {
         type = "button",
         label = "Add Group",
         description = "Group aura trackers to arrange and move them together.",
-        rendererKey = "scootAurasList",
+        rendererKey = "auraList",
     },
     {
         type = "search",
         label = "Search Auras",
         description = "Filter the Aura List by tracker name, aura name, or spell ID.",
-        rendererKey = "scootAurasList",
+        rendererKey = "auraList",
     },
 }
 

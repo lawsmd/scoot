@@ -5,7 +5,7 @@
 -- A skin's chrome table holds one descriptor per role: window, picker,
 -- dialog, dialogTitle, titleBar, closeButton, button, resizeGrip, scrollBar, tab, tabBody,
 -- sectionHeader, sectionBody, navRow, navCard, navDivider, dropdown,
--- arrowButton, field, popupList, infoIcon, tooltip, slider, input, toggle,
+-- arrowButton, field, popupList, contextMenu, flyout, infoIcon, tooltip, slider, input, toggle,
 -- emphasis. A descriptor names a kind and what that kind needs:
 --   flat       the framework's own draw (CreateBorder, AddBackground,
 --              AddHoverFill) with numbers from the skin metrics
@@ -31,6 +31,14 @@
 --              the multiplier on the size the caller asks for, since a
 --              letter drawn in the middle of its texture needs a bigger box
 --              than a character in a font does
+--   button     a push button in Blizzard's panel-button art, on the toggle
+--              role: one sliced member per face, on and off, with onPressed
+--              and offPressed while the mouse is held, each { texture, size,
+--              texCoords } or { atlas }, cut by slice and edge; highlight,
+--              the additive member laid over the face under the cursor;
+--              width and height, the one size the box draws at wherever it
+--              stands; words = { on, off }; labelColors per face (on, off)
+--              and fontRole for the word
 --   ascii, text, texture   how the title bar presents the product's title.
 --              On the resizeGrip role, texture is the atlas kind with file
 --              paths in place of atlas names: normal, hover, pressed, plus
@@ -89,9 +97,9 @@ addon.UI.Chrome = addon.UI.Chrome or {}
 local Chrome = addon.UI.Chrome
 
 Chrome.ROLES = {
-    "window", "picker", "dialog", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
+    "window", "picker", "dialog", "subWindow", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
     "tab", "tabBody", "subPanel", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider", "listRow",
-    "dropdown", "arrowButton", "field", "popupList", "infoIcon", "tooltip", "slider", "input", "toggle",
+    "dropdown", "arrowButton", "field", "popupList", "contextMenu", "flyout", "infoIcon", "tooltip", "slider", "input", "toggle",
     "emphasis",
     "editSelection", "editDialog",
 }
@@ -118,6 +126,15 @@ Chrome.FLAT = {
     -- shipped with; the dimmer behind it is metrics.dialog.dimmerAlpha times
     -- the dialogDimmer piece.
     dialog        = { kind = "flat", background = "solid" },
+    -- A second window a page opens over the panel, the aura editor: the
+    -- window role's relation at the window's own size, with a wash between
+    -- the two. It takes the same kinds and reads the picker's fields, no
+    -- contentBackground. Flat is the window's own descriptor again, so a
+    -- skin that declares nothing draws the editor as it draws the panel.
+    subWindow     = {
+        kind = "flat", corners = "outset", background = "window",
+        noise = { texture = "NOISE_OVERLAY", size = 512, alpha = 0.25, blend = "ADD" },
+    },
     -- How the dialog presents the product's name: text is a string in the
     -- header role; window is the panel template's own plate; texture is the
     -- image the product's HeaderModel names, the one the title bar draws,
@@ -163,6 +180,19 @@ Chrome.FLAT = {
     -- an atlas kind is a skin's box over rows of colored text, with a
     -- highlight laid over the row under the cursor.
     popupList     = { kind = "flat" },
+    -- The box a right-click opens (CreatePopupList in the contextMenu role).
+    -- Flat is the popup list's own draw; an atlas kind is a skin's menu box
+    -- with its highlight, arrow, radio and check art over the rows, and an
+    -- alpha the box rests at.
+    contextMenu   = { kind = "flat" },
+    -- The panel a trigger opens with caller-built content in it
+    -- (Controls:CreateFlyout): a gear's options, an import box. Flat is the
+    -- solid fill inside the accent border with a two-triangle nub pointing
+    -- at the trigger; an atlas kind is a skin's box drawn reach past the
+    -- frame, with padding, the content's inset, and nub = { rim, body,
+    -- edge }: the triangle's outline and fill colors, and how far inside
+    -- the frame edge the art's rim lies, where the nub's base stands.
+    flyout        = { kind = "flat" },
     -- The backdrop of an emphasized (hero) row, read through
     -- Controls.ResolveEmphasis and AddEmphasisChrome (ui/v2/controls/
     -- Emphasis.lua) by the selector and the dual selector. Flat is the accent
@@ -189,7 +219,8 @@ Chrome.FLAT = {
     -- the ON/OFF pill: an accent border, a fill while on, the word in the
     -- toggle font role. A template kind builds a Blizzard CheckButton on the
     -- skin's template in its place, with the caller's hover for the
-    -- template's tooltip scripts.
+    -- template's tooltip scripts. A button kind draws Blizzard's panel
+    -- button at one size, its on face and its off face with a word on each.
     toggle        = { kind = "flat" },
     -- The search page's query box (Controls:CreateSearchBox). Flat is the
     -- framework's bordered edit box; a template kind builds Blizzard's
@@ -298,6 +329,12 @@ function Chrome.Available(spec)
             end
         end
         return any
+    elseif kind == "button" then
+        -- Both faces have to resolve, a file path on trust and an atlas by
+        -- name, and the box needs its one size.
+        if type(spec.width) ~= "number" or type(spec.height) ~= "number" then return false end
+        if type(spec.on) ~= "table" or type(spec.off) ~= "table" then return false end
+        return Chrome.AtlasSource(spec.on) ~= nil and Chrome.AtlasSource(spec.off) ~= nil
     end
     -- flat, ascii, text, texture: drawn by the framework, always available.
     return true
@@ -1228,7 +1265,7 @@ local function AtlasParts(h, frame, spec)
                 end
             end
             tex:Hide()
-            Chrome.ApplyOpacity(AtlasPiece(h.role, state), tex)
+            Chrome.ApplyOpacity(AtlasPiece(h.role, state), tex, spec.alpha)
             h.textures[state] = tex
             h.parts[#h.parts + 1] = tex
         end
@@ -1533,6 +1570,13 @@ local function describe(spec)
         end
         return kind .. " " .. table.concat(names, " ")
     end
+    if kind == "button" then
+        local function face(f)
+            return type(f) == "table" and tostring(f.atlas or f.texture) or "nil"
+        end
+        return kind .. " on=" .. face(spec.on) .. " off=" .. face(spec.off)
+            .. " " .. tostring(spec.width) .. "x" .. tostring(spec.height)
+    end
     return kind
 end
 
@@ -1560,11 +1604,12 @@ Chrome.PIECES = {
     "windowBorder", "windowFill", "titleStreaks", "portrait",
     "pickerBorder", "pickerFill", "pickerStreaks",
     "dialogBorder", "dialogFill", "dialogStreaks", "dialogDimmer",
+    "subWindowBorder", "subWindowFill", "subWindowStreaks",
     "pageStreaks", "pageTopBorder", "pageBorder", "pageFill",
     "navColumn", "navDivider", "cardBorder", "cardFill", "cardGlow",
     "navRowHover", "navRowSelected",
     "sectionHeader", "tab", "buttonBorder", "buttonFill", "closeButton", "scrollTrack", "scrollThumb",
-    "inputField", "searchField", "popupList",
+    "inputField", "searchField", "popupList", "contextMenu",
     "editSelectionBorder", "editSelectionFill", "editSelectionGlow",
 }
 

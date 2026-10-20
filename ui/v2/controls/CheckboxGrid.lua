@@ -25,9 +25,10 @@ end
 --   rowWidth   : The builder's row width
 --   name       : Optional global frame name
 --
--- The mark is the toggle chrome role's when the skin draws a template there
--- (Blizzard's checkbox on Forever), else the framework's square
--- (Controls.CreateCheckBox). A click on the mark or on its label toggles.
+-- The mark is the toggle chrome role's when the skin draws a template or a
+-- button there (Blizzard's checkbox, then its panel button, on Forever), else
+-- the framework's square (Controls.CreateCheckBox), since the flat pill is
+-- too wide for a cell. A click on the mark or on its label toggles.
 --------------------------------------------------------------------------------
 
 function Controls:CreateCheckboxGrid(options)
@@ -66,7 +67,7 @@ function Controls:CreateCheckboxGrid(options)
 
     local Chrome = addon.UI.Chrome
     local spec = (Chrome and Chrome.Spec) and Chrome.Spec("toggle") or nil
-    local template = spec and spec.kind == "template"
+    local skinMark = spec and spec.kind ~= "flat"
 
     local cells = {}
     row._cells = cells
@@ -118,7 +119,7 @@ function Controls:CreateCheckboxGrid(options)
         cell._def = def
 
         local markFrame
-        if template then
+        if skinMark then
             local indicator = Controls.CreateToggleIndicator(cell, {
                 fit = cellHeight,
                 onClick = function() Toggle(cell) end,

@@ -97,7 +97,7 @@ Navigation.NavModel = {
         label = "ScootAuras",
         collapsible = true,
         children = {
-            { key = "scootAurasList", label = "Aura List", module = "scootAuras", betaBadge = true },
+            { key = "auraList", label = "Aura List", module = "scootAuras", betaBadge = true },
         },
     },
     {

@@ -148,13 +148,15 @@ local function ApplyIndicatorFont(fs, lit)
 end
 
 -- The row's state box: the pill at this page's size, or the skin's checkbox
--- scaled into the row, through Controls.CreateToggleIndicator. The frame
--- carries UpdateState and the handle for the row builder's width math.
+-- or button, through Controls.CreateToggleIndicator. The fit is the row less
+-- a pixel each side, so the skin's 22 px button draws at its one size and a
+-- taller box scales into the row. The frame carries UpdateState and the
+-- handle for the row builder's width math.
 local function CreateIndicator(parent)
     local handle = addon.UI.Controls.CreateToggleIndicator(parent, {
         width = INDICATOR_WIDTH,
         height = INDICATOR_HEIGHT,
-        fit = ROW_HEIGHT - 4,
+        fit = ROW_HEIGHT - 2,
         clickable = true,
         fontSize = INDICATOR_FONT_SIZE,
     })
@@ -163,9 +165,9 @@ local function CreateIndicator(parent)
 
     function indicator:UpdateState(isOn, variant)
         -- Blizzard-owned features show their variant letter (green "X") when ON;
-        -- addon-original features keep the plain accent "ON".
+        -- addon-original features keep the skin's own on word.
         local vc = variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[variant]
-        handle:SetText(vc and variant or "ON")
+        handle:SetText(vc and variant or nil)
         handle:SetState(isOn, false, vc)
     end
 

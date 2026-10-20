@@ -323,6 +323,9 @@ end
 --   hasAlpha    : Boolean, show opacity slider (default true)
 --   swatchWidth : Swatch width (optional)
 --   swatchHeight: Swatch height (optional)
+--   swatchWhenOff : "hidden" (default) drops the swatch while the toggle is
+--                 off; "shown" keeps it, for a color that is a setting of its
+--                 own beside the toggle
 --------------------------------------------------------------------------------
 
 function Builder:AddToggleColorPicker(options)
@@ -343,12 +346,103 @@ function Builder:AddToggleColorPicker(options)
         hasAlpha = options.hasAlpha,
         swatchWidth = options.swatchWidth,
         swatchHeight = options.swatchHeight,
+        swatchWhenOff = options.swatchWhenOff,
         useLightDim = self._useLightDim,
         disabled = options.disabled,
         isDisabled = options.isDisabled,
     })
 
     self:_PlaceRow(toggleColor, options)
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddButtonRow: Add a row of buttons side by side
+--------------------------------------------------------------------------------
+-- Options:
+--   buttons     : Array of { text, onClick, width, tooltip, isDisabled,
+--                 secureAction }, each a Controls:CreateButton
+--   justify     : "LEFT" (default, at the row padding), "CENTER" or "RIGHT"
+--   gap         : Space between buttons (default the item spacing)
+--   key         : Optional unique key
+--   noBottomBorder : Optional boolean to skip the divider under the row
+-- The row's search text is the button texts joined; Refresh re-reads each
+-- isDisabled.
+--------------------------------------------------------------------------------
+
+function Builder:AddButtonRow(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+    local defs = options and options.buttons
+    if type(defs) ~= "table" or #defs == 0 then return self end
+
+    local texts = {}
+    for _, def in ipairs(defs) do texts[#texts + 1] = def.text or "" end
+    local rowLabel = table.concat(texts, ", ")
+    if self:_ScanRecord("buttons", rowLabel) then return self end
+
+    local m = Controls.Metrics()
+    local gap = options.gap or m.itemSpacing
+    local justify = options.justify or "LEFT"
+    local row = CreateFrame("Frame", nil, scrollContent)
+    row:SetHeight(m.rowHeight)
+
+    local buttons, total = {}, 0
+    for _, def in ipairs(defs) do
+        local btn = Controls:CreateButton({
+            parent = row, text = def.text, width = def.width, tooltip = def.tooltip,
+            onClick = def.onClick, secureAction = def.secureAction,
+        })
+        if btn then
+            buttons[#buttons + 1] = { frame = btn, def = def }
+            total = total + (btn:GetWidth() or 0)
+        end
+    end
+    total = total + gap * math.max(0, #buttons - 1)
+
+    local prev
+    if justify == "RIGHT" then
+        for i = #buttons, 1, -1 do
+            local btn = buttons[i].frame
+            if prev then
+                btn:SetPoint("RIGHT", prev, "LEFT", -gap, 0)
+            else
+                btn:SetPoint("RIGHT", row, "RIGHT", -m.rowPadding, 0)
+            end
+            prev = btn
+        end
+    else
+        for i = 1, #buttons do
+            local btn = buttons[i].frame
+            if prev then
+                btn:SetPoint("LEFT", prev, "RIGHT", gap, 0)
+            elseif justify == "CENTER" then
+                btn:SetPoint("LEFT", row, "CENTER", -total / 2, 0)
+            else
+                btn:SetPoint("LEFT", row, "LEFT", m.rowPadding, 0)
+            end
+            prev = btn
+        end
+    end
+
+    local function paint()
+        for _, b in ipairs(buttons) do
+            if b.def.isDisabled and b.frame.SetEnabled then
+                b.frame:SetEnabled(not b.def.isDisabled())
+            end
+        end
+    end
+    paint()
+    row._buttons = buttons
+    row.Refresh = paint
+    row.Cleanup = function()
+        for _, b in ipairs(buttons) do
+            if b.frame.Cleanup then b.frame:Cleanup() end
+        end
+    end
+
+    self:_PlaceRow(row, { label = rowLabel, key = options.key, noBottomBorder = options.noBottomBorder })
 
     return self
 end

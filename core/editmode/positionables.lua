@@ -125,12 +125,18 @@ local function onDrop(frame, layoutName, point, x, y)
     local entry = registry[frame]
     if not entry then return end
     if not (point and x and y) then return end
-    if applyPosition(entry, frame, point, x, y, "drop") then return end
+    -- The dynamic view ignores an attach: a frame that hangs off another in
+    -- the regular layout takes the drop as its own place there.
+    local dynamicId = dynamicIdFor(frame)
+    if dynamicId and addon.DynamicLayouts.Detaches(dynamicId) then
+        defaultApply(frame, point, x, y)
+    elseif applyPosition(entry, frame, point, x, y, "drop") then
+        return
+    end
 
     -- The dynamic view: the resolved anchor is the frame's dynamic position,
     -- in its own scale at the dynamic scale, which is the record's
     -- convention. The snap that follows puts the engine's hold on it.
-    local dynamicId = dynamicIdFor(frame)
     if dynamicId then
         local store = addon.DynamicLayoutsStore
         local ok, dPoint, _, _, dx, dy = pcall(frame.GetPoint, frame, 1)
@@ -294,14 +300,12 @@ end
 local OFFSCREEN_LABELS = { TOP = "Up", BOTTOM = "Down", LEFT = "Left", RIGHT = "Right" }
 local OFFSCREEN_ORDER = { "TOP", "BOTTOM", "LEFT", "RIGHT" }
 
-local function dynamicRows(entry, frame)
+-- Opacity and Scale over one adapter's dynamic record, each only for a
+-- channel it carries and each reading the base value until the record holds
+-- one.
+local function channelRows(specs, id, channels)
     local DL = addon.DynamicLayouts
     local store = addon.DynamicLayoutsStore
-    local id = dynamicIdFor(frame)
-    local st = id and DL.Get(id)
-    if not (st and store and not st.inert) then return {} end
-    local channels = st.channelSet or {}
-
     local function rec()
         return store.GetRecord(id) or {}
     end
@@ -313,32 +317,6 @@ local function dynamicRows(entry, frame)
         return math.floor(v * 100 + 0.5)
     end
 
-    local specs = {}
-    if channels.position and positionEditable(entry, frame) then
-        specs[#specs + 1] = {
-            kind  = "position",
-            label = "Position",
-            get   = function() return liveCenter(frame) end,
-            set   = function(p) commitPosition(entry, frame, p) end,
-            -- Move Off Screen: an edge the frame leaves by, over its X and Y.
-            -- The frame slides out at the player's speed, and the view's tab
-            -- for it comes and goes with the edge.
-            offscreen = {
-                label = "Move Off Screen?",
-                values = OFFSCREEN_LABELS,
-                order = OFFSCREEN_ORDER,
-                get = function()
-                    local edge = rec().offscreen
-                    return OFFSCREEN_LABELS[edge] and edge or nil
-                end,
-                set = function(edge)
-                    store.SetRecord(id, { offscreen = OFFSCREEN_LABELS[edge] and edge or false })
-                    DL.Refresh(id, "tween")
-                    if DL.View and DL.View.NotifyRecord then DL.View.NotifyRecord(id) end
-                end,
-            },
-        }
-    end
     if channels.opacity then
         specs[#specs + 1] = {
             kind = "slider", label = "Opacity", min = 0, max = 100, step = 1, precision = 0,
@@ -368,6 +346,65 @@ local function dynamicRows(entry, frame)
                 end
                 write(fields)
             end,
+        }
+    end
+end
+
+local function dynamicRows(entry, frame)
+    local DL = addon.DynamicLayouts
+    local store = addon.DynamicLayoutsStore
+    local id = dynamicIdFor(frame)
+    local st = id and DL.Get(id)
+    if not (st and store and not st.inert) then return {} end
+    local channels = st.channelSet or {}
+
+    local function rec()
+        return store.GetRecord(id) or {}
+    end
+    local specs = {}
+    -- An attach that hides the regular row does not count here.
+    if channels.position and (DL.Detaches(id) or positionEditable(entry, frame)) then
+        specs[#specs + 1] = {
+            kind  = "position",
+            label = "Position",
+            get   = function() return liveCenter(frame) end,
+            set   = function(p) commitPosition(entry, frame, p) end,
+            -- Move Off Screen: an edge the frame leaves by, over its X and Y.
+            -- The frame slides out at the player's speed, and the view's tab
+            -- for it comes and goes with the edge.
+            offscreen = {
+                label = "Move Off Screen?",
+                values = OFFSCREEN_LABELS,
+                order = OFFSCREEN_ORDER,
+                get = function()
+                    local edge = rec().offscreen
+                    return OFFSCREEN_LABELS[edge] and edge or nil
+                end,
+                set = function(edge)
+                    store.SetRecord(id, { offscreen = OFFSCREEN_LABELS[edge] and edge or false })
+                    DL.Refresh(id, "tween")
+                    if DL.View and DL.View.NotifyRecord then DL.View.NotifyRecord(id) end
+                end,
+            },
+        }
+    end
+    channelRows(specs, id, channels)
+    -- An adapter's parts (the Personal Resource Display's bars): each a
+    -- header over its own Opacity and Scale, under the frame's own rows.
+    for _, partId in ipairs(st.def.parts or {}) do
+        local part = DL.Get(partId)
+        if part and not part.inert then
+            specs[#specs + 1] = { kind = "header", label = part.def.label or partId }
+            channelRows(specs, partId, part.channelSet or {})
+        end
+    end
+    -- A frame's own rule over the target requirement (the player frame's).
+    if DL.OffersFriendlyUnits(id) then
+        specs[#specs + 1] = {
+            kind = "toggle", indicatorRole = "checkbox",
+            label = "Disengage Dynamic Layout\neven when targeting\nFriendly Units",
+            get = function() return DL.FriendlyUnits(id) end,
+            set = function(v) DL.SetFriendlyUnits(id, v) end,
         }
     end
     return specs
@@ -555,6 +592,11 @@ end
 --- two stored records: (point, x, y) at `scale` -> center offset from the
 --- screen center in UI units, or nil when the frame's rect cannot be read.
 EM.CenterFromRecord = centerFromRecord
+
+--- An anchor point as rect fractions { across, up }, or nil.
+function EM.AnchorFraction(point)
+    return ANCHOR_FRACTIONS[point]
+end
 
 --------------------------------------------------------------------------------
 -- The dynamic view

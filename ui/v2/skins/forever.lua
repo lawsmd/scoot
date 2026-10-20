@@ -50,6 +50,25 @@ local UI_FACE = (GameFontNormal and select(1, GameFontNormal:GetFont()))
 local PROP_REG  = addon.Fonts.ROBOTO_REG or (FONT_BASE .. "Roboto-Regular.ttf")
 local PROP_MED  = addon.Fonts.ROBOTO_MED or (FONT_BASE .. "Roboto-Medium.ttf")
 
+-- One state of Blizzard's panel button, the art of UIPanelButtonTemplate,
+-- for the toggle (chrome.toggle below): each state's file holds an 80x22
+-- member at its top-left corner of 128x32, with 12 px end caps.
+local function PANEL_BUTTON(state)
+    return {
+        texture = "Interface\\Buttons\\UI-Panel-Button-" .. state,
+        size = { 80, 22 }, texCoords = { 0, 0.625, 0, 0.6875 },
+    }
+end
+
+-- Blizzard's options checkbox, SettingsCheckboxTemplate on checkbox-minimal,
+-- and the same art with an additive highlight and no mixin behind it. Two
+-- roles draw it: chrome.checkbox, for a toggle that asks for a checkbox, and
+-- chrome.toggle's fallback.
+local CHECKBOX = {
+    kind = "template", template = "SettingsCheckboxTemplate", frameType = "CheckButton",
+    fallback = { kind = "template", template = "MinimalCheckboxTemplate", frameType = "CheckButton" },
+}
+
 -- The dynamic view of Edit Mode (ui/v2/editmode/DynamicView.lua) wears
 -- these over the bronze, so a glance says which layout a drag will change,
 -- and wears them bright: the owner asked for the view to read as its own
@@ -113,9 +132,12 @@ Skin.Register("forever", {
         -- reports what the client answered).
         button    = { path = UI_FACE, size = 13, style = "THICKOUTLINESLUG" },
         miniLabel = { path = UI_FACE, size = 11 },
-        -- No toggle role: the ON/OFF pill left this skin for Blizzard's
-        -- checkbox (chrome.toggle below), which draws no text. A pill that
-        -- ever draws flat here takes the button face at the caller's size.
+        -- The word on the toggle button (chrome.toggle below): the client's
+        -- face with the drop shadow Blizzard's own panel buttons draw their
+        -- text in, GameFontNormal's, a point under that font's 12 since the
+        -- word is capitals. The role was gone while the toggle was Blizzard's
+        -- checkbox, which draws no text.
+        toggle    = { path = UI_FACE, size = 11, style = "SHADOW" },
         -- The names that stand on the wood, in Deep Shadow Thick Outline,
         -- which draws a black copy of the string behind it
         -- (core/fontpair.lua): the nav card's group name, the child row under
@@ -274,6 +296,19 @@ Skin.Register("forever", {
             layout = "ButtonFrameTemplateNoPortrait",
             portrait = false,
             pieces = { border = "dialogBorder", fill = "dialogFill", streaks = "dialogStreaks" },
+            fallback = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
+        },
+        -- The aura editor, a second window near the panel's size, opened
+        -- over the panel with a black wash between them: the same panel
+        -- template at that size, the tracker's name on its plate and the
+        -- template's close button in the corner, with the picker's reasons
+        -- for no emblem and for solid pieces of its own. The options
+        -- nine-slice stands in where a client lacks the template.
+        subWindow = {
+            kind = "template", template = "PortraitFrameTemplate",
+            layout = "ButtonFrameTemplateNoPortrait",
+            portrait = false,
+            pieces = { border = "subWindowBorder", fill = "subWindowFill", streaks = "subWindowStreaks" },
             fallback = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
         },
         -- The dialog's mark is the emblem, centred on the 21px title plate
@@ -524,6 +559,50 @@ Skin.Register("forever", {
             },
             fallback = { kind = "flat" },
         },
+        -- The box a right-click opens (CreatePopupList in the contextMenu
+        -- role): Blizzard's own context menu, MenuStyle1Mixin with the
+        -- Mainline MenuVariants (Blizzard_Menu/Mainline/MenuTemplates.lua,
+        -- MenuVariants.lua): common-dropdown-bg reaching 10 across and 3
+        -- above and below the rows at .925, the rows 8 inside and 15 above
+        -- the bottom edge, the quest title highlight added under the
+        -- cursor, white rows, gold titles, gray refused rows, the chat
+        -- expand arrow on a submenu row, and the dropdown's radial and
+        -- square ticks before a radio or check row's text.
+        contextMenu = {
+            kind = "atlas", atlas = "common-dropdown-bg", alpha = 0.925,
+            reach = { left = 10, right = 10, top = 3, bottom = 3 },
+            padding = { left = 8, top = 8, right = 8, bottom = 15 },
+            highlight = { texture = "Interface\\QuestFrame\\UI-QuestTitleHighlight", blend = "ADD", alpha = 1 },
+            arrow = { texture = "Interface\\ChatFrame\\ChatFrameExpandArrow", size = 16 },
+            radio = { off = "common-dropdown-tickradial", on = "common-dropdown-icon-radialtick-yellow",
+                      x = -3, onPoint = "TOPLEFT", gap = 1 },
+            check = { off = "common-dropdown-ticksquare", on = "common-dropdown-icon-checkmark-yellow",
+                      onX = 2, onY = 1, gap = 7, textY = 1 },
+            swatch = { size = 16 },
+            labelColors = {
+                normal = "white", hover = "white", selected = "white",
+                disabled = { 0.5, 0.5, 0.5 }, title = { 1, 0.82, 0 },
+            },
+            fallback = { kind = "flat" },
+        },
+        -- The panel a gear or a button opens (Controls:CreateFlyout): the
+        -- context menu's box, at its alpha and reach, so a flyout and a
+        -- right-click menu draw as one family. padding is the
+        -- content's inset inside the rim, the menu's own 8; a caller that
+        -- passes one keeps it. The nub stays, the owner's call of 19 October
+        -- 2026: rim is its outline, the bronze of ui-frame-metal-cornertopleft-2x
+        -- (#a78151), and body its fill, the menu's dark at the box's alpha;
+        -- edge is how far inside the frame the art's rim lies, settled by eye
+        -- on the beta 19 October 2026: at 0 the rim showed under the nub's
+        -- base, 3 sat a pixel deep, 2 covers the rim cleanly. rim and body
+        -- were seen and kept.
+        flyout = {
+            kind = "atlas", atlas = "common-dropdown-bg", alpha = 0.925,
+            reach = { left = 10, right = 10, top = 3, bottom = 3 },
+            padding = 8,
+            nub = { rim = { 0.655, 0.506, 0.318, 1 }, body = { 0.04, 0.03, 0.02, 0.925 }, edge = 2 },
+            fallback = { kind = "flat" },
+        },
         -- An emphasized row, the page's master control at its top: the nav
         -- column's group card, Legacy-Tree-Frame-Card cut the same way,
         -- around the whole row. The row then reads as a sibling of the cards
@@ -592,17 +671,33 @@ Skin.Register("forever", {
         -- The slider Blizzard's own options panel draws: the track, the thumb
         -- and the two steppers, bronze on Forever behind the retail names.
         slider = { kind = "template", template = "MinimalSliderWithSteppersTemplate" },
-        -- The checkbox Blizzard's own options panel draws, in place of the
-        -- ON/OFF pill on every settings row and on the Features page: a
-        -- 30x29 CheckButton on checkbox-minimal, with checkmark-minimal for
-        -- the check, bronze on Forever behind the retail names. Its tooltip
-        -- scripts go and the row's own hover stands in. The same art with an
-        -- additive highlight and no mixin is the fallback; the flat pill is
-        -- the fallback's fallback, through Chrome.Spec.
+        -- The button Blizzard's own options panel draws, as the toggle: the
+        -- red UI-Panel-Button-Up with its word in gold for on, the gray
+        -- UI-Panel-Button-Disabled with its word in white for off, each
+        -- state's Down member while the mouse is held, and the additive
+        -- UI-Panel-Button-Highlight over the face under the cursor. Each is
+        -- the 80x22 member PANEL_BUTTON cuts, as a three-slice so the box
+        -- takes its width. One size wherever the toggle stands: a settings
+        -- row, the Features page, the aura list's hover cluster. The checkbox
+        -- the panel drew before it, with its tooltip scripts replaced by the
+        -- row's hover, is the fallback, and the flat pill the end of the
+        -- chain through Chrome.Spec.
         toggle = {
-            kind = "template", template = "SettingsCheckboxTemplate", frameType = "CheckButton",
-            fallback = { kind = "template", template = "MinimalCheckboxTemplate", frameType = "CheckButton" },
+            kind = "button",
+            on = PANEL_BUTTON("Up"), onPressed = PANEL_BUTTON("Down"),
+            off = PANEL_BUTTON("Disabled"), offPressed = PANEL_BUTTON("Disabled-Down"),
+            highlight = PANEL_BUTTON("Highlight"),
+            slice = { left = 12, right = 12 },
+            width = 48, height = 22,
+            words = { on = "ON", off = "OFF" },
+            labelColors = { on = { 1, 0.82, 0 }, off = "white" },
+            fontRole = "toggle",
+            fallback = CHECKBOX,
         },
+        -- A toggle that reads as a checked condition rather than a switch:
+        -- the dynamic view's requirement rows and the target rule's flyout.
+        -- Scoot's skin declares none, so there it is the flat pill.
+        checkbox = CHECKBOX,
         -- The typed value box beside it: the three common-search-border
         -- pieces of InputBoxTemplate, the box the options search bar is drawn
         -- in. The fill is baked into the art, so the inputField opacity piece
@@ -716,8 +811,8 @@ Skin.Register("forever", {
             -- standoff from the screen's edge, which clears the view's border.
             metrics = { height = 28, padX = 12, arrow = 16, gap = 6, edge = 2, inset = 4 },
             -- DIALOG strata, over the participating boxes (1000) and the
-            -- screen border, under the strip (2000) and the library's dialog,
-            -- which rises a strata in the view.
+            -- screen border, under the strip and the library's dialog, which
+            -- both rise a strata in the view.
             level = 1100,
         },
     },
@@ -751,6 +846,10 @@ Skin.Register("forever", {
         dialogFill    = 1,
         dialogStreaks = 1,
         dialogDimmer  = 1,
+        -- The aura editor stands on the dimmed panel and draws solid too
+        subWindowBorder  = 1,
+        subWindowFill    = 1,
+        subWindowStreaks = 1,
         -- The Legacy background's cells: the streak band, the bordered
         -- panel's top edge, its other three edges, the page inside them, and
         -- the wood column behind the nav
@@ -973,6 +1072,10 @@ Skin.Register("forever", {
         -- for; gap 0 sets the list against the field's edge, as the menu
         -- sits under its dropdown.
         popupList = { optionHeight = 20, fontSize = 12, textInset = 14, fontRole = "value", gap = 0 },
+        -- The context menu's rows: Blizzard's 20 tall with the text on the
+        -- row's own edge, 20 of room past the widest text (the menu's child
+        -- padding), and the tick's 17 before a radio or check row's text
+        contextMenu = { optionHeight = 20, fontSize = 12, textInset = 0, fontRole = "value", gap = 0, extent = 20, markWidth = 17 },
         -- An emphasized row on its card (chrome.emphasis). scale multiplies
         -- the row's name, its description, the field and the row's height,
         -- the field's width with them. The name takes the nav card's own
@@ -1042,5 +1145,9 @@ Skin.Register("forever", {
 
         sublevels = { bg = -8, fill = -7, hover = -6 },
         alphas = { hover = 0.08, emphasis = 0.03, selected = 0.12, borderNormal = 0.6, borderFocus = 1.0 },
+
+        -- The Aura List's drag color (AuraListDrag.lua): the accent, the
+        -- cream every other highlight on this skin draws in.
+        auraList = { colors = { drop = "accent" } },
     },
 })

@@ -3,8 +3,10 @@
 -- The profile engine (core.lua, layouts.lua, spec.lua) is host-neutral and
 -- loads under both addons. This file is Scoot's side of the seam: the one apply
 -- step that re-links components, restyles, reconciles the profile-driven
--- toggles and the aura systems, and the import hook the Personal Resource
--- Display needs. Camelot has its own file for the same seam.
+-- toggles and the group-frame aura slots, and the import hook the Personal
+-- Resource Display needs. Camelot has its own file for the same seam. The
+-- aura tracker's reconcile is a registered step of its own, in the shared
+-- core/components/scootauras/events.lua, at order 35.
 local _, addon = ...
 
 local Profiles = addon.Profiles
@@ -39,9 +41,6 @@ Profiles.RegisterApplyStep("scoot", function(reason, ctx)
     addon:ApplyStyles()
     Profiles._reconcileProfileToggles(reason)
 
-    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
-        addon.ScootAuras.ReconcileForActiveProfile(reason)
-    end
     if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
         -- Group-frame aura slots are per-profile: a switch has to retire the
         -- old profile's spells and point slots at the new ones.

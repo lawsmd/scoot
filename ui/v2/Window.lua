@@ -39,7 +39,8 @@ end
 -- @param opts: template = true takes the role's template kind; the default
 --               declines it and draws the role's fallback. role names the
 --               chrome role the surface is drawn from, "window" by default;
---               "dialog" is the small relation a floating window takes
+--               "dialog" is the small relation a floating window takes,
+--               "subWindow" the editor-sized one a page opens over the panel
 -- @return: The created frame
 function Window:Create(name, parent, width, height, opts)
     local Chrome = addon.UI.Chrome

@@ -74,24 +74,40 @@ function Controls:CreateSingleLineEditBox(options)
     bordered:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -labelHeight)
     bordered:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 0, 0)
     bordered:SetSize(width, height)
-
-    -- Background
-    bordered._bg = Controls.AddBackground(bordered, { inset = BORDER_WIDTH })
-
-    -- Border textures
-    bordered._border = Controls.CreateBorder(bordered, {
-        thickness = BORDER_WIDTH,
-        alpha = BORDER_ALPHA_NORMAL,
-        getAlpha = function() return container._isFocused and BORDER_ALPHA_FOCUS or BORDER_ALPHA_NORMAL end,
-    })
     container._bordered = bordered
 
-    -- EditBox (single-line, no ScrollFrame)
-    local editBox = CreateFrame("EditBox", nil, bordered)
-    editBox:SetMultiLine(false)
-    editBox:SetAutoFocus(false)
-    editBox:SetPoint("TOPLEFT", bordered, "TOPLEFT", BORDER_WIDTH + CONTENT_PADDING, 0)
-    editBox:SetPoint("BOTTOMRIGHT", bordered, "BOTTOMRIGHT", -(BORDER_WIDTH + CONTENT_PADDING), 0)
+    -- A template input role draws the client's own box art on the EditBox,
+    -- which stands in the vertical middle of the row and reaches its art
+    -- past its left edge (Controls.ValueInputReach); the flat draw is a
+    -- background and a border that brightens on focus.
+    local inputSpec = addon.UI.Chrome.Spec("input")
+    local editBox
+    if inputSpec.kind == "template" then
+        bordered._border = { Refresh = function() end }
+        editBox = addon.UI.Chrome.CreateFrame(inputSpec, "EditBox", nil, bordered)
+        editBox:SetMultiLine(false)
+        editBox:SetAutoFocus(false)
+        editBox:SetPoint("LEFT", bordered, "LEFT", Controls.ValueInputReach(), 0)
+        editBox:SetPoint("RIGHT", bordered, "RIGHT", 0, 0)
+        editBox:SetHeight(20)
+        for _, key in ipairs({ "Left", "Middle", "Right" }) do
+            if editBox[key] then addon.UI.Chrome.ApplyOpacity("inputField", editBox[key]) end
+        end
+    else
+        bordered._bg = Controls.AddBackground(bordered, { inset = BORDER_WIDTH })
+        bordered._border = Controls.CreateBorder(bordered, {
+            thickness = BORDER_WIDTH,
+            alpha = BORDER_ALPHA_NORMAL,
+            getAlpha = function() return container._isFocused and BORDER_ALPHA_FOCUS or BORDER_ALPHA_NORMAL end,
+        })
+
+        -- EditBox (single-line, no ScrollFrame)
+        editBox = CreateFrame("EditBox", nil, bordered)
+        editBox:SetMultiLine(false)
+        editBox:SetAutoFocus(false)
+        editBox:SetPoint("TOPLEFT", bordered, "TOPLEFT", BORDER_WIDTH + CONTENT_PADDING, 0)
+        editBox:SetPoint("BOTTOMRIGHT", bordered, "BOTTOMRIGHT", -(BORDER_WIDTH + CONTENT_PADDING), 0)
+    end
 
     local fontPath = theme:GetFont("VALUE")
     editBox:SetFont(fontPath, fontSize, "")

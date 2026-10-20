@@ -54,6 +54,7 @@ local ownedHeight          -- set while the dialog is showing one of this addon'
 local lastPositionedFor    -- selection the dialog was last anchored to
 local mirrorBuiltFor       -- selection the mirror slot was last built for
 local mirrorDirty          -- force a rebuild even for the same selection
+local baseWidth = DIALOG_W -- the owned frame's registered width, or the default
 
 local function GetTheme()
     return addon.UI and addon.UI.Theme
@@ -65,6 +66,24 @@ end
 local function InDynamicView()
     local EM = addon.EditMode
     return (EM.IsDynamicView and EM.IsDynamicView()) and true or false
+end
+
+local function DialogWidth()
+    -- 80 wider in the dynamic view: the Position row's right half holds
+    -- "Move Off Screen?" beside its checkbox, which overran the 340 box.
+    -- A registration's own dialogWidth, for a mirror laid in columns, has
+    -- room for it already.
+    if baseWidth > DIALOG_W then return baseWidth end
+    return InDynamicView() and DIALOG_W + 80 or DIALOG_W
+end
+
+-- The box's width-bound pieces at the width for the current view, before
+-- the mirror builds, since its rows size to the slot.
+local function ApplyWidth(width)
+    skin._title:SetWidth(width - (skin._titleMargin or PAD) * 2)
+    skin.MirrorSlot:SetWidth(width - (PAD * 2))
+    skin._resetBtn:SetWidth(width - (PAD * 2))
+    skin._configureBtn:SetWidth(width - (PAD * 2))
 end
 
 -- In the dynamic view of Edit Mode the role's "dynamic" variant colors the
@@ -227,6 +246,7 @@ local function EnsureSkin(dialog)
         title:SetPoint("TOP", skin, "TOP", 0, -PAD)
     end
     title:SetWidth(DIALOG_W - margin * 2)
+    skin._titleMargin = margin
     skin._mirrorIndent = PAD - margin
     skin._title = title
 
@@ -421,7 +441,7 @@ local function PositionForSelection(dialog, selection, height)
     end)
     if ok and type(right) == "number" and type(top) == "number" then
         local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
-        if right + ARROW_CLEARANCE + DIALOG_W > screenW then horizontal = "LEFT" end
+        if right + ARROW_CLEARANCE + DialogWidth() > screenW then horizontal = "LEFT" end
         if top + ARROW_CLEARANCE + height > screenH then vertical = "BOTTOM" end
     end
 
@@ -569,6 +589,14 @@ local function EnterOwnedMode(dialog, selection, info)
         TintLibraryBorder(dialog, dynamic and spec.borderTint or nil)
     end
 
+    baseWidth = tonumber(info.dialogWidth) or DIALOG_W
+    local width = DialogWidth()
+    if skin._width ~= width then
+        skin._width = width
+        ApplyWidth(width)
+        mirrorDirty = true
+    end
+
     -- Before ComputeHeight: the slot's height is an input to it.
     SyncMirror(selection, info)
 
@@ -578,8 +606,8 @@ local function EnterOwnedMode(dialog, selection, info)
     -- size is set, so this cooperates with the layout pass instead of fighting it.
     local height = ComputeHeight()
     ownedHeight = height
-    dialog:SetFixedSize(DIALOG_W, height)
-    dialog:SetSize(DIALOG_W, height)   -- correct on this frame, not just after Layout
+    dialog:SetFixedSize(width, height)
+    dialog:SetSize(width, height)   -- correct on this frame, not just after Layout
 
     -- Only reposition when the selection changes, so dragging the
     -- element (which re-runs Update) doesn't fight a dialog the user has moved.
@@ -672,7 +700,7 @@ function Dialog.EnsureHooked()
     -- LEM's hidden regions would otherwise measure to.
     hooksecurefunc(d, "Layout", function(dialog)
         if ownedHeight then
-            dialog:SetSize(DIALOG_W, ownedHeight)
+            dialog:SetSize(DialogWidth(), ownedHeight)
         end
     end)
 

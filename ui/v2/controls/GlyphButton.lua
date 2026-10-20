@@ -28,6 +28,8 @@ local DEFAULT_SIZE = 16
 -- reveal their buttons on hover own the Show. The hover poke reads
 -- parent.UpdateHover at event time, nil-guarded, because callers attach the
 -- hover painter after the buttons exist.
+-- opts.atlas is a name, or a list of names tried in order: a client that
+-- lacks the first (Forever has no common-icon-delete) draws the next.
 -- opts: parent, atlas, tooltip, size (16), glyphScale (1), shown (false)
 function Controls:CreateGlyphButton(opts)
     local theme = GetTheme()
@@ -41,7 +43,15 @@ function Controls:CreateGlyphButton(opts)
     local glyph = size * (opts.glyphScale or 1)
     tex:SetSize(glyph, glyph)
     tex:SetPoint("CENTER", 0, 0)
-    if not pcall(tex.SetAtlas, tex, opts.atlas) or not tex:GetAtlas() then
+    local names = type(opts.atlas) == "table" and opts.atlas or { opts.atlas }
+    local set = false
+    for _, name in ipairs(names) do
+        if pcall(tex.SetAtlas, tex, name) and tex:GetAtlas() then
+            set = true
+            break
+        end
+    end
+    if not set then
         pcall(tex.SetAtlas, tex, FALLBACK_ATLAS)
     end
     tex:SetDesaturated(true)
@@ -66,12 +76,34 @@ function Controls:CreateGlyphButton(opts)
     return btn
 end
 
+-- The width the compact indicator draws at on the active skin, for a row that
+-- reserves room for it before it is built: the toggle role's own box on a
+-- skin whose toggles are buttons, else the pill's width the caller passes.
+function Controls.OnOffIndicatorWidth(width)
+    local Chrome = addon.UI.Chrome
+    local spec = (Chrome and Chrome.Spec) and Chrome.Spec("toggle") or nil
+    if spec and spec.kind == "button" then return spec.width end
+    return width
+end
+
 -- Compact ON/OFF state indicator: bordered box with an accent fill and black
 -- "ON" when on, dim hollow "OFF" when off. Returns the button carrying
 -- btn:SetOn(isOn). Starts hidden unless opts.shown, for the same hover-reveal
--- rows the glyph button serves.
+-- rows the glyph button serves. On a skin whose toggle role is a button, the
+-- row's indicator is that button through Controls.CreateToggleIndicator, at
+-- the role's one size; width and height are the pill's.
 -- opts: parent, width (27), height (13), border (2), shown (false)
 function Controls:CreateOnOffIndicator(opts)
+    local Chrome = addon.UI.Chrome
+    local spec = (Chrome and Chrome.Spec) and Chrome.Spec("toggle") or nil
+    if spec and spec.kind == "button" then
+        local handle = Controls.CreateToggleIndicator(opts.parent, { clickable = true })
+        local btn = handle.frame
+        btn.SetOn = function(_, isOn) handle:SetState(isOn, false) end
+        if not opts.shown then btn:Hide() end
+        return btn
+    end
+
     local theme = GetTheme()
     local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB = theme:GetDimTextColor()

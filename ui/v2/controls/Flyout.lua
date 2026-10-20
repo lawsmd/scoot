@@ -142,9 +142,11 @@ local function PositionNub(panel)
 
     local bw, bh, bOver = NubQuad(FLYOUT_NUB_WIDTH, FLYOUT_NUB_HEIGHT)
     local fw, fh, fOver = NubQuad(NUB_FILL_WIDTH, NUB_FILL_HEIGHT)
-    -- Quad edge to panel edge, measured into the panel.
-    local bIn = NUB_BORDER_BASE + bOver
-    local fIn = NUB_FILL_BASE + fOver
+    -- Quad edge to panel edge, measured into the panel. A skin's box draws
+    -- its rim nub.edge inside the frame, and the nub's base moves in with it.
+    local edge = panel._nubEdge or 0
+    local bIn = NUB_BORDER_BASE + bOver + edge
+    local fIn = NUB_FILL_BASE + fOver + edge
 
     nubBorder:ClearAllPoints()
     nubFill:ClearAllPoints()
@@ -262,6 +264,11 @@ end
 --   onShow     : function(panel) callback when opened
 --   onHide     : function(panel) callback when closed
 --   name       : string  optional global frame name
+--
+-- The box is the skin's flyout chrome role. Flat draws the accent border and
+-- solid fill; an atlas kind draws the skin's art in their place, its padding
+-- standing in for the default inset and its nub colors for the accent and
+-- the background.
 --------------------------------------------------------------------------------
 
 function Controls:CreateFlyout(options)
@@ -270,11 +277,18 @@ function Controls:CreateFlyout(options)
         return nil
     end
 
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec("flyout")
+    local art = spec.kind == "atlas"
+    local nubSpec = art and type(spec.nub) == "table" and spec.nub or nil
+
     local anchor = options.anchor
     local direction = options.direction or "DOWN"
     local panelWidth = options.width or FLYOUT_DEFAULT_WIDTH
     local panelHeight = options.height or FLYOUT_DEFAULT_HEIGHT
-    local padding = options.padding or FLYOUT_CONTENT_PADDING
+    local padding = options.padding or (art and spec.padding) or FLYOUT_CONTENT_PADDING
+    -- The art's rim is inside its own drawing, so the content keeps only the padding
+    local borderWidth = art and 0 or FLYOUT_BORDER_WIDTH
     local gap = options.gap or FLYOUT_GAP
     local align = options.align
     if align ~= "LEFT" and align ~= "RIGHT" then align = "CENTER" end
@@ -284,9 +298,13 @@ function Controls:CreateFlyout(options)
     local onHide = options.onHide
     local name = options.name
 
-    -- Get theme colors
+    -- The nub's two colors: the skin's rim and body over its art, the accent
+    -- and the background around the flat box
     local ar, ag, ab = theme:GetAccentColor()
     local bgR, bgG, bgB = theme:GetBackgroundSolidColor()
+    local rimAlpha, bodyAlpha = FLYOUT_BORDER_ALPHA, FLYOUT_BG_ALPHA
+    if nubSpec and nubSpec.rim then ar, ag, ab, rimAlpha = Chrome.Color(nubSpec.rim) end
+    if nubSpec and nubSpec.body then bgR, bgG, bgB, bodyAlpha = Chrome.Color(nubSpec.body) end
 
     ---------------------------------------------------------------------------
     -- Panel frame
@@ -310,25 +328,25 @@ function Controls:CreateFlyout(options)
     panel._onShow = onShow
     panel._onHide = onHide
     panel._isOpen = false
+    panel._nubEdge = nubSpec and nubSpec.edge or 0
 
     ---------------------------------------------------------------------------
-    -- Background
+    -- Box: the skin's art, or the background inside a 4-edge border
     ---------------------------------------------------------------------------
 
-    panel._bg = Controls.AddBackground(panel, {
-        inset = FLYOUT_BORDER_WIDTH,
-        alpha = FLYOUT_BG_ALPHA,
-    })
+    if art then
+        panel._backdrop = Chrome.Backdrop("flyout", panel)
+    else
+        panel._bg = Controls.AddBackground(panel, {
+            inset = FLYOUT_BORDER_WIDTH,
+            alpha = FLYOUT_BG_ALPHA,
+        })
+        panel._border = Controls.CreateBorder(panel, {
+            thickness = FLYOUT_BORDER_WIDTH,
+            alpha = FLYOUT_BORDER_ALPHA,
+        })
+    end
     panel._bgAlpha = FLYOUT_BG_ALPHA
-
-    ---------------------------------------------------------------------------
-    -- Border (4 edges, matching Dropdown.lua pattern)
-    ---------------------------------------------------------------------------
-
-    panel._border = Controls.CreateBorder(panel, {
-        thickness = FLYOUT_BORDER_WIDTH,
-        alpha = FLYOUT_BORDER_ALPHA,
-    })
 
     ---------------------------------------------------------------------------
     -- Nub (two-triangle bordered approach; sized and placed by PositionNub)
@@ -338,14 +356,14 @@ function Controls:CreateFlyout(options)
     local nubBorder = panel:CreateTexture(nil, "OVERLAY", nil, 1)
     nubBorder:SetTexture(TRIANGLE_TEXTURE)
     nubBorder:SetSize(NubQuad(FLYOUT_NUB_WIDTH, FLYOUT_NUB_HEIGHT))
-    nubBorder:SetVertexColor(ar, ag, ab, FLYOUT_BORDER_ALPHA)
+    nubBorder:SetVertexColor(ar, ag, ab, rimAlpha)
     panel._nubBorder = nubBorder
 
     -- Inner triangle (background color, inset by the border width)
     local nubFill = panel:CreateTexture(nil, "OVERLAY", nil, 2)
     nubFill:SetTexture(TRIANGLE_TEXTURE)
     nubFill:SetSize(NubQuad(NUB_FILL_WIDTH, NUB_FILL_HEIGHT))
-    nubFill:SetVertexColor(bgR, bgG, bgB, FLYOUT_BG_ALPHA)
+    nubFill:SetVertexColor(bgR, bgG, bgB, bodyAlpha)
     panel._nubFill = nubFill
 
     if not showNub then
@@ -357,7 +375,9 @@ function Controls:CreateFlyout(options)
     -- Content frame
     ---------------------------------------------------------------------------
 
-    local inset = padding + FLYOUT_BORDER_WIDTH
+    local inset = padding + borderWidth
+    -- Panel edge to content edge, for a caller that sizes the panel to its content
+    panel._inset = inset
     local content = CreateFrame("Frame", nil, panel)
     content:SetPoint("TOPLEFT", panel, "TOPLEFT", inset, -inset)
     content:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -inset, inset)
@@ -386,9 +406,12 @@ function Controls:CreateFlyout(options)
     local subscribeKey = "Flyout_" .. (name or tostring(panel))
     panel._subscribeKey = subscribeKey
 
-    theme:Subscribe(subscribeKey, function(r, g, b)
-        panel._nubBorder:SetVertexColor(r, g, b, FLYOUT_BORDER_ALPHA)
-    end)
+    -- The art's rim is the skin's own color and does not follow the accent
+    if not (nubSpec and nubSpec.rim) then
+        theme:Subscribe(subscribeKey, function(r, g, b)
+            panel._nubBorder:SetVertexColor(r, g, b, FLYOUT_BORDER_ALPHA)
+        end)
+    end
 
     ---------------------------------------------------------------------------
     -- Public methods
@@ -457,6 +480,11 @@ function Controls:CreateFlyout(options)
         if not alpha then return end
         alpha = math.max(0, math.min(1, alpha))
         self._bgAlpha = alpha
+        if self._backdrop then
+            for _, tex in pairs(self._backdrop.textures or {}) do tex:SetAlpha(alpha) end
+            self._nubFill:SetAlpha(alpha)
+            return
+        end
         local r, g, b = GetTheme():GetBackgroundSolidColor()
         self._bg:SetColorTexture(r, g, b, alpha)
         self._nubFill:SetVertexColor(r, g, b, alpha)

@@ -841,26 +841,10 @@ function addon:RefreshOpacityState()
             pcall(widget.RefreshOpacity, widget)
         end
     end
-    -- Update all components that have opacity settings (CDM, Action Bars, Auras, etc.)
-    for id, component in pairs(self.Components) do
-        -- Zero-Touch: skip unconfigured components (still on proxy DB)
-        if addon.IsComponentUnconfigured(component) then
-            -- no-op: component not configured
-        elseif (component.RefreshOpacity or component.ApplyStyling) and component.settings then
-            -- Any catalog key (core/opacity.lua) or the objective tracker's
-            -- compound key qualifies; a component with only a combat value
-            -- still refreshes on a combat edge.
-            local hasOpacity = addon.Opacity.DeclaresAny(component.settings) or
-                component.settings.opacityInInstanceCombat
-            if hasOpacity then
-                if component.RefreshOpacity then
-                    pcall(component.RefreshOpacity, component)
-                else
-                    pcall(component.ApplyStyling, component)
-                end
-            end
-        end
-    end
+    -- Every configured component that declares an opacity key (CDM, action
+    -- bars, auras, and the rest). The walk is shared (core/opacity.lua) so
+    -- Camelot's host runs it from its own combat and target edges.
+    addon.Opacity.RefreshComponents()
 end
 
 function addon:PLAYER_REGEN_DISABLED()

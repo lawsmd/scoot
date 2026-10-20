@@ -2689,6 +2689,7 @@ function UFZ._RefreshClickModifiers()
         end
     end
 end
+addon.SmallFixes.RegisterClickRefresher(UFZ._RefreshClickModifiers)
 
 -- Secure unit watch: Blizzard's SecureStateDriverManager shows/hides watched
 -- frames on unit existence from its own secure context -- the one channel

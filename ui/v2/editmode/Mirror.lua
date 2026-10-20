@@ -57,6 +57,13 @@
 -- the slot with no box: buttons that act on the whole, under a box that
 -- edits one part of it.
 --
+-- `{ kind = "columns", count = 2 }` lays the sections after it side by side,
+-- `count` to a line, left to right, each line as tall as its tallest box.
+-- `count = 1` goes back to full width, as does any row outside a section.
+-- A box in a column is narrower than the slot, so its sliders and selectors
+-- take the column widths below; a registration that uses columns gives the
+-- dialog a `dialogWidth` that leaves them room (Dialog.lua).
+--
 -- `rebuild = true` means writing this value changes the SHAPE of the list, so the
 -- whole slot is rebuilt afterwards rather than just re-read.
 --
@@ -85,6 +92,11 @@ local Mirror = addon.EditMode.Mirror
 local SELECTOR_W    = 160
 local SLIDER_TRACK_W = 100
 local SLIDER_INPUT_W = 38
+-- Kept off addon.UI.Skin.Metrics: dialog-only, sized to a column box, a
+-- 242 column of the 520 dialog split in two, which leaves the label band
+-- about 60.
+local COLUMN_SELECTOR_W     = 130
+local COLUMN_SLIDER_TRACK_W = 60
 
 local ACTION_BTN_H  = 26   -- matches Dialog.lua's BTN_H
 local ACTION_ROW_H  = 34   -- button + top gap; both action kinds share it
@@ -144,19 +156,19 @@ local active = {}
 --------------------------------------------------------------------------------
 
 local BUILDERS = {
-    selector = function(Controls, parent, spec, set)
+    selector = function(Controls, parent, spec, set, narrow)
         return Controls:CreateSelector({
             parent = parent,
             label  = spec.label,
             values = spec.values or {},
             order  = spec.order,
-            width  = SELECTOR_W,
+            width  = narrow and COLUMN_SELECTOR_W or SELECTOR_W,
             get    = spec.get,
             set    = set,
         })
     end,
 
-    slider = function(Controls, parent, spec, set)
+    slider = function(Controls, parent, spec, set, narrow)
         return Controls:CreateSlider({
             parent     = parent,
             label      = spec.label,
@@ -164,7 +176,7 @@ local BUILDERS = {
             max        = spec.max,
             step       = spec.step,
             precision  = spec.precision,
-            width      = SLIDER_TRACK_W,
+            width      = narrow and COLUMN_SLIDER_TRACK_W or SLIDER_TRACK_W,
             inputWidth = SLIDER_INPUT_W,
             get        = spec.get,
             set        = set,
@@ -172,12 +184,25 @@ local BUILDERS = {
     end,
 
     toggle = function(Controls, parent, spec, set)
-        return Controls:CreateToggle({
+        local row = Controls:CreateToggle({
             parent = parent,
             label  = spec.label,
             get    = spec.get,
             set    = set,
+            indicatorRole = spec.indicatorRole,
         })
+        -- A label broken over lines by its own newlines: the row grows to
+        -- hold them, the label centered on it as on a one-line row.
+        local label = row and row._label
+        local _, breaks = string.gsub(spec.label or "", "\n", "")
+        if label and breaks > 0 then
+            label:SetJustifyH("LEFT")
+            local _, size = label:GetFont()
+            local lineH = (tonumber(size) or 13) + 3
+            local need = (breaks + 1) * lineH + 12
+            if need > (row:GetHeight() or 0) then row:SetHeight(need) end
+        end
+        return row
     end,
 
     position = function(Controls, parent, spec, set)
@@ -507,6 +532,8 @@ local LABEL_KINDS = { header = true }
 
 -- The entry that closes a section without opening the next.
 local END_KIND = "end"
+-- The entry that sets how many sections stand side by side.
+local COLUMNS_KIND = "columns"
 
 -- The box a header opens, on the editDialog role's `section` descriptor: a
 -- nine-slice where the skin declares one, the flat accent border otherwise.
@@ -594,14 +621,50 @@ function Mirror.Build(slot, frame, provider, onRebuild)
     -- a box after a box takes one gap, not two.
     local section, sy
     local gapped = false
+    -- Columns: how many to a line, the next box's column, the line's top
+    -- and its tallest box so far.
+    local columns, col, lineTop, lineH = 1, 0, 0, 0
+
+    local function flushLine()
+        if col == 0 then return end
+        y = lineTop + lineH + SECTION_GAP
+        col, lineH = 0, 0
+        gapped = true
+    end
 
     local function closeSection()
         if not section then return end
         local h = sy + SECTION_PAD_BOTTOM
         section:SetHeight(h)
-        y = y + h + SECTION_GAP
+        if section._inColumn then
+            if h > lineH then lineH = h end
+            col = col + 1
+            if col >= columns then flushLine() end
+        else
+            y = y + h + SECTION_GAP
+            gapped = true
+        end
         section, sy = nil, nil
-        gapped = true
+    end
+
+    local function openSection()
+        closeSection()
+        if col == 0 then
+            if y > 0 and not gapped then y = y + SECTION_GAP end
+            lineTop = y
+        end
+        section = CreateSection(Controls, slot)
+        if columns > 1 then
+            local w = ((slot:GetWidth() or 0) - (columns - 1) * SECTION_GAP) / columns
+            section:SetPoint("TOPLEFT", slot, "TOPLEFT", col * (w + SECTION_GAP), -lineTop)
+            section:SetWidth(w)
+            section._inColumn = true
+        else
+            section:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, -y)
+            section:SetPoint("TOPRIGHT", slot, "TOPRIGHT", 0, -y)
+        end
+        sy = 0
+        active[#active + 1] = section
     end
 
     for _, spec in ipairs(specs) do
@@ -612,18 +675,19 @@ function Mirror.Build(slot, frame, provider, onRebuild)
         local setOk = type(spec.set) == "function"
         if kind == END_KIND then
             closeSection()
+        elseif kind == COLUMNS_KIND then
+            closeSection()
+            flushLine()
+            columns = math.max(1, math.floor(tonumber(spec.count) or 1))
         elseif build and (labelOnly or (getOk and setOk)) then
             if labelOnly then
-                closeSection()
-                if y > 0 and not gapped then y = y + SECTION_GAP end
-                section = CreateSection(Controls, slot)
-                section:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, -y)
-                section:SetPoint("TOPRIGHT", slot, "TOPRIGHT", 0, -y)
-                sy = 0
-                active[#active + 1] = section
+                openSection()
+            elseif not section then
+                flushLine()
             end
             local parent = section or slot
-            local row = build(Controls, parent, spec, setOk and WrapSet(spec, onRebuild) or nil)
+            local narrow = section and section._inColumn or false
+            local row = build(Controls, parent, spec, setOk and WrapSet(spec, onRebuild) or nil, narrow)
             if row then
                 -- The control set its own height at creation; read it before
                 -- anchoring so nothing about the read can depend on the anchors.
@@ -651,5 +715,6 @@ function Mirror.Build(slot, frame, provider, onRebuild)
     end
 
     closeSection()
+    flushLine()
     return y
 end
