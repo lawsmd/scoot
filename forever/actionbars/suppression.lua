@@ -13,8 +13,11 @@
 -- parked.
 --
 -- Nothing is released: the Features switch lands at reload, and a feature
--- off at login never claims. The pet bar and the stance bar stay
--- Blizzard's in this phase. The micro menu and the bag bar are parked whole:
+-- off at login never claims. The pet bar stays Blizzard's in this phase.
+-- The stance bar is dimmed for the same reason as the multibars: its
+-- buttons' Quick Keybind OnHide writes EventRegistry, so a park would run
+-- that tainted. The native stance keys call StanceBar:Select, never the
+-- mouse. The micro menu and the bag bar are parked whole:
 -- Camelot's twins click Blizzard's buttons inside them, and Click reaches a
 -- hidden button.
 --------------------------------------------------------------------------------
@@ -36,6 +39,9 @@ local BLIZZARD_FRAME = {
     { name = "MultiBar5",          method = "alpha" },
     { name = "MultiBar6",          method = "alpha" },
     { name = "MultiBar7",          method = "alpha" },
+    -- The bar frame itself takes the mouse (StanceBar.xml, enableMouse) at
+    -- a fixed level 70, over the Camelot stance bar where the two meet.
+    { name = "StanceBar",          method = "alpha", barMouseOff = true },
     -- The micro and bag twins click these buttons where they are parked.
     { name = "MicroMenuContainer", method = "park" },
     { name = "BagsBar",            method = "park" },
@@ -66,6 +72,7 @@ local function MouseOff()
         for _, button in ipairs(bar and bar.actionButtons or {}) do
             button:EnableMouse(false)
         end
+        if bar and row.barMouseOff then bar:EnableMouse(false) end
     end
     mouseOff = true
 end

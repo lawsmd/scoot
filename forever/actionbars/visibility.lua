@@ -75,15 +75,23 @@ local function isBar(token)
     return ActionBars.Frames ~= nil and ActionBars.Frames[token] ~= nil
 end
 
+local function isStance(token)
+    local Stance = ActionBars.Stance
+    return Stance ~= nil and token == Stance.KEY
+end
+
 local function barOf(token)
     if isBar(token) then return ActionBars.Frames[token] end
+    if isStance(token) then return ActionBars.Stance.Face(token) end
     local MicroBags = ActionBars.MicroBags
     return MicroBags and MicroBags.Face(token) or nil
 end
 
 -- Only a bar a cluster holds takes a driver; a parked one draws nowhere. A
--- micro or bag holder takes one while its style is in use.
+-- micro or bag holder takes one while its style is in use, the stance bar
+-- while it has forms to show.
 local function placed(token)
+    if isStance(token) then return ActionBars.Stance.IsActive(token) end
     if not isBar(token) then
         local MicroBags = ActionBars.MicroBags
         return MicroBags ~= nil and MicroBags.IsActive(token)
@@ -92,13 +100,14 @@ local function placed(token)
     return Clusters and Clusters.Owner and Clusters.Owner(token) ~= nil
 end
 
---- Every token the tab can apply to: the pool's bars, then the micro and bag
---- holders.
+--- Every token the tab can apply to: the pool's bars, the micro and bag
+--- holders, then the stance bar.
 function Visibility.Tokens()
     local tokens = {}
     for _, token in ipairs(ActionBars.POOL_ORDER or {}) do tokens[#tokens + 1] = token end
     local MicroBags = ActionBars.MicroBags
     for _, key in ipairs(MicroBags and MicroBags.ORDER or {}) do tokens[#tokens + 1] = MicroBags.KEYS[key] end
+    if ActionBars.Stance then tokens[#tokens + 1] = ActionBars.Stance.KEY end
     return tokens
 end
 

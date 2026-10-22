@@ -15,7 +15,8 @@
 -- bar is on the cursor and a frame that takes a drop takes part, so the
 -- layout comes back for the placement, and its clearing never waits. A
 -- fifth, menuOpen, fixed and no-wait the same way, reads true while the game
--- menu or Blizzard's settings window is shown.
+-- menu or Blizzard's settings window is shown. A sixth, spellbookOpen, the
+-- same again since 20 October 2026, reads true while a spellbook is open.
 --
 -- Two lanes, 19 October 2026: the main answer every frame follows, and a
 -- wide one that also counts a friendly unit target (friendlyUnit) while the
@@ -148,6 +149,26 @@ local function probeMenuOpen()
     return shown(a) or shown(b) or shown(c)
 end
 
+-- A spellbook is open, the owner's call of 20 October 2026: the player is
+-- placing spells, so the whole layout comes back with every bar in reach,
+-- whether or not anything is on the cursor yet. Every book Blizzard ships
+-- calls MultiActionBar_ShowAllGrids on its show and HideAllGrids on its hide
+-- with the spell collection reason, the pair the bars' empty slots follow;
+-- the hooks below keep that flag and arm on it. The probe also reads the
+-- books it knows by name, so closing one of two open books keeps base.
+local spellCollection = false
+
+local function spellbookFrames()
+    -- Read off _G: each book exists on some clients only, and two load on demand.
+    return _G.SpellBookFrame, _G.PlayerSpellsFrame, _G.ProfessionsBookFrame
+end
+
+local function probeSpellbookOpen()
+    if spellCollection then return true end
+    local a, b, c = spellbookFrames()
+    return shown(a) or shown(b) or shown(c)
+end
+
 -- Ordered so the display and the resolution walk the triggers the same way.
 -- A fixed trigger is always enabled: no checkbox, no mask key, no verb. A
 -- noWait trigger's clearing skips the delay. A wide trigger counts in the
@@ -158,6 +179,7 @@ local TRIGGERS = {
     { name = "insideInstance", probe = probeInsideInstance },
     { name = "holdingAction",  probe = probeHoldingAction, fixed = true, noWait = true },
     { name = "menuOpen",       probe = probeMenuOpen, fixed = true, noWait = true },
+    { name = "spellbookOpen",  probe = probeSpellbookOpen, fixed = true, noWait = true },
     { name = "friendlyUnit",    probe = probeFriendlyUnit, fixed = true, wide = true },
 }
 
@@ -181,7 +203,7 @@ local suspendedResolves = 0
 
 local enabled = {
     inCombat = true, targetAcquired = true, insideInstance = true,
-    holdingAction = true, menuOpen = true, friendlyUnit = true,
+    holdingAction = true, menuOpen = true, spellbookOpen = true, friendlyUnit = true,
 }
 
 local last = {}     -- per trigger: value, flippedAt, flippedWall
@@ -504,6 +526,25 @@ local function installMenuHooks()
             frame:HookScript("OnHide", onMenuHide)
         end
     end
+end
+
+-- The books' grid pair (spellbookOpen). A pickup calls the same pair with the
+-- event reason, which holdingAction already answers, so only the spell
+-- collection reason moves the flag. Blizzard_ActionBar loads before any
+-- addon, so the globals exist here; they are read off _G as the books are.
+local SPELLCOLLECTION = _G.ACTION_BUTTON_SHOW_GRID_REASON_SPELLCOLLECTION
+
+local function onBookGrid(show)
+    return function(reason)
+        if reason == nil or reason ~= SPELLCOLLECTION then return end
+        spellCollection = show
+        onEvent(show and "SPELLBOOK_SHOW" or "SPELLBOOK_HIDE")
+    end
+end
+
+if SPELLCOLLECTION and _G.MultiActionBar_ShowAllGrids and _G.MultiActionBar_HideAllGrids then
+    hooksecurefunc("MultiActionBar_ShowAllGrids", onBookGrid(true))
+    hooksecurefunc("MultiActionBar_HideAllGrids", onBookGrid(false))
 end
 
 local brandMenuHooked = false

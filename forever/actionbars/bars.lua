@@ -44,12 +44,14 @@ ActionBars.POOL = {
     bar8 = { frame = "CamelotActionBar8", kind = "action", page = 15, command = "MULTIACTIONBAR7BUTTON",
              label = "Action Bar 8", blizzard = "MultiBar7" },
     pet = { kind = "pet", command = "BONUSACTIONBUTTON", label = "Pet Bar", blizzard = "PetActionBar" },
-    stance = { kind = "stance", command = "SHAPESHIFTBUTTON", label = "Stance Bar", blizzard = "StanceBar" },
 }
 
+-- The stance bar is not an identity: it stands on an anchor of its own
+-- (stance.lua), and a stored cluster member that still names it is dropped
+-- at the clusters' build.
 ActionBars.POOL_ORDER = {
     "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8",
-    "pet", "stance",
+    "pet",
 }
 
 -- token -> frame, for the built identities; every Camelot button; and each
@@ -140,6 +142,7 @@ local function Build()
     ActionBars.Compact.Install()
     ActionBars.Visibility.ApplyAll()
     ActionBars.MicroBags.Build()
+    ActionBars.Stance.Build()
     ActionBars.Suppression.Apply()
     HookPresses()
     built = true
@@ -170,11 +173,14 @@ addon.Events.OnWorldEntered(function()
             ActionBars.Compact.OnEditMode(true)
             -- Every bar shows at full opacity while Edit Mode is open.
             ActionBars.Visibility.OnEditMode(true)
+            -- The stance bar shows every slot, so its box has a size.
+            ActionBars.Stance.OnEditMode(true)
         end,
         exit = function()
             ActionBars.Suppression.Reassert()
             ActionBars.Compact.OnEditMode(false)
             ActionBars.Visibility.OnEditMode(false)
+            ActionBars.Stance.OnEditMode(false)
             -- The member strips never outlive Edit Mode.
             if ActionBars.Overlays then ActionBars.Overlays.Detach() end
         end,
@@ -259,6 +265,8 @@ function ActionBars.Dump()
     push("  dimmed bar buttons mouse off: %s", tostring(ActionBars.Suppression.IsMouseOff()))
     push("")
     ActionBars.MicroBags.Report(push)
+    push("")
+    ActionBars.Stance.Report(push)
     push("")
 
     push("keybind text, button 1 of each bar:")

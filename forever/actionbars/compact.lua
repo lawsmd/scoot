@@ -223,17 +223,21 @@ function Compact.Apply(bar)
     end
 end
 
---- One phrase for the report: the mode, and the grid bits while any shows.
+--- One phrase for the report: the mode, and the grid bits while any shows,
+--- on every bar, since Show Empty Buttons' bit shows a bar's empty slots
+--- with compaction off too.
 function Compact.Describe(bar)
     local align = bar.compactAlign
-    if not align then return "compact off" end
-    local word = (align == "start" and "start") or (align == "end" and "end") or "middle"
+    local phrase = "compact off"
+    if align then
+        phrase = "compact " .. ((align == "start" and "start") or (align == "end" and "end") or "middle")
+    end
     local first = bar.actionButtons and bar.actionButtons[1]
     local bits = first and (first:GetAttribute("showgrid") or 0) or 0
     if bits > 0 then
-        return string.format("compact %s, grid shown (bits %d)", word, bits)
+        return string.format("%s, grid shown (bits %d)", phrase, bits)
     end
-    return "compact " .. word
+    return phrase
 end
 
 --------------------------------------------------------------------------------

@@ -348,6 +348,23 @@ function CamelotActionButtonMixin:ActionBarButtonMixin_OnLeave()
     QuickKeybindButtonTemplateMixin.QuickKeybindButtonOnLeave(self)
 end
 
+-- Replace ActionBarActionButtonMixin:RegisterActionBarButtonCheckFrames and
+-- UnregisterActionBarButtonCheckFrames, which Blizzard's OnShow and OnHide
+-- and the UpdateAction above reach by name. Blizzard's range and usable
+-- watcher frames keep one table per action slot, made by whichever button
+-- registers first. A table a Camelot button made is read by the dimmed
+-- Blizzard button on the same slot every time its UpdateAction unregisters,
+-- and the rest of that update runs tainted: in a fight its
+-- SetAttribute("pressAndHoldAction") is blocked and its SetCooldown refused.
+-- events.lua keeps the two lists for Camelot buttons instead.
+function CamelotActionButtonMixin:RegisterActionBarButtonCheckFrames(action)
+    Events().WatchAction(self, action)
+end
+
+function CamelotActionButtonMixin:UnregisterActionBarButtonCheckFrames(action)
+    Events().UnwatchAction(self, action)
+end
+
 --------------------------------------------------------------------------------
 -- The bar
 --------------------------------------------------------------------------------

@@ -179,6 +179,78 @@ local function forwardActionEvent(event, ...)
 end
 
 --------------------------------------------------------------------------------
+-- Range and usable watchers
+--------------------------------------------------------------------------------
+-- ActionBarButtonRangeCheckFrame and ActionBarButtonUsableWatcherFrame keep
+-- a table per action slot, and the dimmed Blizzard button on a slot reads
+-- that table on every UpdateAction. A Camelot button that made the table
+-- would taint the rest of that update (mixins.lua), so these two maps hold
+-- the Camelot buttons in their place, with Blizzard's dispatch rules.
+
+local rangeWatch, usableWatch = {}, {}
+
+local function watchSet(map, action)
+    local set = map[action]
+    if not set then
+        set = {}
+        map[action] = set
+    end
+    return set
+end
+
+-- Range checking is switched off only when the slot's last Camelot button
+-- leaves; Blizzard's frame switches it off on every unregister.
+function Events.WatchAction(button, action)
+    local ranged = watchSet(rangeWatch, action)
+    if not ranged[button] then
+        ranged[button] = true
+        C_ActionBar.EnableActionRangeCheck(action, true)
+    end
+    watchSet(usableWatch, action)[button] = true
+end
+
+function Events.UnwatchAction(button, action)
+    local ranged = rangeWatch[action]
+    if ranged and ranged[button] then
+        ranged[button] = nil
+        if next(ranged) == nil then
+            C_ActionBar.EnableActionRangeCheck(action, false)
+        end
+    end
+    local usable = usableWatch[action]
+    if usable then usable[button] = nil end
+end
+
+-- ActionBarButtonRangeCheckFrameMixin:OnEvent.
+local function forwardRangeCheck(event, action, ...)
+    local set = rangeWatch[action]
+    if not set then return end
+    for button in pairs(set) do
+        button:OnEvent(event, action, ...)
+    end
+end
+
+-- ActionBarButtonUsableWatcherFrameMixin:OnEvent.
+local function forwardUsable(_, changes)
+    for _, change in ipairs(changes) do
+        local set = usableWatch[change.slot]
+        if set then
+            for button in pairs(set) do
+                button:UpdateUsable(change.slot, change.usable, change.noMana)
+            end
+        end
+    end
+end
+
+function Events.WatchedCount()
+    local n = 0
+    for _, set in pairs(rangeWatch) do
+        for _ in pairs(set) do n = n + 1 end
+    end
+    return n
+end
+
+--------------------------------------------------------------------------------
 -- The tick
 --------------------------------------------------------------------------------
 -- ActionBarButtonUpdateFrame: a button's CheckNeedsUpdate puts it here while
@@ -219,6 +291,8 @@ function Events.Install()
     for _, event in ipairs(ACTION_EVENTS) do
         addon.Events.On(OWNER, event, forwardActionEvent)
     end
+    addon.Events.On(OWNER, "ACTION_RANGE_CHECK_UPDATE", forwardRangeCheck)
+    addon.Events.On(OWNER, "ACTION_USABLE_CHANGED", forwardUsable)
     addon.Events.On(OWNER, "ADDON_ACTION_BLOCKED", noteBlocked)
     addon.Events.On(OWNER, "ADDON_ACTION_FORBIDDEN", noteBlocked)
 end

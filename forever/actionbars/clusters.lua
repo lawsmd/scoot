@@ -25,6 +25,10 @@ ActionBars.Clusters = Clusters
 local DB = addon.DB
 
 local DOCUMENT = "actionBars.clusters"
+-- Each identity's member fields as it last stood in a cluster, so a bar
+-- keeps its own settings when it moves (see "Settings follow the bar").
+local MEMORY = "actionBars.memberMemory"
+Clusters.MEMORY = MEMORY
 local NEXT_ID = "actionBars.nextClusterId"
 local REBUILD_KEY = "camelotActionBars.clusters"
 
@@ -32,7 +36,7 @@ local REBUILD_KEY = "camelotActionBars.clusters"
 local CONTAINER_LEVEL = 60
 
 -- Buttons per identity kind; the pool in bars.lua loads after this file.
-local BUTTON_COUNT = { action = 12, pet = 10, stance = 10 }
+local BUTTON_COUNT = { action = 12, pet = 10 }
 
 --------------------------------------------------------------------------------
 -- The default document
@@ -62,8 +66,6 @@ Clusters.DEFAULTS = {
       } },
     { id = 2, axis = "vertical", spacing = SPACING, endCaps = false,
       members = { member("pet", { buttons = 10 }) } },
-    { id = 3, axis = "vertical", spacing = SPACING, endCaps = false,
-      members = { member("stance", { buttons = 10 }) } },
 }
 
 -- A profile started from Blizzard's Modern or Classic preset wears Blizzard's
@@ -80,10 +82,10 @@ end)
 -- main cluster is centered at the bottom of the screen with its bottom
 -- member 55 units up: the owner's call after the first look, the bars
 -- being the one place Camelot departs from the stock arrangement on
--- purpose. The pet and stance clusters take Blizzard's bottom stacking rule
--- when they are built. A cluster with no row here, a new one, stands at the
--- screen center. The micro menu and the bags are not clusters: they are
--- anchors of their own (microbags.lua).
+-- purpose. The pet cluster takes Blizzard's bottom stacking rule when it is
+-- built. A cluster with no row here, a new one, stands at the screen center.
+-- The micro menu, the bags and the stance bar are not clusters: they are
+-- anchors of their own (microbags.lua, stance.lua).
 Clusters.DEFAULT_ANCHOR = {
     [1] = { point = "BOTTOM", relativeTo = "UIParent", relativePoint = "BOTTOM", x = 0, y = 55 },
 }
@@ -196,12 +198,17 @@ local function copy(t)
     return out
 end
 
+local remember
+
+-- Every edit starts here, so the memory holds each member as it stood
+-- before the edit (see "Settings follow the bar").
 local function Editable()
     local doc = DB.GetDocument(DOCUMENT)
     if type(doc) ~= "table" then
         doc = copy(Clusters.DEFAULTS)
         DB.SetDocument(DOCUMENT, doc)
     end
+    remember(doc)
     return doc
 end
 
@@ -229,9 +236,8 @@ function Clusters.IdentityLabel(token)
 end
 
 -- Whether an identity's frame exists: the eight action bars are built, and
--- pet and stance come with their phases. Until then a
--- member of those kinds is skipped by the layout, its cluster has no
--- container, and the surfaces list neither.
+-- pet comes with its phase. Until then a pet member is skipped by the
+-- layout, its cluster has no container, and the surfaces do not list it.
 local function isBuilt(token)
     local frames = ActionBars.Frames
     return frames ~= nil and frames[token] ~= nil
@@ -338,8 +344,57 @@ local MEMBER_FIELDS = {
     pageArrows = flag,
 }
 
+--------------------------------------------------------------------------------
+-- Settings follow the bar
+--------------------------------------------------------------------------------
+
+-- A member's fields belong to the bar it holds, the owner's call of 20
+-- October 2026, as the Visibility tab's per-bar settings already did: a bar
+-- taken out of a cluster, swapped for another or added somewhere else comes
+-- back with the fields it last had, and a bar never placed starts from the
+-- defaults. The memory mirrors every member before and after each edit, so
+-- a document written before it existed seeds it on the first edit.
+
+function remember(doc)
+    local memory = DB.GetDocument(MEMORY)
+    if type(memory) ~= "table" then memory = {} end
+    for _, cluster in ipairs(doc) do
+        for _, m in ipairs(cluster.members or {}) do
+            if m.identity then
+                local fields = {}
+                for field in pairs(MEMBER_FIELDS) do fields[field] = m[field] end
+                memory[m.identity] = fields
+            end
+        end
+    end
+    DB.SetDocument(MEMORY, memory)
+end
+
+-- A member holding the identity: the defaults, then the remembered fields
+-- through the same checks a write takes, so a count that no longer fits
+-- the identity is clamped.
+local function recall(token)
+    local m = member(token, { buttons = memberCount(token) })
+    local memory = DB.GetDocument(MEMORY)
+    local fields = type(memory) == "table" and memory[token]
+    if type(fields) ~= "table" then return m end
+    -- buttons before lines, since lines is clamped to the button count.
+    for _, field in ipairs({ "buttons", "lines" }) do
+        local v = fields[field] ~= nil and MEMBER_FIELDS[field](fields[field], m) or nil
+        if v ~= nil then m[field] = v end
+    end
+    for field, accept in pairs(MEMBER_FIELDS) do
+        if field ~= "buttons" and field ~= "lines" and fields[field] ~= nil then
+            local v = accept(fields[field], m)
+            if v ~= nil then m[field] = v end
+        end
+    end
+    return m
+end
+
 local function commit(doc)
     DB.SetDocument(DOCUMENT, doc)
+    remember(doc)
     Clusters.Rebuild()
     return true
 end
@@ -373,9 +428,10 @@ function Clusters.SetMemberField(id, index, field, value)
     return commit(doc)
 end
 
---- Give a member another identity. Refused for an identity another member
---- holds (set that member to something free first), and for a change that
---- would leave cluster 1 without an action bar.
+--- Give a member another identity, which brings its own remembered fields
+--- into the member's place; the old identity's stay in the memory. Refused
+--- for an identity another member holds (set that member to something free
+--- first), and for a change that would leave cluster 1 without an action bar.
 function Clusters.SetIdentity(id, index, token)
     if not (ActionBars.POOL and ActionBars.POOL[token]) then return false end
     local doc = Editable()
@@ -387,10 +443,7 @@ function Clusters.SetIdentity(id, index, token)
     if id == PRIMARY and not isAction(token) and actionsBesides(cluster, index) == 0 then
         return false
     end
-    m.identity = token
-    local count = memberCount(token)
-    m.buttons = math.min(m.buttons or count, count)
-    m.lines = math.min(m.lines or 1, m.buttons)
+    cluster.members[index] = recall(token)
     return commit(doc)
 end
 
@@ -403,7 +456,7 @@ function Clusters.AddMember(id, token)
     local cluster = find(doc, id)
     if not cluster then return false end
     cluster.members = cluster.members or {}
-    cluster.members[#cluster.members + 1] = member(token, { buttons = memberCount(token) })
+    cluster.members[#cluster.members + 1] = recall(token)
     return commit(doc)
 end
 
@@ -432,7 +485,7 @@ function Clusters.NewCluster(token)
     DB.Set(NEXT_ID, id + 1)
     doc[#doc + 1] = {
         id = id, axis = "vertical", spacing = SPACING, endCaps = false, endCapScale = 100,
-        members = { member(token, { buttons = memberCount(token) }) },
+        members = { recall(token) },
     }
     commit(doc)
     return id
@@ -723,11 +776,14 @@ function Clusters.Rebuild()
     -- The surfaces that draw the document re-lay over the new layout.
     if ActionBars.Overlays then ActionBars.Overlays.Refresh() end
     if ActionBars.Page then ActionBars.Page.Refresh() end
+    -- The stance bar's default stands over cluster 1.
+    if ActionBars.Stance then ActionBars.Stance.Apply() end
 end
 
 --- The first pass, from the bars' build. The caller runs out of combat.
--- A document written while the micro menu and the bags were pool members
--- still lists them, in the old default clusters 4 and 5 or wherever the
+-- A document written while the micro menu, the bags or the stance bar were
+-- pool members still lists them: the micro menu and the bags in the old
+-- default clusters 4 and 5, the stance bar in cluster 3, or wherever the
 -- player put them. They are anchors of their own now: drop the members, and
 -- a cluster they leave empty.
 local function DropRetiredMembers()

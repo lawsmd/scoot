@@ -59,6 +59,7 @@ DL.RegisterGroup("unitFrames", "Unit Frames", 10)
 DL.RegisterGroup("castBars", "Cast Bars", 20)
 DL.RegisterGroup("actionBarClusters", "Action Bar Clusters", 30)
 DL.RegisterGroup("microBags", "Micro & Bag Bar", 40)
+DL.RegisterGroup("stanceBar", "Stance Bar", 45)
 DL.RegisterGroup("objectiveTracker", "Objective Tracker", 50)
 DL.RegisterGroup("statusBars", "Status Bars", 60)
 
