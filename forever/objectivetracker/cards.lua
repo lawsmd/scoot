@@ -227,8 +227,8 @@ local function wanted()
 end
 
 --- A frame after a rebuild, once the client has laid the text out: every
---- card in the row takes the tallest one's height, up to the playing card's
---- 5:7, past which that card's last rows fade. In the column each card takes
+--- card in the row takes the tallest one's height, up to twice its
+--- width, past which that card's last rows fade. In the column each card takes
 --- its own height, to the same cap, and its place under the ones above.
 local fitQueued = false
 

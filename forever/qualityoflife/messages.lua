@@ -30,10 +30,14 @@ Messages.OFFSET = { min = -400, max = 400, step = 1, default = 0 }
 
 Messages.PATH_X = "qol.messagesOffsetX"
 Messages.PATH_Y = "qol.messagesOffsetY"
+Messages.PATH_HIDE_ERRORS = "qol.hideErrorMessages"
 
 -- 0 and 0: Blizzard's own spot, and the frame untouched until a move, the
 -- rule for a feature that restyles a Blizzard frame in place.
-DB.RegisterDefaults({ [Messages.PATH_X] = 0, [Messages.PATH_Y] = 0 })
+DB.RegisterDefaults({
+    [Messages.PATH_X] = 0, [Messages.PATH_Y] = 0,
+    [Messages.PATH_HIDE_ERRORS] = false,
+})
 
 local function clamp(value)
     value = tonumber(value) or Messages.OFFSET.default
@@ -49,6 +53,10 @@ end
 
 function Messages.SetOffset(axis, value)
     DB.Set(axis == "y" and Messages.PATH_Y or Messages.PATH_X, clamp(value))
+end
+
+function Messages.HideErrors()
+    return DB.Get(Messages.PATH_HIDE_ERRORS) == true
 end
 
 -- The info icon both rows carry. `other` names the page that holds the
@@ -76,6 +84,20 @@ function Messages.AddPositionRow(builder, opts)
         apply = function()
             -- Forever only (messagesdisplay.lua); on retail the row stores alone.
             if Messages.Apply then Messages.Apply() end
+        end,
+    })
+end
+
+--- The Hide Error Messages toggle. The red lines go; the yellow quest lines
+--- come through another event and stay.
+function Messages.AddHideErrorsRow(builder)
+    return builder:AddToggle({
+        label = "Hide Error Messages",
+        get = Messages.HideErrors,
+        set = function(value)
+            DB.Set(Messages.PATH_HIDE_ERRORS, value and true or false)
+            -- Forever only (messagesdisplay.lua).
+            if Messages.ApplyErrors then Messages.ApplyErrors() end
         end,
     })
 end

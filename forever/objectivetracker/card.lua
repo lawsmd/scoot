@@ -509,10 +509,10 @@ function CardMixin:SetCardWidth(width)
     if not self:GetHeight() or self:GetHeight() < 1 then self:SetHeight(MIN_HEIGHT) end
 end
 
---- The tallest the card may be before its last rows fade: the playing
---- card's 5:7 of its width.
+--- The tallest the card may be before its last rows fade: twice its width.
+--- The playing card's 5:7 cut the fourth bar off a quest whose names wrap.
 function Card.MaxHeight(width)
-    return math.floor(width * 7 / 5 + 0.5)
+    return math.floor(width * 2 + 0.5)
 end
 
 local function setColor(fs, c)

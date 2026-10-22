@@ -324,10 +324,20 @@ local function RegisterEditMode()
             addon.NativeFrame:Reapply()
             eachPane(function(_, frame)
                 OT.EnsurePlaced("editmode enter", false, frame)
-                -- An empty container hides itself except while Edit Mode is
-                -- active; this is the update that shows it for dragging.
-                frame:Update()
             end)
+            -- An empty container hides itself except while Edit Mode is
+            -- active; this is the update that shows it for dragging. It runs
+            -- Blizzard's modules from addon code, where the Scenario module's
+            -- aura read (ShouldShowMawBuffs) throws while auras are secret in
+            -- combat, so an open in combat shows the empty panes after it.
+            local function showForDragging()
+                eachPane(function(_, frame) frame:Update() end)
+            end
+            if InCombatLockdown() then
+                addon.Events.RunOutOfCombat(showForDragging, "objectiveTracker:editModeEnter")
+            else
+                showForDragging()
+            end
         end,
         exit = function()
             addon.NativeFrame:Reapply()

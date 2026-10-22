@@ -88,6 +88,7 @@ do
         map[Style.Path(index, "width")] = Style.WIDTH.default
         map[Style.Path(index, "opacity")] = Style.OPACITY.default
         map[Style.Path(index, "alwaysShowText")] = false
+        map[Style.Path(index, "showLevel")] = true
     end
     DB.RegisterDefaults(map)
 end
@@ -115,6 +116,12 @@ end
 
 function Style.AlwaysShowText(index)
     return Style.Get(index, "alwaysShowText") == true
+end
+
+--- The player's level in front of the experience text, while the bar shows
+--- experience. On by default.
+function Style.ShowLevel(index)
+    return Style.Get(index, "showLevel") ~= false
 end
 
 --- A bar's holder, or nil: on retail none is built.
@@ -151,7 +158,7 @@ end, 30)
 -- Edit Mode dialog
 --------------------------------------------------------------------------------
 -- Blizzard's one Edit Mode setting for the system, Size, carried as Width,
--- with the replica's own two beside it. Labels only.
+-- with the replica's own three beside it. Labels only.
 
 --- The mirror for one bar's branded Edit Mode dialog. The engine puts the
 --- position row in front of the list.
@@ -181,6 +188,14 @@ function Style.EditModeMirror(index)
                 get = function() return Style.AlwaysShowText(index) end,
                 set = function(v)
                     Style.Set(index, "alwaysShowText", v and true or false)
+                    Style.Apply()
+                end,
+            },
+            {
+                kind = "toggle", label = "Show Level",
+                get = function() return Style.ShowLevel(index) end,
+                set = function(v)
+                    Style.Set(index, "showLevel", v and true or false)
                     Style.Apply()
                 end,
             },

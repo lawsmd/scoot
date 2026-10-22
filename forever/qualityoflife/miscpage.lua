@@ -22,6 +22,7 @@ local function Render(panel, scrollContent)
         sectionKey = "messages", defaultExpanded = true,
         buildContent = function(_, inner)
             Messages.AddPositionRow(inner, { other = "the Current Objectives page" })
+            Messages.AddHideErrorsRow(inner)
             inner:Finalize()
         end })
 

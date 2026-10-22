@@ -50,6 +50,14 @@ local function addBar(builder, index)
                     Style.Apply()
                 end,
             })
+            inner:AddToggle({
+                label = "Show Level",
+                get = function() return Style.ShowLevel(index) end,
+                set = function(v)
+                    Style.Set(index, "showLevel", v and true or false)
+                    Style.Apply()
+                end,
+            })
             inner:Finalize()
         end,
     })

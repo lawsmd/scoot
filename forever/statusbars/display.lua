@@ -2,8 +2,8 @@
 -- forever/statusbars/display.lua
 -- The status bars replica: two Camelot holders, each with a container from
 -- Blizzard's template, filled by a Camelot manager on Blizzard's mixin;
--- StatusTrackingBarManager parked; the width, opacity and text applies; and
--- /camelot statusbars.
+-- StatusTrackingBarManager parked; the width, opacity and text applies; the
+-- hover surface; and /camelot statusbars.
 --
 -- Blizzard's manager picks the bars by the client's priorities
 -- (StatusTrackingBarInfo.BarPriorities): on Forever experience comes last, so
@@ -26,6 +26,8 @@ local built = false
 local claimed = false
 local blocked = {}
 local MAX_BLOCKED = 6
+-- The level PLAYER_LEVEL_UP carries, which UnitLevel can trail for a moment.
+local levelUp
 
 local function manager()
     return _G.CamelotStatusTrackingBarManager
@@ -85,6 +87,19 @@ function Display.ApplyOpacity(index)
     holder:SetAlpha(Style.Opacity(index) / 100)
 end
 
+-- The experience text with the player's level in front when Show Level is
+-- on. The client's own UpdateCurrentText writes the text first.
+local function wireLevel(index, bar)
+    local base = bar.UpdateCurrentText
+    bar.UpdateCurrentText = function(self)
+        base(self)
+        if not Style.ShowLevel(index) then return end
+        local level = math.max(UnitLevel("player") or 0, levelUp or 0)
+        self:SetBarText(string.format("%s  %s", (_G.UNIT_LEVEL_TEMPLATE or "Level %d"):format(level),
+            self.OverlayFrame.Text:GetText() or ""))
+    end
+end
+
 -- Blizzard's rule (StatusTrackingBarMixin:ShouldBarTextBeDisplayed) with the
 -- Camelot manager's lock in place of Blizzard's and Always Show Text added.
 -- Set on each bar instance, a Camelot-created frame.
@@ -97,6 +112,7 @@ local function wireText(index, c)
                 return GetCVarBool("xpBarText") or self.textLocked
                     or (m and m:IsTextLocked()) or Style.AlwaysShowText(index)
             end
+            if bar.isExpBar then wireLevel(index, bar) end
         end
     end
 end
@@ -105,7 +121,51 @@ function Display.ApplyText(index)
     local c = container(index)
     if not c then return end
     wireText(index, c)
+    for _, bar in pairs(c.bars or {}) do
+        -- currXP is set by the bar's first Update; before it there is no text.
+        if bar.isExpBar and bar.currXP then bar:UpdateCurrentText() end
+    end
     c:UpdateBarTextVisibility()
+end
+
+--------------------------------------------------------------------------------
+-- Hover
+--------------------------------------------------------------------------------
+-- Blizzard's bars take the mouse at LOW with a fixed strata, a level or two
+-- above the floor, so any mouse-enabled frame over part of a bar takes the
+-- hover there; the owner found the bar answering only toward its middle (20
+-- October 2026). Each container carries a surface of its own at MEDIUM that
+-- takes motion only and hands OnEnter and OnLeave to the bar it shows. Its
+-- level sits under the action bar containers (60) and the micro and bag
+-- holders (50), so a button over the bar keeps its own tooltip.
+
+local HOVER_LEVEL = 30
+local hovers = {}
+
+local function wireHover(index)
+    local c = container(index)
+    if hovers[index] or not c then return end
+    local hover = CreateFrame("Frame", nil, c)
+    hover:SetAllPoints(c)
+    addon.Strata.ApplyHUD(hover, HOVER_LEVEL)
+    hover:SetScript("OnEnter", function(self)
+        local bar = c:GetShownBar()
+        local onEnter = bar and bar:GetScript("OnEnter")
+        if not onEnter then return end
+        self.bar = bar
+        onEnter(bar)
+    end)
+    hover:SetScript("OnLeave", function(self)
+        local bar = self.bar
+        self.bar = nil
+        local onLeave = bar and bar:GetScript("OnLeave")
+        if onLeave then onLeave(bar) end
+    end)
+    -- After the scripts: SetScript on OnEnter turns clicks back on, and the
+    -- bars take no clicks.
+    hover:SetMouseMotionEnabled(true)
+    hover:SetMouseClickEnabled(false)
+    hovers[index] = hover
 end
 
 --------------------------------------------------------------------------------
@@ -192,6 +252,10 @@ function Display.Build()
 
     addon.Events.On(OWNER, "ADDON_ACTION_BLOCKED", onBlocked)
     addon.Events.On(OWNER, "ADDON_ACTION_FORBIDDEN", onBlocked)
+    addon.Events.On(OWNER, "PLAYER_LEVEL_UP", function(_, level)
+        levelUp = tonumber(level)
+        for index = 1, 2 do Display.ApplyText(index) end
+    end)
     built = true
 
     Display.Claim()
@@ -199,6 +263,7 @@ function Display.Build()
         local holder = Style.Holder(index)
         addon.RegisterPetBattleFrame(holder)
         holder:Show()
+        wireHover(index)
     end
     Style.Apply()
     -- The first fill, with the holders drawing: the fade lands on a visible
@@ -271,10 +336,12 @@ function Display.Dump()
     end
     for index = 1, 2 do
         local c = container(index)
-        push("  bar %d, %s: width %d%%, opacity %d%%, always show text %s",
-            index, Display.Label(index), Style.Width(index), Style.Opacity(index), tostring(Style.AlwaysShowText(index)))
+        push("  bar %d, %s: width %d%%, opacity %d%%, always show text %s, show level %s",
+            index, Display.Label(index), Style.Width(index), Style.Opacity(index),
+            tostring(Style.AlwaysShowText(index)), tostring(Style.ShowLevel(index)))
         frameLine(push, "holder", Style.Holder(index))
         frameLine(push, "container", c)
+        frameLine(push, "hover", hovers[index])
         if c then
             push("    shows %s, pending %s, animating %s, fade in %s, fade out %s, in Edit Mode %s",
                 barName(c.shownBarIndex), tostring(c.pendingBarToShowIndex and barName(c.pendingBarToShowIndex)),
