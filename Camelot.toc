@@ -218,6 +218,7 @@ core/components/scootauras/underlay.lua
 core/components/scootauras/classpower.lua
 core/components/scootauras/pips.lua
 core/components/scootauras/classresource.lua
+core/components/scootauras/cooldown.lua
 core/components/scootauras/stacks.lua
 core/components/scootauras/events.lua
 core/components/scootauras/importexport.lua
@@ -340,10 +341,12 @@ forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 ## Blizzard's bars; microbags.lua holds the micro menu and bag bar's
 ## settings, holders, layout and Edit Mode anchors, and micro.lua and
 ## bagbar.lua, which hang off it, build their secure click twins of
-## Blizzard's buttons; bars.lua builds on world entry and registers /camelot
-## actionbars. text.lua holds the keybind and cooldown text settings and
-## their passes, before frames.xml, since a button's load runs it. page.lua,
-## the Clusters page, and microbagspage.lua sit in the page block below.
+## Blizzard's buttons; stance.lua holds the stance bar on an anchor of its
+## own (docs/actionbars/stance.md); bars.lua builds on world entry and
+## registers /camelot actionbars. text.lua holds the keybind and cooldown
+## text settings and their passes, before frames.xml, since a button's load
+## runs it. page.lua, the Clusters page, microbagspage.lua and stancepage.lua
+## sit in the page block below.
 ## Stands on nativeframe, events, strata, editmode/positionables,
 ## dynamiclayouts, forever/db.lua and forever/features.lua. Every line is
 ## Forever's alone, style.lua included.
@@ -364,6 +367,7 @@ forever/actionbars/suppression.lua [ExcludeLoadGameType standard]
 forever/actionbars/microbags.lua [ExcludeLoadGameType standard]
 forever/actionbars/micro.lua [ExcludeLoadGameType standard]
 forever/actionbars/bagbar.lua [ExcludeLoadGameType standard]
+forever/actionbars/stance.lua [ExcludeLoadGameType standard]
 forever/actionbars/bars.lua [ExcludeLoadGameType standard]
 
 ## The Personal Resource Display: Forever's PRD on a Camelot-owned frame
@@ -597,6 +601,7 @@ ui/v2/settings/scootauras/CDMPicker.lua
 ui/v2/settings/scootauras/SpecFlyout.lua
 ui/v2/settings/scootauras/GearFlyout.lua
 ui/v2/settings/scootauras/TitleCarousel.lua
+ui/v2/settings/scootauras/PreviewStrip.lua
 ui/v2/settings/scootauras/EditorWindow.lua
 ui/v2/settings/scootauras/AuraListDrag.lua
 ui/v2/settings/scootauras/AuraListRenderer.lua
@@ -623,10 +628,12 @@ forever/qualityoflife/miscpage.lua
 forever/qualityoflife/animationspage.lua
 forever/actionbars/page.lua [ExcludeLoadGameType standard]
 forever/actionbars/microbagspage.lua [ExcludeLoadGameType standard]
+forever/actionbars/stancepage.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
 forever/defaults.lua
 forever/startingpoints.lua
 forever/gallery.lua
+core/debug/taintscan.lua
 forever/debug.lua
 # >>> CAMELOT-LOCAL
 # Local-only tooling in the gitignored doc base (docs/debugging/local/local.md).

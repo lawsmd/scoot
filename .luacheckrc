@@ -536,8 +536,19 @@ files["forever/actionbars/bagbar.lua"] = {
         "PutItemInBackpack", "CursorHasItem", "PutKeyInKeyRing", "PutItemInBag",
     },
 }
+files["forever/actionbars/events.lua"] = {
+    read_globals = { "C_ActionBar" },
+}
 files["forever/actionbars/bars.lua"] = {
     read_globals = { "C_ActionBar", "issecurevariable" },
+}
+files["forever/actionbars/stance.lua"] = {
+    read_globals = {
+        "GetShapeshiftFormInfo", "GetNumShapeshiftForms", "BaseActionButtonMixin", "GameTooltip_Hide",
+    },
+}
+files["core/debug/taintscan.lua"] = {
+    read_globals = { "issecurevariable", "canaccesstable" },
 }
 -- The Personal Resource Display (forever/personalresourcedisplay/). mixins.lua
 -- owns the one global frames.xml names in a mixin= attribute; the other

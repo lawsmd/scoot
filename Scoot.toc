@@ -119,6 +119,7 @@ core/components/scootauras/underlay.lua
 core/components/scootauras/classpower.lua
 core/components/scootauras/pips.lua
 core/components/scootauras/classresource.lua
+core/components/scootauras/cooldown.lua
 core/components/scootauras/stacks.lua
 core/components/scootauras/events.lua
 core/components/scootauras/importexport.lua
@@ -289,6 +290,7 @@ core/debug/ping.lua
 core/debug/fontpair.lua
 core/debug/accent.lua
 core/debug/prdclass.lua
+core/debug/taintscan.lua
 core/taintdebug.lua
 core/components/unitframes/bars/debug.lua
 # <<< SCOOT-DEV-ONLY
@@ -393,6 +395,7 @@ ui/v2/settings/scootauras/CDMPicker.lua
 ui/v2/settings/scootauras/SpecFlyout.lua
 ui/v2/settings/scootauras/GearFlyout.lua
 ui/v2/settings/scootauras/TitleCarousel.lua
+ui/v2/settings/scootauras/PreviewStrip.lua
 ui/v2/settings/scootauras/EditorWindow.lua
 ui/v2/settings/scootauras/AuraListDrag.lua
 ui/v2/settings/scootauras/AuraListRenderer.lua

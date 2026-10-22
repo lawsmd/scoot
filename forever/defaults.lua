@@ -67,7 +67,7 @@ local SCOPES = {
         paths = { "qol.modifierTargetShift", "qol.modifierTargetCtrl", "qol.modifierTargetAlt" },
     },
     qolMisc = {
-        paths = { "qol.messagesOffsetX", "qol.messagesOffsetY" },
+        paths = { "qol.messagesOffsetX", "qol.messagesOffsetY", "qol.hideErrorMessages" },
         shared = "the place of the error and quest text, which Current Objectives shares",
     },
     qolAnimations = {
@@ -99,11 +99,15 @@ local SCOPES = {
         prefixes = { "actionBars.text." },
         paths = { "actionBars.nextClusterId" },
         layouts = { "actionBarCluster." },
-        documents = { "actionBars.clusters" },
+        documents = { "actionBars.clusters", "actionBars.memberMemory" },
     },
     actionBarMicroBags = {
         prefixes = { "actionBars.microBags." },
         layouts = { "microMenu", "bagBar", "microBags" },
+    },
+    actionBarStance = {
+        prefixes = { "actionBars.stance.", "actionBars.visibility.stanceBar." },
+        layouts = { "stanceBar" },
     },
 }
 

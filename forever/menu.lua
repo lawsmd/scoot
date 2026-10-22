@@ -115,6 +115,7 @@ Navigation.NavModel = {
         children = {
             { key = "actionBarClusters", label = "Action Bars 1-8" },
             { key = "actionBarMicroBags", label = "Micro & Bag" },
+            { key = "actionBarStance", label = "Stance Bar" },
         },
     },
     -- Blizzard's chat as a Camelot replica, the last of the elements on
