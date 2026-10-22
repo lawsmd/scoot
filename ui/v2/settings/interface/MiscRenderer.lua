@@ -38,6 +38,7 @@ function Misc.Render(panel, scrollContent)
         end,
         set = function(val)
             setMiscSetting("customGameMenu", val)
+            if val and addon.UI.GameMenu then addon.UI.GameMenu:InstallHook() end
         end,
         infoIcon = {
             tooltipTitle = "Custom Game Menu",

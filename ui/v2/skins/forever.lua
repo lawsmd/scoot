@@ -1006,8 +1006,11 @@ Skin.Register("forever", {
             padLeft = 8, padTop = 8,
             treeLineWidth = 0, treeLineX = 10, treeLineLength = 10, treeLineAlpha = 0.4,
             -- The divider is 12 wide and centered on the nav's edge; the
-            -- content pane starts past its far half
-            dividerWidth = 1, dividerAlpha = 0.4, dividerGap = 6,
+            -- content pane starts past its far half. scrollBarGutter puts the
+            -- nav's scrollbar past the divider instead of over the cards: the
+            -- content pane starts that much further right and the bar stands
+            -- centered in the space
+            dividerWidth = 1, dividerAlpha = 0.4, dividerGap = 6, scrollBarGutter = 16,
             indicatorSize = 10,
             hoverAlpha = 0.15, selectedAlpha = 0.25,
             -- The group cards. height is the header band; inner is the

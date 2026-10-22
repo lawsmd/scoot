@@ -441,6 +441,11 @@ function GameMenu:InstallHook()
     end)
 end
 
+-- Installed only once the replacement is on. A HookScript marks
+-- GameMenuFrame with addon taint, and its
+-- OnShow builds the button callbacks, so with the hook in place Blizzard's own
+-- Edit Mode button opens Edit Mode tainted. Turning the setting off leaves the
+-- hook inert until a reload.
 addon.Events.Once("UI:GameMenu", "PLAYER_ENTERING_WORLD", function()
-    GameMenu:InstallHook()
+    if IsSettingEnabled() then GameMenu:InstallHook() end
 end)

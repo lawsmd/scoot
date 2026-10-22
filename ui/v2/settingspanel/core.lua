@@ -592,7 +592,7 @@ function UIPanel:CreateContentPane()
 
     local contentPane = CreateFrame("Frame", BRAND .. "ContentPane", frame)
     local inset = M().windowInset
-    local contentX = M().navWidth + inset + M().nav.dividerGap
+    local contentX = M().navWidth + inset + M().nav.dividerGap + (M().nav.scrollBarGutter or 0)
     contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", contentX, -(M().titleBarHeight))
     contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
     frame._contentPane = contentPane

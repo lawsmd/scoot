@@ -123,13 +123,14 @@ function Navigation:Create(parent)
     -- border stands on the divider's line and its corner knots on the page
     -- border, as the Legacy pane's cards do; the scroll frame runs the card
     -- art's edge further on the right and up at the top, so the art hanging
-    -- outside the rows is not clipped; the scrollbar then lies over the
-    -- rows' right margin, above them, and shows only while the tree
-    -- overflows.
+    -- outside the rows is not clipped. The scrollbar shows only while the
+    -- tree overflows; it stands in nav.scrollBarGutter past the divider when
+    -- the skin gives one, and otherwise over the rows' right margin.
     local isCard = self:IsCardNav()
     local edge = self:CardEdge()
     local reach = isCard and (M().nav.card.reach or 0) or 0
-    local rightReserve = isCard and 0 or (M().scrollBar.margin + M().scrollBar.width + M().scrollBar.gap)
+    local gutter = M().nav.scrollBarGutter or 0
+    local rightReserve = (isCard or gutter > 0) and 0 or (M().scrollBar.margin + M().scrollBar.width + M().scrollBar.gap)
     local scrollFrame = CreateFrame("ScrollFrame", BRAND .. "NavScrollFrame", navFrame)
     scrollFrame:SetPoint("TOPLEFT", navFrame, "TOPLEFT", M().nav.padLeft, -(M().nav.padTop - (edge.top or 0)))
     scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", reach + (edge.right or 0) - rightReserve, M().nav.padTop)
@@ -165,8 +166,14 @@ function Navigation:Create(parent)
 
     -- The scrollbar owns the scroll frame's range handler
     local scrollbar = Controls.CreateScrollBar({ parent = navFrame, scrollFrame = scrollFrame })
-    scrollbar:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", -M().scrollBar.margin, -M().nav.padTop)
-    scrollbar:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -M().scrollBar.margin, M().nav.padTop)
+    if gutter > 0 then
+        local x = M().nav.dividerGap + (gutter - M().scrollBar.width) / 2
+        scrollbar:SetPoint("TOPLEFT", navFrame, "TOPRIGHT", x, -M().nav.padTop)
+        scrollbar:SetPoint("BOTTOMLEFT", navFrame, "BOTTOMRIGHT", x, M().nav.padTop)
+    else
+        scrollbar:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", -M().scrollBar.margin, -M().nav.padTop)
+        scrollbar:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -M().scrollBar.margin, M().nav.padTop)
+    end
     if isCard then
         scrollbar:SetFrameLevel(navFrame:GetFrameLevel() + 10)
     end
