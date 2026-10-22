@@ -598,6 +598,10 @@ local function ApplyBarStyling(trackerId, tracker, state)
             local w = tonumber(db.barWidth) or 120
             local h = tonumber(db.barHeight) or 12
             elem.widget:SetSize(w, h)
+            -- A vertical bar fills from the bottom: the StatusBar's own
+            -- orientation, so the engine's value writes need no translation.
+            local vertical = tracker and tracker.shape == "vbar"
+            elem.barFill:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
 
             local fgKey = db.barForegroundTexture or "bevelled"
             local _, fgR, fgG, fgB, fgA = ResolveBarFill(tracker, db, nil)
@@ -713,11 +717,12 @@ end
 -- Kinds whose "Only in Combat" verdict is applied by hiding the whole frame.
 -- A missing-buff reminder is not one of them: its own gate drives a clip window
 -- over the engine-sized container (missing.lua, Missing.UpdateGate), and that
--- mechanism stays its sole owner. A Class Power or Class Resource tracker has
--- no container at all, so the frame is the only thing there is to hide.
+-- mechanism stays its sole owner. A Class Power, Class Resource or Spell
+-- Cooldown tracker has no container at all, so the frame is the only thing
+-- there is to hide.
 local SHELL_GATED_KINDS = {
     buff = true, debuff = true, buffstacks = true, debuffstacks = true,
-    classpower = true, classresource = true,
+    classpower = true, classresource = true, cooldown = true,
 }
 
 -- Grouped visuals live under the group frame; the shell stays hidden and
@@ -767,6 +772,7 @@ local function ApplyStyling(trackerId, tracker)
         -- Leaves the power event fan-out; the Hide above conceals the art.
         if SAU.ClassPower then SAU.ClassPower.Release(trackerId, state.entry) end
         if SAU.ClassResource then SAU.ClassResource.Release(trackerId, state.entry) end
+        if SAU.Cooldown then SAU.Cooldown.Release(trackerId, state.entry) end
         if grouped and SAU.Groups then SAU.Groups.RequestReflow() end
         return
     end
@@ -816,6 +822,10 @@ local function ApplyStyling(trackerId, tracker)
     if SAU.ClassResource then
         SAU.ClassResource.Sync(trackerId, tracker, state)
     end
+    -- Spell Cooldown (cooldown.lua): the same shape, fed by duration objects.
+    if SAU.Cooldown then
+        SAU.Cooldown.Sync(trackerId, tracker, state)
+    end
     -- Missing-state underlay (underlay.lua): Scoot-owned art on the visual,
     -- so it repaints here even while ApplyAll queues behind the structural
     -- gate. Runs for every kind so a stale underlay hides on a kind flip.
@@ -841,6 +851,11 @@ local function RefreshOpacity(trackerId, tracker)
     local target = StyleTarget(state)
     target:SetAlpha(addon.Opacity.Resolve(SAU.GetDB(trackerId), addon.Opacity.Keys.InCombat))
     if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
+    -- A Spell Cooldown tracker's dim divides this alpha out of its own, so
+    -- it recomputes on the edge that moved it.
+    if tracker.kind == "cooldown" and SAU.Cooldown then
+        SAU.Cooldown.UpdateGate(trackerId)
+    end
 end
 
 --- Both regen edges, Edit Mode enter, and the events.lua poll: re-apply the

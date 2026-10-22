@@ -345,11 +345,16 @@ function Cadence.Configure(trackerId, tracker, state)
     if not entry then return end
     local db = SAU.GetDB(trackerId)
     local fillMode = db and db.barFillMode == "fill"
+    local vis = tracker and db and SAU.ResolveVisibility(tracker, db) or nil
     local lockBar = entry.lockBar
     if lockBar then
-        -- Fill mode reads the lock bar from the right: its texture is the
-        -- remaining share, so the span from the bar's left edge to the
-        -- texture's left edge is the elapsed share (see regions.lua).
+        -- The lock bar stands the way the bar does, so its fill texture
+        -- measures the same axis (layout.lua PlaceLockBar mirrors the rect).
+        pcall(lockBar.SetOrientation, lockBar, (vis and vis.vertical) and "VERTICAL" or "HORIZONTAL")
+        -- Fill mode reads the lock bar from the right (the top on a vertical
+        -- bar): its texture is the remaining share, so the span from the
+        -- bar's left edge to the texture's left edge is the elapsed share
+        -- (see regions.lua).
         pcall(lockBar.SetReverseFill, lockBar, fillMode and true or false)
     end
 
@@ -362,7 +367,6 @@ function Cadence.Configure(trackerId, tracker, state)
     rec.lockBar = lockBar
     rec.mode = fillMode and "fill" or "deplete"
     rec.unit = tracker and tracker.unit or nil
-    local vis = tracker and db and SAU.ResolveVisibility(tracker, db) or nil
     -- A stacks tracker's bar is the engine's application bar, which carries
     -- no duration to lock; a lock setting left by a kind flip stays inert.
     local stacksKind = SAU.KindTracksStacks and SAU.KindTracksStacks(tracker and tracker.kind)

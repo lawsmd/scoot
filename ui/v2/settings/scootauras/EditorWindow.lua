@@ -30,15 +30,23 @@ local PREVIEW_BACKDROP_COLOR = { 0.48, 0.48, 0.48, 0.55 }
 local PREVIEW_BACKDROP_INSET = 8
 local PREVIEW_BACKDROP_TOP = 30
 local PREVIEW_BACKDROP_RADIUS = 12
-local TITLE_ICON = 16      -- rename pencil, duplicate copy
-local TITLE_ICON_GAP = 5   -- name glyphs to the first icon, and icon to icon
+local TITLE_ICON = 16      -- rename, duplicate, load on, delete
+-- Icon to icon, and the underline's break past each end of the row. Even, so
+-- the row's half width is a whole pixel.
+local TITLE_ICON_GAP = 8
+-- Icon names: the flat glyphs the Aura List uses for the same actions. The
+-- delete art falls back to the gold X where the client has no lone trash can.
+local SPEC_ATLAS = "ui-questtrackerbutton-filter"
+local DELETE_ATLAS = { "common-icon-delete", "common-icon-yellowx" }
 
 local frame
 local session
 local widgets = {}   -- static widgets built once at init
 
 -- Per-region builders, replaced wholesale on every dynamic render
-local selBuilder, tabsBuilder, prevBuilder
+local selBuilder, tabsBuilder
+-- The preview quadrant: the open tracker's group as a strip (PreviewStrip.lua)
+local previewStrip
 local cdmPicker
 local refreshPending = false
 local validationToken = 0
@@ -118,6 +126,14 @@ function ctx.missingVisual()
     return SAU().CoerceMissingVisual(c.kind, c.shape, c.missingVisual) or "none"
 end
 
+-- The "Show it..." rule on the Spell Cooldown kind, "always" when unset.
+function ctx.showWhen()
+    local tracker = CurrentTracker()
+    if tracker then return SAU().ShowWhenFor(tracker) end
+    local c = session and session.draft.content
+    return (c and SAU().CoerceShowWhen(c.kind, c.showWhen)) or "always"
+end
+
 function ctx.refresh()
     Editor.DeferredRefresh()
 end
@@ -137,6 +153,13 @@ local function RefreshList()
     if addon.ScootAurasUI and addon.ScootAurasUI.RefreshList then
         addon.ScootAurasUI.RefreshList()
     end
+end
+
+-- The title row's spec fly-out edits the tracker it opened on, so it closes
+-- when the editor closes or moves to another tracker.
+local function CloseEditorSpecFlyout()
+    local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+    if SpecFlyout and SpecFlyout.IsDetached() then SpecFlyout.Close() end
 end
 
 local function CurrentName()
@@ -175,6 +198,7 @@ local function TryMaterialize()
         onlyInCombat = c.onlyInCombat,
         onlyInInstances = c.onlyInInstances,
         missingVisual = c.missingVisual,
+        showWhen = c.showWhen,
         maxStacks = c.maxStacks,
     })
     if not id then
@@ -238,7 +262,6 @@ local function ValidateSpell(spellId)
         local name, icon = SAU().DescribeSpell(spellId)
         session.validated = { spellId = spellId, name = name, icon = icon }
         session.statusOverride = nil
-        session.timerEpoch = {}
         ApplyValidatedSpell()
         Editor.DeferredRefresh()
         return
@@ -256,7 +279,6 @@ local function ValidateSpell(spellId)
             icon = icon,
         }
         session.statusOverride = nil
-        session.timerEpoch = {}
         ApplyValidatedSpell()
         Editor.DeferredRefresh()
     end)
@@ -415,16 +437,38 @@ local function InitializeFrame()
     titleText:SetTextColor(ar, ag, ab, 1)
     widgets.titleText = titleText
 
-    -- Title icons: the rename pencil, then the duplicate copy for a tracker in
-    -- a group. Both float right of the centered title; drafts hide them.
-    -- Leveled above the carousel viewport (+2) and its name buttons (+3).
-    local function TitleIcon(atlas, tooltip)
+    -- Title underline, in two pieces so it breaks around the icon row
+    -- (SetTitleIconsShown sets the inner ends). A template's plate and the
+    -- streak band under it already part the title from the quadrants.
+    local lineY = -TITLE_H + 2
+    local sepTitleL = CreateSeparator(frame)
+    sepTitleL:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, lineY)
+    sepTitleL:SetHeight(1)
+    local sepTitleR = CreateSeparator(frame)
+    sepTitleR:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, lineY)
+    sepTitleR:SetHeight(1)
+    if onTemplate then
+        sepTitleL:Hide()
+        sepTitleR:Hide()
+    end
+
+    -- Title icons: rename, duplicate (a tracker in a group only), load on,
+    -- and delete, in one row centered under the name and set into the
+    -- underline. Drafts hide them. Leveled above the carousel viewport (+2)
+    -- and its name buttons (+3).
+    -- glyphScale draws the art larger than its button, for an atlas with
+    -- more empty margin than its neighbors; the row spacing stays even.
+    local function TitleIcon(atlas, tooltip, glyphScale)
         local btn = CreateFrame("Button", nil, titleBar)
         btn:SetSize(TITLE_ICON, TITLE_ICON)
         btn:SetFrameLevel(titleBar:GetFrameLevel() + 6)
         local tex = btn:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints()
-        tex:SetAtlas(atlas)
+        local glyph = TITLE_ICON * (glyphScale or 1)
+        tex:SetSize(glyph, glyph)
+        tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        for _, name in ipairs(type(atlas) == "table" and atlas or { atlas }) do
+            if pcall(tex.SetAtlas, tex, name) and tex:GetAtlas() then break end
+        end
         tex:SetDesaturated(true)
         tex:SetVertexColor(ar, ag, ab)
         tex:SetAlpha(0.35)
@@ -442,30 +486,73 @@ local function InitializeFrame()
         return btn
     end
 
-    local renameBtn = TitleIcon("Pencil-Icon", "Rename")
+    local renameBtn = TitleIcon("Pencil-Icon", "Rename", 1.25)
     local duplicateBtn = TitleIcon("friends-icon-battlenet-copy", "Duplicate into this group")
-    widgets.renameBtn = renameBtn
-    widgets.duplicateBtn = duplicateBtn
+    local specBtn = TitleIcon(SPEC_ATLAS, "Load on...")
+    local deleteBtn = TitleIcon(DELETE_ATLAS, "Delete")
+    local titleIcons = { renameBtn, duplicateBtn, specBtn, deleteBtn }
 
-    -- Both icons follow whichever name is centered: the plain title, or the
-    -- carousel's selected member when the tracker is in a group. They anchor to
-    -- the text rather than the carousel's padded hit box, so they sit against
-    -- the glyphs and stay clear of the neighboring names.
-    local function AnchorTitleIcons()
-        local target = widgets.carouselActive and widgets.carousel.selectedAnchor or titleText
-        renameBtn:ClearAllPoints()
-        renameBtn:SetPoint("LEFT", target, "RIGHT", TITLE_ICON_GAP, 0)
-        duplicateBtn:ClearAllPoints()
-        duplicateBtn:SetPoint("LEFT", renameBtn, "RIGHT", TITLE_ICON_GAP, 0)
-    end
-    widgets.AnchorTitleIcons = AnchorTitleIcons
+    -- The row's center sits on the underline. The name above it is centered
+    -- in the bar, plain or in the carousel, so the row needs no re-anchor
+    -- when the carousel moves.
+    local iconRow = CreateFrame("Frame", nil, titleBar)
+    iconRow:SetSize(1, TITLE_ICON)
+    iconRow:SetPoint("CENTER", titleBar, "BOTTOM", 0, 2)
 
     -- Duplicating is a group action, so that icon also needs widgets.inGroup.
+    -- The row packs whichever icons show, and the underline breaks around it.
     local function SetTitleIconsShown(shown)
-        renameBtn:SetShown(shown)
-        duplicateBtn:SetShown(not not (shown and widgets.inGroup))
+        local visible = {}
+        for _, btn in ipairs(titleIcons) do
+            local on = shown and (btn ~= duplicateBtn or widgets.inGroup)
+            btn:SetShown(not not on)
+            if on then visible[#visible + 1] = btn end
+        end
+        local rowW = #visible * (TITLE_ICON + TITLE_ICON_GAP) - TITLE_ICON_GAP
+        for i, btn in ipairs(visible) do
+            btn:ClearAllPoints()
+            btn:SetPoint("LEFT", iconRow, "CENTER", -rowW / 2 + (i - 1) * (TITLE_ICON + TITLE_ICON_GAP), 0)
+        end
+        local half = #visible > 0 and (rowW / 2 + TITLE_ICON_GAP) or 0
+        sepTitleL:SetPoint("TOPRIGHT", frame, "TOP", -half, lineY)
+        sepTitleR:SetPoint("TOPLEFT", frame, "TOP", half, lineY)
     end
     widgets.SetTitleIconsShown = SetTitleIconsShown
+
+    -- The spec fly-out hangs from the editor rather than a list row, so it
+    -- carries no reanchor key and the Aura List's re-render leaves it open.
+    specBtn:SetScript("OnClick", function()
+        local id = session and session.trackerId
+        local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+        if not (id and SpecFlyout) then return end
+        GameTooltip:Hide()
+        SpecFlyout.OpenFor(specBtn, {
+            title = "Load this aura on...",
+            detached = true,
+            get = function()
+                local tracker = SAU().GetTracker(id)
+                return tracker and tracker.specs
+            end,
+            toggle = function(specID)
+                SAU().ToggleTrackerSpec(id, specID)
+                Editor.DeferredRefresh()
+            end,
+        })
+    end)
+
+    deleteBtn:SetScript("OnClick", function()
+        local tracker = CurrentTracker()
+        if not tracker then return end
+        local id = session.trackerId
+        GameTooltip:Hide()
+        addon.UI.Controls:ConfirmDialog(
+            "Delete '" .. SAU().DisplayName(tracker) .. "'? Its styling and saved position are removed too.",
+            function()
+                Editor.Close()
+                SAU().DeleteTracker(id)
+                RefreshList()
+            end)
+    end)
 
     -- Copies the open tracker into its group beside itself, then edits the copy.
     duplicateBtn:SetScript("OnClick", function()
@@ -486,22 +573,14 @@ local function InitializeFrame()
         arrowFont = theme:GetFont("BUTTON"),
         color = { ar, ag, ab },
         dimColor = { theme.TEXT_DIM.r, theme.TEXT_DIM.g, theme.TEXT_DIM.b },
-        selectedRoom = 2 * (TITLE_ICON_GAP + TITLE_ICON),
+        -- The icons sit under the name, so nothing is held clear beside it.
+        selectedRoom = 0,
         onSelect = function(trackerId)
             C_Timer.After(0, function()
                 if session and session.trackerId ~= trackerId and SAU().GetTracker(trackerId) then
                     Editor.Open(trackerId)
                 end
             end)
-        end,
-        onMotion = function(moving)
-            if not widgets.carouselActive or widgets.renameBox:IsShown() then return end
-            if moving then
-                SetTitleIconsShown(false)
-            else
-                AnchorTitleIcons()
-                SetTitleIconsShown(true)
-            end
         end,
     })
     widgets.carousel = carousel
@@ -651,14 +730,20 @@ local function InitializeFrame()
     CreateRoundedPlate(topRight, previewBackdrop, PREVIEW_BACKDROP_RADIUS, PREVIEW_BACKDROP_COLOR)
     widgets.previewBackdrop = previewBackdrop
 
-    -- Preview builder host: Finalize() resizes this frame, not the quadrant,
-    -- so the quadrant keeps its full rect. Anchored by its sides to the
-    -- plate's middle, the row stays centered in the plate as it grows.
-    local previewHost = CreateFrame("Frame", nil, topRight)
-    previewHost:SetPoint("LEFT", previewBackdrop, "LEFT", 0, 0)
-    previewHost:SetPoint("RIGHT", previewBackdrop, "RIGHT", 0, 0)
-    previewHost:SetHeight(100)
-    widgets.previewHost = previewHost
+    -- The preview strip fills the plate: the open tracker's group laid out
+    -- as on screen, or a strip of one. A click on a neighbour opens that
+    -- tracker one frame later, so the click frame stays smooth; the strip
+    -- and the title carousel then glide to it from their own SetContext.
+    previewStrip = addon.UI.ScootAuraPreviewStrip.Create(topRight, previewBackdrop, {
+        onSelect = function(trackerId)
+            C_Timer.After(0, function()
+                if session and session.trackerId ~= trackerId and SAU().GetTracker(trackerId) then
+                    Editor.Open(trackerId)
+                end
+            end)
+        end,
+    })
+    widgets.previewStrip = previewStrip
 
     local bottomLeft = CreateFrame("Frame", nil, frame)
     bottomLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TITLE_H + TOP_H + 1))
@@ -689,14 +774,6 @@ local function InitializeFrame()
     sepBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", BOTTOM_LEFT_W + PAD + 4, PAD + 4)
     sepBottom:SetWidth(1)
     widgets.sepBottom = sepBottom
-
-    local sepTitle = CreateSeparator(frame)
-    sepTitle:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TITLE_H + 2)
-    sepTitle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -TITLE_H + 2)
-    sepTitle:SetHeight(1)
-    -- A template's plate and the streak band under it already part the
-    -- title from the quadrants.
-    if onTemplate then sepTitle:Hide() end
 
     -- Spell region statics in the bottom-left quadrant (built once; an
     -- EditBox must survive re-renders)
@@ -790,8 +867,7 @@ local function InitializeFrame()
     -- the shared Controls registry already; this covers the rest.
     theme:Subscribe("ScootAuraEditor", function(r, g, b)
         titleText:SetTextColor(r, g, b, 1)
-        renameBtn._tex:SetVertexColor(r, g, b)
-        duplicateBtn._tex:SetVertexColor(r, g, b)
+        for _, btn in ipairs(titleIcons) do btn._tex:SetVertexColor(r, g, b) end
         previewLabel:SetTextColor(r, g, b, 1)
         -- The house X is black under the pointer; OnLeave picks up the new
         -- color. A template's X is the client's own art.
@@ -799,6 +875,15 @@ local function InitializeFrame()
             closeTxt:SetTextColor(r, g, b, 1)
         end
         widgets.carousel:SetAccent(r, g, b)
+    end)
+
+    -- The preview strip keeps a loaded group to the members that load in the
+    -- current spec, so a spec change while the editor is open re-reads the
+    -- set. Deferred a frame, as the engine's own pass is: the event can arrive
+    -- before GetSpecialization reports the new spec.
+    addon.Events.On("ScootAuraEditor", "PLAYER_SPECIALIZATION_CHANGED", function(_, unit)
+        if unit and unit ~= "player" then return end
+        if frame:IsShown() then Editor.DeferredPreviewRefresh() end
     end)
 
     -- ESC closes (combat-safe attach)
@@ -810,14 +895,16 @@ end
 --------------------------------------------------------------------------------
 
 -- The duration kinds and the stacks kinds read as two measures of one aura.
+-- The cooldown leads the list.
 local KIND_LABELS = {
+    cooldown = "a Spell's Cooldown",
     buff = "a Buff's duration", debuff = "a Debuff's duration",
     buffstacks = "the stacks of a Buff", debuffstacks = "the stacks of a Debuff",
     missingbuff = "a Missing Buff", classpower = "my Class Power",
     classresource = "my Class Resource",
 }
 local KIND_ORDER = {
-    "buff", "debuff", "buffstacks", "debuffstacks", "missingbuff", "classpower", "classresource",
+    "cooldown", "buff", "debuff", "buffstacks", "debuffstacks", "missingbuff", "classpower", "classresource",
 }
 -- What the spell region says for a kind that tracks no spell.
 local KIND_NOTES = {
@@ -834,10 +921,10 @@ local UNIT_LABELS = {
 }
 -- Units listed for a kind but not yet offered: shown dimmed and inert.
 local COMING_SOON_UNITS = {}
--- "Horizontal Bar" leaves room in the same selector for vertical bars and
--- circles later; the internal shape key stays "bar".
-local SHAPE_LABELS = { icon = "an Icon", bar = "a Horizontal Bar", shape = "a Shape" }
-local SHAPE_ORDER = { "icon", "bar", "shape" }
+-- The two bars share every setting and tab; "vbar" stands the bar on its
+-- icon. Circles would join the same selector.
+local SHAPE_LABELS = { icon = "an Icon", bar = "a Horizontal Bar", vbar = "a Vertical Bar", shape = "a Shape" }
+local SHAPE_ORDER = { "icon", "bar", "vbar", "shape" }
 -- A missing-buff tracker is a reminder: icon, text, or both.
 local MISSING_SHAPE_LABELS = { icon = "an Icon", text = "Text", icontext = "an Icon & Text" }
 local MISSING_SHAPE_ORDER = { "icon", "text", "icontext" }
@@ -848,6 +935,9 @@ local CLASS_POWER_SHAPE_ORDER = { "bar", "text" }
 -- since an icon in this editor is the aura's own art.
 local CLASS_RESOURCE_SHAPE_LABELS = { bar = "a Bar", icons = "a Group of Shapes" }
 local CLASS_RESOURCE_SHAPE_ORDER = { "bar", "icons" }
+-- A Spell Cooldown tracker is the icon with the swipe, or the bar with the fill.
+local COOLDOWN_SHAPE_LABELS = { icon = "an Icon", bar = "a Horizontal Bar", vbar = "a Vertical Bar" }
+local COOLDOWN_SHAPE_ORDER = { "icon", "bar", "vbar" }
 -- A stacks tracker is the icon carrying the count, the segmented bar, one
 -- shape per stack (stacks.lua), or the count alone.
 local STACK_SHAPE_LABELS = {
@@ -857,6 +947,11 @@ local STACK_SHAPE_ORDER = { "icon", "bar", "icons", "text" }
 -- Shared by both missing-buff gate rows.
 local YES_NO_LABELS = { yes = "Yes", no = "No" }
 local YES_NO_ORDER = { "yes", "no" }
+-- "Show it..." on the Spell Cooldown kind (the tokens live in core.lua).
+local SHOW_WHEN_LABELS = {
+    always = "Always", oncooldown = "Only while on Cooldown", ready = "Only while Ready",
+}
+local SHOW_WHEN_ORDER = { "always", "oncooldown", "ready" }
 -- "When it's missing, show..." per shape (buff and debuff; the tokens and their
 -- per-shape validity live in core.lua). Every visual is a reveal: art beneath
 -- the engine button, uncovered when the slot empties.
@@ -1131,6 +1226,9 @@ local function SetContent(field, value)
             if not SAU().KindTracksStacks(value) then
                 c.maxStacks = nil
             end
+            -- "Show it..." belongs to the Spell Cooldown kind: seeded so the
+            -- row carries a value, cleared on a flip away.
+            c.showWhen = SAU().CoerceShowWhen(value, c.showWhen)
         end
         -- The missing-state token follows the write path's rule (core.lua
         -- CoerceMissingVisual): "Nothing" is absence on a duration kind and
@@ -1175,6 +1273,8 @@ local function ShapeOptions(kind)
         return CLASS_POWER_SHAPE_LABELS, CLASS_POWER_SHAPE_ORDER
     elseif kind == "classresource" then
         return CLASS_RESOURCE_SHAPE_LABELS, CLASS_RESOURCE_SHAPE_ORDER
+    elseif kind == "cooldown" then
+        return COOLDOWN_SHAPE_LABELS, COOLDOWN_SHAPE_ORDER
     end
     return SHAPE_LABELS, SHAPE_ORDER
 end
@@ -1184,7 +1284,7 @@ local function MissingVisualOptions(kind, shape)
         local set = STACK_MISSING_VISUALS[shape] or STACK_MISSING_VISUALS.icon
         return set.values, set.order
     end
-    if shape == "bar" then
+    if SAU().IsBarShape(shape) then
         return MISSING_VISUAL_LABELS_BAR, MISSING_VISUAL_ORDER_BAR
     elseif shape == "shape" then
         return MISSING_VISUAL_LABELS_SHAPE, MISSING_VISUAL_ORDER_SHAPE
@@ -1306,6 +1406,15 @@ local function RenderSelectors()
             { gear = MissingVisualGear(mOrder) })
     end
 
+    -- "Show it..." on the Spell Cooldown kind: always, only while the spell
+    -- is on cooldown, or only while it is ready. The row always carries a
+    -- value (core.lua CoerceShowWhen), so it never sits on "Choose".
+    if kind and unit and shape and SAU().KindHasShowWhen(kind) then
+        AddChoiceSelector(selBuilder, "Show it...",
+            SHOW_WHEN_LABELS, SHOW_WHEN_ORDER, ctx.showWhen(),
+            function(v) SetContent("showWhen", v) end)
+    end
+
     -- Extras. Every kind gates on combat; the instance gate is missing-buff
     -- only. Both carry a value rather than nil, so neither sits on "Choose".
     if kind and unit and shape then
@@ -1366,22 +1475,85 @@ end
 local CLASS_POWER_FILL_COLOR_OPTS = { barKind = "power", unitForPower = "player" }
 local CLASS_POWER_TEXT_COLOR_OPTS = { classPowerMode = true, lightenMana = true, unitForPower = "player" }
 
+--------------------------------------------------------------------------------
+-- Preview views
+--------------------------------------------------------------------------------
+
+-- What a preview is built from: the settings read path and the content facts
+-- the option builders below need, for the open tracker, the draft, or a
+-- neighbour in the open tracker's group. The strip builds one member from
+-- one view.
+local function TrackerView(trackerId)
+    local tracker = SAU().GetTracker(trackerId)
+    if not tracker then return nil end
+    local componentId = SAU().GetComponentId(trackerId)
+    return {
+        trackerId = trackerId,
+        componentId = componentId,
+        kind = tracker.kind,
+        shape = tracker.shape,
+        spellId = tracker.spellId,
+        get = function(key)
+            local v = Helpers().getSetting(componentId, key)
+            if v == nil then v = DefaultFor(key) end
+            return v
+        end,
+        missingVisual = SAU().MissingVisualFor(tracker),
+        name = SAU().DisplayName(tracker),
+        iconTexture = tracker.spellId and PlainSpellTexture(tracker.spellId) or nil,
+        stackTracker = tracker,
+    }
+end
+
+-- The open tracker, wearing the validated spell's art while a re-pick is in
+-- flight, or the draft, which reads through ctx.
+local function SessionView()
+    if not session then return nil end
+    if session.trackerId then
+        local view = TrackerView(session.trackerId)
+        if view and session.validated then
+            view.spellId = session.validated.spellId
+            view.iconTexture = session.validated.icon
+        end
+        return view
+    end
+    local validated = session.validated
+    return {
+        componentId = "scootAuraDraft",
+        kind = ctx.kind(),
+        shape = ctx.shape(),
+        spellId = validated and validated.spellId or nil,
+        get = ctx.get,
+        missingVisual = ctx.missingVisual(),
+        name = CurrentName(),
+        iconTexture = validated and validated.icon or nil,
+        stackTracker = StackTrackerView(),
+    }
+end
+
+--------------------------------------------------------------------------------
+-- Preview options, one builder per kind family. Each returns the
+-- Controls:CreatePreview options for a view, less parent and timerEpoch,
+-- which the strip supplies.
+--------------------------------------------------------------------------------
+
 -- The Class Power preview: the bar held at a fixed fraction in the resolved
 -- power color, with the number in its mode's color (white on Default). The
 -- generic preview knows the aura color modes only, so the read path hands it
 -- Custom with the resolved tint, and turns off everything the kind never
 -- shows.
-local function RenderClassPowerPreview(shape)
+local function ClassPowerPreviewOptions(view)
     local fillR, fillG, fillB = addon.ResolveColorRGBA("power", nil, CLASS_POWER_FILL_COLOR_OPTS)
     local textR, textG, textB = addon.ResolveColorRGBA("classPower", nil, CLASS_POWER_TEXT_COLOR_OPTS)
-    local isBar = (shape == "bar")
+    local get = view.get
+    local isBar = (view.shape == "bar")
     local function getSetting(key)
         if key == "barForegroundColorMode" then return "custom" end
-        if key == "barForegroundTint" and ctx.get("barForegroundColorMode") ~= "custom" then
+        if key == "barForegroundTint" and get("barForegroundColorMode") ~= "custom" then
             return { fillR, fillG, fillB, 1 }
         end
         if key == "textColor" then
-            local mode = ctx.get("textColorMode")
+            local mode = get("textColorMode")
             if mode == "power" then return { textR, textG, textB, 1 } end
             if mode ~= "custom" then return { 1, 1, 1, 1 } end
         end
@@ -1389,13 +1561,12 @@ local function RenderClassPowerPreview(shape)
         if key == "hideNameText" or key == "hideStackText" then return true end
         -- The Hide toggle is a bar option; the number alone always shows.
         if key == "hideText" and not isBar then return false end
-        return ctx.get(key)
+        return get(key)
     end
-    local percent = ctx.get("powerTextPercent") == true
+    local percent = get("powerTextPercent") == true
     local ClassPower = SAU().ClassPower
-    prevBuilder:AddPreview({
-        componentId = session and session.trackerId
-            and SAU().GetComponentId(session.trackerId) or "scootAuraDraft",
+    return {
+        componentId = view.componentId,
         mode = isBar and "bar" or "text",
         settingKeys = { _showCAText = true },
         caTextSource = "duration",
@@ -1407,11 +1578,9 @@ local function RenderClassPowerPreview(shape)
         previewScale = 1,
         maxRowHeight = 340,
         getSetting = getSetting,
-        noBottomBorder = true,
         noHover = true,
         noLabel = true,
-    })
-    prevBuilder:Finalize()
+    }
 end
 
 -- The Class Resource colors: the resource's own color from the module (the
@@ -1425,9 +1594,9 @@ local function ResourceColorRGB()
     return addon.ResolveColorRGBA("power", nil, CLASS_POWER_FILL_COLOR_OPTS)
 end
 
-local function ResolveResourceFill(mode, tintKey)
+local function ResolveResourceFill(get, mode, tintKey)
     if mode == "custom" then
-        local c = ctx.get(tintKey) or { 1, 1, 1, 1 }
+        local c = get(tintKey) or { 1, 1, 1, 1 }
         return { c[1] or 1, c[2] or 1, c[3] or 1, 1 }
     elseif mode == "class" then
         local r, g, b = addon.GetClassColorRGB("player")
@@ -1445,12 +1614,12 @@ local PREVIEW_PIP_COUNT = 5
 local PREVIEW_PIP_FILLED = 3
 local PREVIEW_PIP_FILLED_TAIL = 4
 
-local function ResourcePipColors(fill)
+local function ResourcePipColors(get, fill)
     local CR = SAU().ClassResource
     local rec = CR and CR.CurrentResource and CR.CurrentResource()
     local res = rec and rec.res
     if not (res and res.variedTail and CR.TailColorAt) then return nil end
-    if ctx.get("variedLastPoints") == false then return nil end
+    if get("variedLastPoints") == false then return nil end
     local colors = {}
     for i = 1, PREVIEW_PIP_COUNT do
         local r, g, b = CR.TailColorAt(i, PREVIEW_PIP_COUNT, fill[1], fill[2], fill[3])
@@ -1463,69 +1632,64 @@ end
 -- combo point tail on), as the segmented bar or the icon row, with the fill
 -- color resolved here and handed over as a custom tint, since the control
 -- knows the aura color modes alone.
-local function RenderClassResourcePreview(shape)
-    local componentId = session and session.trackerId
-        and SAU().GetComponentId(session.trackerId) or "scootAuraDraft"
-    if shape == "icons" then
-        local key = ctx.get("pipStyle") or "border:SquareMask"
-        local tint = ctx.get("pipBackdropTint") or { 0, 0, 0, 1 }
-        local opacity = (tonumber(ctx.get("pipBackdropOpacity")) or 100) / 100
-        local fill = ResolveResourceFill(ctx.get("pipColorMode"), "pipTint")
-        local pipColors = ResourcePipColors(fill)
-        prevBuilder:AddPreview({
-            componentId = componentId,
+local function ClassResourcePreviewOptions(view)
+    local get = view.get
+    if view.shape == "icons" then
+        local key = get("pipStyle") or "border:SquareMask"
+        local tint = get("pipBackdropTint") or { 0, 0, 0, 1 }
+        local opacity = (tonumber(get("pipBackdropOpacity")) or 100) / 100
+        local fill = ResolveResourceFill(get, get("pipColorMode"), "pipTint")
+        local pipColors = ResourcePipColors(get, fill)
+        return {
+            componentId = view.componentId,
             mode = "pips",
             pipShape = "icons",
             pipCount = PREVIEW_PIP_COUNT,
             pipFilled = pipColors and PREVIEW_PIP_FILLED_TAIL or PREVIEW_PIP_FILLED,
             pipAtlas = SAU()._AtlasFromShapeKey(key) or "SquareMask",
-            pipBorderWidth = SAU().Pips.BorderWidth(key, tonumber(ctx.get("pipSize")) or 16),
+            pipBorderWidth = SAU().Pips.BorderWidth(key, tonumber(get("pipSize")) or 16),
             pipColor = fill,
             pipColors = pipColors,
             pipBackdropColor = { tint[1] or 0, tint[2] or 0, tint[3] or 0, opacity },
             rowHeight = 200,
             previewScale = 1,
             maxRowHeight = 340,
-            getSetting = ctx.get,
-            noBottomBorder = true,
+            getSetting = get,
             noHover = true,
             noLabel = true,
-        })
-    else
-        local fill = ResolveResourceFill(ctx.get("barForegroundColorMode"), "barForegroundTint")
-        local pipColors = ResourcePipColors(fill)
-        local function getSetting(key)
-            if key == "barForegroundColorMode" then return "custom" end
-            if key == "barForegroundTint" then return fill end
-            if key == "barShowIcon" then return false end
-            if key == "hideNameText" or key == "hideStackText" then return true end
-            return ctx.get(key)
-        end
-        prevBuilder:AddPreview({
-            componentId = componentId,
-            mode = "pips",
-            pipShape = "bar",
-            pipCount = PREVIEW_PIP_COUNT,
-            pipFilled = pipColors and PREVIEW_PIP_FILLED_TAIL or PREVIEW_PIP_FILLED,
-            pipColors = pipColors,
-            rowHeight = 200,
-            previewScale = 1,
-            maxRowHeight = 340,
-            getSetting = getSetting,
-            noBottomBorder = true,
-            noHover = true,
-            noLabel = true,
-        })
+        }
     end
-    prevBuilder:Finalize()
+    local fill = ResolveResourceFill(get, get("barForegroundColorMode"), "barForegroundTint")
+    local pipColors = ResourcePipColors(get, fill)
+    local function getSetting(key)
+        if key == "barForegroundColorMode" then return "custom" end
+        if key == "barForegroundTint" then return fill end
+        if key == "barShowIcon" then return false end
+        if key == "hideNameText" or key == "hideStackText" then return true end
+        return get(key)
+    end
+    return {
+        componentId = view.componentId,
+        mode = "pips",
+        pipShape = "bar",
+        pipCount = PREVIEW_PIP_COUNT,
+        pipFilled = pipColors and PREVIEW_PIP_FILLED_TAIL or PREVIEW_PIP_FILLED,
+        pipColors = pipColors,
+        rowHeight = 200,
+        previewScale = 1,
+        maxRowHeight = 340,
+        getSetting = getSetting,
+        noHover = true,
+        noLabel = true,
+    }
 end
 
 -- The stacks preview: the count one short of the maximum, as the number on
 -- the icon, the segmented bar, or the shape row. Shapes and a bar fill read
 -- the class color or a tint, resolved here and handed over as Custom.
-local function StackFill(mode, tintKey)
+local function StackFill(get, mode, tintKey)
     if mode == "custom" then
-        local c = ctx.get(tintKey) or { 1, 1, 1, 1 }
+        local c = get(tintKey) or { 1, 1, 1, 1 }
         return { c[1] or 1, c[2] or 1, c[3] or 1, 1 }
     end
     local r, g, b = addon.GetClassColorRGB("player")
@@ -1541,24 +1705,23 @@ local STACK_TEXT_KEYS = {
     textOffsetX = "stackTextOffsetX", textOffsetY = "stackTextOffsetY", hideText = "hideStackText",
 }
 
-local function RenderStacksPreview(shape)
-    local componentId = session and session.trackerId
-        and SAU().GetComponentId(session.trackerId) or "scootAuraDraft"
-    local n = SAU().ResolveMaxStacks(StackTrackerView())
+local function StacksPreviewOptions(view)
+    local get, shape = view.get, view.shape
+    local n = SAU().ResolveMaxStacks(view.stackTracker)
     local sample = math.max(1, n - 1)
     if shape == "icons" then
-        local key = ctx.get("pipStyle") or "border:SquareMask"
-        local tint = ctx.get("pipBackdropTint") or { 0, 0, 0, 1 }
-        local opacity = (tonumber(ctx.get("pipBackdropOpacity")) or 100) / 100
-        prevBuilder:AddPreview({
-            componentId = componentId,
+        local key = get("pipStyle") or "border:SquareMask"
+        local tint = get("pipBackdropTint") or { 0, 0, 0, 1 }
+        local opacity = (tonumber(get("pipBackdropOpacity")) or 100) / 100
+        return {
+            componentId = view.componentId,
             mode = "pips",
             pipShape = "icons",
             pipCount = n,
             pipFilled = sample,
             pipAtlas = SAU()._AtlasFromShapeKey(key) or "SquareMask",
-            pipBorderWidth = SAU().Pips.BorderWidth(key, tonumber(ctx.get("pipSize")) or 16),
-            pipColor = StackFill(ctx.get("pipColorMode"), "pipTint"),
+            pipBorderWidth = SAU().Pips.BorderWidth(key, tonumber(get("pipSize")) or 16),
+            pipColor = StackFill(get, get("pipColorMode"), "pipTint"),
             pipBackdropColor = { tint[1] or 0, tint[2] or 0, tint[3] or 0, opacity },
             rowHeight = 200,
             previewScale = 1,
@@ -1566,18 +1729,17 @@ local function RenderStacksPreview(shape)
             getSetting = function(key2)
                 -- The live row floors spacing at 0 (stacks.lua).
                 if key2 == "pipSpacing" then
-                    return math.max(0, tonumber(ctx.get("pipSpacing")) or 2)
+                    return math.max(0, tonumber(get("pipSpacing")) or 2)
                 end
-                return ctx.get(key2)
+                return get(key2)
             end,
-            noBottomBorder = true,
             noHover = true,
             noLabel = true,
-        })
+        }
     elseif shape == "bar" then
-        local fill = StackFill(ctx.get("barForegroundColorMode"), "barForegroundTint")
-        prevBuilder:AddPreview({
-            componentId = componentId,
+        local fill = StackFill(get, get("barForegroundColorMode"), "barForegroundTint")
+        return {
+            componentId = view.componentId,
             mode = "pips",
             pipShape = "bar",
             pipCount = n,
@@ -1590,16 +1752,15 @@ local function RenderStacksPreview(shape)
                 if key2 == "barForegroundTint" then return fill end
                 if key2 == "barShowIcon" then return false end
                 if key2 == "hideNameText" or key2 == "hideStackText" then return true end
-                return ctx.get(key2)
+                return get(key2)
             end,
-            noBottomBorder = true,
             noHover = true,
             noLabel = true,
-        })
+        }
     elseif shape == "text" then
         -- The Floating Number: the count alone, always shown (layout.lua).
-        prevBuilder:AddPreview({
-            componentId = componentId,
+        return {
+            componentId = view.componentId,
             mode = "text",
             settingKeys = STACK_TEXT_KEYS,
             caTextSource = "applications",
@@ -1609,166 +1770,142 @@ local function RenderStacksPreview(shape)
             maxRowHeight = 340,
             getSetting = function(key2)
                 if key2 == "hideStackText" then return false end
-                return ctx.get(key2)
+                return get(key2)
             end,
-            noBottomBorder = true,
             noHover = true,
             noLabel = true,
-        })
-    else
-        local tracker = CurrentTracker()
-        local iconTexture
-        if session and session.validated then
-            iconTexture = session.validated.icon
-        elseif tracker then
-            iconTexture = PlainSpellTexture(tracker.spellId)
-        end
-        prevBuilder:AddPreview({
-            componentId = componentId,
-            mode = "icon",
-            iconTexture = iconTexture,
-            settingKeys = STACK_TEXT_KEYS,
-            caTextSource = "applications",
-            caTextLiteral = tostring(sample),
-            rowHeight = 200,
-            previewScale = 1,
-            maxRowHeight = 340,
-            getSetting = ctx.get,
-            noBottomBorder = true,
-            noHover = true,
-            noLabel = true,
-        })
+        }
     end
-    prevBuilder:Finalize()
-end
-
--- Kinds that draw their own preview instead of the generic aura one.
-local KIND_PREVIEWS = {
-    classpower = RenderClassPowerPreview,
-    classresource = RenderClassResourcePreview,
-    buffstacks = RenderStacksPreview,
-    debuffstacks = RenderStacksPreview,
-}
-
-local function RenderPreview()
-    if prevBuilder then prevBuilder:Cleanup() end
-    local SettingsBuilder = addon.UI.SettingsBuilder
-
-    -- No preview until a spell is chosen: without one there is nothing real
-    -- to show, and the engine's fallback is the player's spec icon. A kind
-    -- with no spell previews as soon as its shape is chosen.
-    local tracker = CurrentTracker()
-    local kind = ctx.kind()
-    if SAU().KindNeedsSpell(kind) and not ((session and session.validated) or tracker) then
-        return
-    end
-
-    prevBuilder = SettingsBuilder:CreateFor(widgets.previewHost)
-
-    local shape = ctx.shape()
-    local kindPreview = KIND_PREVIEWS[kind]
-    if kindPreview then
-        kindPreview(shape)
-        return
-    end
-    local mode, shapeAtlas, shapeColor, shapeDrain, iconSwipe, iconSwipeBackdropAlpha
-    local iconSwipeBackdropShade, iconSwipeLine
-    if shape == "bar" then
-        mode = ctx.get("barShowIcon") and "iconbar" or "bar"
-    elseif shape == "shape" then
-        mode = "icon"
-        shapeAtlas = SAU()._AtlasFromShapeKey(ctx.get("shapeStyle") or "border:SquareMask") or "SquareMask"
-        shapeDrain = ctx.get("shapeShowDrain") ~= false
-        if (ctx.get("shapeColorMode") or "class") == "class" then
-            local r, g, b = addon.GetClassColorRGB("player")
-            shapeColor = r and { r, g, b, 1 } or { 1, 1, 1, 1 }
-        else
-            shapeColor = ctx.get("shapeTint") or { 1, 1, 1, 1 }
-        end
-    else
-        mode = "icon"
-        iconSwipe = ctx.get("iconShowSwipe") ~= false
-            and (ctx.get("iconMode") or "default") == "default"
-        if iconSwipe then
-            -- Under a Desaturated missing visual the elapsed share shows the
-            -- reveal, which carries its own opacity.
-            local traits = SAU().MissingVisualTraits(ctx.missingVisual())
-            local pct = (traits and traits.opacity and tonumber(ctx.get("missingVisualOpacity"))) or 100
-            iconSwipeBackdropAlpha = math.max(0, math.min(100, pct)) / 100
-            -- Swipe Darkness applies with or without a reveal.
-            iconSwipeBackdropShade = 1 - SAU().SwipeDarkness(ctx.get("iconSwipeDarkness"))
-            local r, g, b, a = SAU().SwipeLineColor(ctx.get("iconSwipeLineColor"))
-            iconSwipeLine = { r, g, b, a, texture = SAU().SWIPE_LINE_TEXTURE }
-        end
-    end
-
-    local iconTexture
-    if session and session.validated then
-        iconTexture = session.validated.icon
-    elseif tracker then
-        iconTexture = PlainSpellTexture(tracker.spellId)
-    end
-
-    if ctx.kind() == "missingbuff" then
-        -- The reminder as it looks while the buff is missing: the spell icon
-        -- and/or the aura name, laid out around each other by the Aura Name
-        -- tab's keys. The generic preview speaks in duration-text keys, so map
-        -- them onto nameText* and pin the position outside the icon.
-        local spellId = (session and session.validated and session.validated.spellId)
-            or (tracker and tracker.spellId)
-        local nameText = spellId and SAU().DescribeSpell(spellId) or CurrentName()
-        if ctx.get("missingSuffix") == true then
-            nameText = nameText .. " missing!"
-        end
-        local showText = (shape ~= "icon")
-        local keys = { _showCAText = showText or nil }
-        if showText then
-            keys.textFont = "nameTextFont"
-            keys.textStyle = "nameTextStyle"
-            keys.textSize = "nameTextSize"
-            keys.textColor = "nameTextColor"
-            keys.textOuterAnchor = "nameTextOuterAnchor"
-            keys.textOffsetX = "nameTextOffsetX"
-            keys.textOffsetY = "nameTextOffsetY"
-            keys.textPosition = "__missingTextPosition"
-            keys.hideText = "__missingHideText"
-        end
-        prevBuilder:AddPreview({
-            componentId = session and session.trackerId
-                and SAU().GetComponentId(session.trackerId) or "scootAuraDraft",
-            mode = (shape == "text") and "text" or "icon",
-            iconTexture = iconTexture,
-            settingKeys = keys,
-            caTextSource = "duration",
-            caTextLiteral = showText and nameText or nil,
-            rowHeight = 200,
-            previewScale = 1,
-            maxRowHeight = 340,
-            getSetting = function(key)
-                if key == "__missingTextPosition" then return "outside" end
-                if key == "__missingHideText" then return false end
-                return ctx.get(key)
-            end,
-            noBottomBorder = true,
-            noHover = true,
-            noLabel = true,
-        })
-        prevBuilder:Finalize()
-        return
-    end
-
-    prevBuilder:AddPreview({
-        componentId = session and session.trackerId
-            and SAU().GetComponentId(session.trackerId) or "scootAuraDraft",
-        mode = mode,
-        iconTexture = iconTexture,
-        settingKeys = { _showCAText = true },
-        caTextSource = "duration",
-        previewNameLabel = CurrentName(),
+    return {
+        componentId = view.componentId,
+        mode = "icon",
+        iconTexture = view.iconTexture,
+        settingKeys = STACK_TEXT_KEYS,
+        caTextSource = "applications",
+        caTextLiteral = tostring(sample),
         rowHeight = 200,
         previewScale = 1,
         maxRowHeight = 340,
-        getSetting = ctx.get,
+        getSetting = get,
+        noHover = true,
+        noLabel = true,
+    }
+end
+
+-- The Spell Cooldown kind: the generic preview (the 15 s countdown and the
+-- bar fill) with the template's dark swipe over the icon.
+local function CooldownPreviewOptions(view)
+    local shape = view.shape
+    local mode = "icon"
+    if SAU().IsBarShape(shape) then
+        mode = view.get("barShowIcon") and "iconbar" or "bar"
+    end
+    return {
+        componentId = view.componentId,
+        mode = mode,
+        iconTexture = view.iconTexture,
+        settingKeys = { _showCAText = true },
+        caTextSource = "duration",
+        previewNameLabel = view.name,
+        rowHeight = 200,
+        previewScale = 1,
+        maxRowHeight = 340,
+        getSetting = view.get,
+        iconCooldown = not SAU().IsBarShape(shape),
+        barVertical = (shape == "vbar"),
+        noHover = true,
+        noLabel = true,
+    }
+end
+
+-- The Missing Buff reminder as it looks while the buff is missing: the spell
+-- icon and/or the aura name, laid out around each other by the Aura Name
+-- tab's keys. The generic preview speaks in duration-text keys, so map them
+-- onto nameText* and pin the position outside the icon.
+local function MissingBuffPreviewOptions(view)
+    local get, shape = view.get, view.shape
+    local nameText = view.spellId and SAU().DescribeSpell(view.spellId) or view.name
+    if get("missingSuffix") == true then
+        nameText = nameText .. " missing!"
+    end
+    local showText = (shape ~= "icon")
+    local keys = { _showCAText = showText or nil }
+    if showText then
+        keys.textFont = "nameTextFont"
+        keys.textStyle = "nameTextStyle"
+        keys.textSize = "nameTextSize"
+        keys.textColor = "nameTextColor"
+        keys.textOuterAnchor = "nameTextOuterAnchor"
+        keys.textOffsetX = "nameTextOffsetX"
+        keys.textOffsetY = "nameTextOffsetY"
+        keys.textPosition = "__missingTextPosition"
+        keys.hideText = "__missingHideText"
+    end
+    return {
+        componentId = view.componentId,
+        mode = (shape == "text") and "text" or "icon",
+        iconTexture = view.iconTexture,
+        settingKeys = keys,
+        caTextSource = "duration",
+        caTextLiteral = showText and nameText or nil,
+        rowHeight = 200,
+        previewScale = 1,
+        maxRowHeight = 340,
+        getSetting = function(key)
+            if key == "__missingTextPosition" then return "outside" end
+            if key == "__missingHideText" then return false end
+            return get(key)
+        end,
+        noHover = true,
+        noLabel = true,
+    }
+end
+
+-- The aura kinds: an icon with the swipe, a bar with or without its icon, or
+-- a shape with its drain, each with the 15 s countdown.
+local function GenericPreviewOptions(view)
+    local get, shape = view.get, view.shape
+    local mode, shapeAtlas, shapeColor, shapeDrain, iconSwipe, iconSwipeBackdropAlpha
+    local iconSwipeBackdropShade, iconSwipeLine
+    if SAU().IsBarShape(shape) then
+        mode = get("barShowIcon") and "iconbar" or "bar"
+    elseif shape == "shape" then
+        mode = "icon"
+        shapeAtlas = SAU()._AtlasFromShapeKey(get("shapeStyle") or "border:SquareMask") or "SquareMask"
+        shapeDrain = get("shapeShowDrain") ~= false
+        if (get("shapeColorMode") or "class") == "class" then
+            local r, g, b = addon.GetClassColorRGB("player")
+            shapeColor = r and { r, g, b, 1 } or { 1, 1, 1, 1 }
+        else
+            shapeColor = get("shapeTint") or { 1, 1, 1, 1 }
+        end
+    else
+        mode = "icon"
+        iconSwipe = get("iconShowSwipe") ~= false
+            and (get("iconMode") or "default") == "default"
+        if iconSwipe then
+            -- Under a Desaturated missing visual the elapsed share shows the
+            -- reveal, which carries its own opacity.
+            local traits = SAU().MissingVisualTraits(view.missingVisual)
+            local pct = (traits and traits.opacity and tonumber(get("missingVisualOpacity"))) or 100
+            iconSwipeBackdropAlpha = math.max(0, math.min(100, pct)) / 100
+            -- Swipe Darkness applies with or without a reveal.
+            iconSwipeBackdropShade = 1 - SAU().SwipeDarkness(get("iconSwipeDarkness"))
+            local r, g, b, a = SAU().SwipeLineColor(get("iconSwipeLineColor"))
+            iconSwipeLine = { r, g, b, a, texture = SAU().SWIPE_LINE_TEXTURE }
+        end
+    end
+    return {
+        componentId = view.componentId,
+        mode = mode,
+        iconTexture = view.iconTexture,
+        settingKeys = { _showCAText = true },
+        caTextSource = "duration",
+        previewNameLabel = view.name,
+        rowHeight = 200,
+        previewScale = 1,
+        maxRowHeight = 340,
+        getSetting = get,
         shapeAtlas = shapeAtlas,
         shapeColor = shapeColor,
         shapeDrain = shapeDrain,
@@ -1776,13 +1913,89 @@ local function RenderPreview()
         iconSwipeBackdropAlpha = iconSwipeBackdropAlpha,
         iconSwipeBackdropShade = iconSwipeBackdropShade,
         iconSwipeLine = iconSwipeLine,
-        noBottomBorder = true,
+        barVertical = (shape == "vbar"),
         noHover = true,
         noLabel = true,
-        timerEpoch = session and session.timerEpoch,
-    })
+    }
+end
 
-    prevBuilder:Finalize()
+-- Kinds that draw their own preview instead of the generic aura one.
+local KIND_PREVIEWS = {
+    classpower = ClassPowerPreviewOptions,
+    classresource = ClassResourcePreviewOptions,
+    buffstacks = StacksPreviewOptions,
+    debuffstacks = StacksPreviewOptions,
+    cooldown = CooldownPreviewOptions,
+    missingbuff = MissingBuffPreviewOptions,
+}
+
+-- The preview options for one view, or nil while a kind that needs a spell
+-- has none: without one there is nothing real to show, and the control's
+-- fallback is the player's spec icon. A kind with no spell previews as soon
+-- as its shape is chosen.
+local function PreviewOptions(view)
+    if SAU().KindNeedsSpell(view.kind) and not view.spellId then return nil end
+    return (KIND_PREVIEWS[view.kind] or GenericPreviewOptions)(view)
+end
+
+-- The preview quadrant: the open tracker's group as the strip lays it out,
+-- or a strip of one. The strip builds each member from its own view and,
+-- on a value edit, rebuilds the selected member alone.
+local function RenderPreview()
+    local view = SessionView()
+    if not (view and PreviewOptions(view)) then
+        previewStrip:Reset()
+        return
+    end
+
+    local selectedId = session.trackerId or "draft"
+    local tracker = CurrentTracker()
+    local gid = tracker and tracker.groupId
+    local members = gid and addon.UI.ScootAuraTitleCarousel.Members(gid) or nil
+    local key, spacing, grow
+    if members then
+        key = gid
+        local group = SAU().GetGroup(gid)
+        -- A loaded group (the Aura List's Loaded block) shows the members that
+        -- load in the current spec, as the live group does, plus the open one
+        -- whatever its spec list. A group that is off or not loaded for this
+        -- spec shows every member.
+        if SAU().IsGroupActive(gid, group) then
+            local kept = {}
+            for _, m in ipairs(members) do
+                if m.id == selectedId or SAU().SpecAllows(SAU().GetTracker(m.id)) then
+                    kept[#kept + 1] = m
+                end
+            end
+            members = kept
+        end
+        for _, m in ipairs(members) do
+            local member = SAU().GetTracker(m.id)
+            m.spellId = member and member.spellId or nil
+        end
+        local settings = group and group.settings or {}
+        spacing = tonumber(settings.spacing) or 4
+        grow = settings.grow or "RIGHT"
+    else
+        key = session.trackerId and ("t" .. session.trackerId) or "draft"
+        members = { { id = selectedId, name = view.name, enabled = true, spellId = view.spellId } }
+    end
+
+    previewStrip:SetContext({
+        key = key,
+        members = members,
+        selectedId = selectedId,
+        spacing = spacing,
+        grow = grow,
+        build = function(cell, id, epoch)
+            local memberView = (id == selectedId) and view or TrackerView(id)
+            local options = memberView and PreviewOptions(memberView)
+            if not options then return nil end
+            options.parent = cell
+            options.timerEpoch = epoch
+            return addon.UI.Controls:CreatePreview(options)
+        end,
+    })
 end
 
 -- Centers the icon + name pair on the chip line. The name has no right
@@ -1899,12 +2112,11 @@ local function UpdateSpellRegion()
     widgets.statusText:SetText(status)
 end
 
--- A draft has nothing to rename or copy yet: static title, no icons. They
--- appear with the tracker, and the duplicate one only for a tracker in a group.
--- Never touched while the rename box is open (a deferred refresh mid-rename
--- must not re-show an icon over it). A tracker in a group of two or more gets
--- the member carousel instead of the plain title; the icons wait until the
--- strip is at rest.
+-- A draft has nothing to rename, copy, load or delete yet: static title, no
+-- icons. They appear with the tracker, and the duplicate one only for a
+-- tracker in a group. Never touched while the rename box is open (a deferred
+-- refresh mid-rename must not re-show an icon over it). A tracker in a group
+-- of two or more gets the member carousel instead of the plain title.
 local function UpdateTitle()
     if widgets.renameBox:IsShown() then return end
     local tracker = CurrentTracker()
@@ -1914,14 +2126,12 @@ local function UpdateTitle()
         widgets.carouselActive = true
         widgets.titleText:Hide()
         widgets.carousel:Show()
-        widgets.AnchorTitleIcons()
-        widgets.SetTitleIconsShown(widgets.carousel:IsSettled())
+        widgets.SetTitleIconsShown(true)
         return
     end
     widgets.carouselActive = false
     widgets.carousel:Hide()
     widgets.titleText:Show()
-    widgets.AnchorTitleIcons()
     if tracker then
         widgets.titleText:SetText(CurrentName())
         widgets.SetTitleIconsShown(true)
@@ -2008,15 +2218,13 @@ end
 function Editor.Open(trackerId)
     if not (addon.ScootAuras and addon.ScootAuras.IsModuleActive()) then return end
     InitializeFrame()
+    CloseEditorSpecFlyout()
 
     if trackerId and SAU().GetTracker(trackerId) then
         session = { trackerId = trackerId }
     else
         session = { draft = { content = {}, styling = {} } }
     end
-    -- Countdown anchor for the preview: rebuilds resume the running cycle;
-    -- only opening the editor or validating a different spell restarts it.
-    session.timerEpoch = {}
     validationToken = validationToken + 1
 
     -- Show first: region rects resolve on show, and the catalog grid and tab
@@ -2031,8 +2239,10 @@ function Editor.Close()
     -- Hiding an ancestor does not reliably fire OnLeave on a hovered catalog
     -- cell, which would leave its tooltip on screen.
     addon.UI.ScootAuraCDMPicker.HideTooltip()
+    CloseEditorSpecFlyout()
     if frame then frame:Hide() end
     if widgets.carousel then widgets.carousel:Reset() end
+    if previewStrip then previewStrip:Reset() end
     session = nil
     validationToken = validationToken + 1
 end

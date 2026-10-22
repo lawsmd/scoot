@@ -383,7 +383,8 @@ end
 --- Opens the fly-out on `anchorBtn` for one record. Clicking the same button
 -- again closes it. opts: title, key (the record's identity, so the panel can
 -- find its new trigger after a re-render), get() -> spec id array or nil,
--- toggle(specID).
+-- toggle(specID), detached (the trigger is not on the Aura List, so a list
+-- re-render leaves the panel alone; pass no key with it).
 function Flyout.OpenFor(anchorBtn, opts)
     if not anchorBtn then return end
     if not panel then
@@ -464,6 +465,13 @@ end
 function Flyout.IsOpenFor(anchorBtn)
     if not (panel and anchorBtn) then return false end
     if panel._anchor ~= anchorBtn then return false end
+    return panel:IsOpen() and true or false
+end
+
+--- True while the fly-out is open on a trigger outside the Aura List (the
+-- editor's title row). The list's Cleanup leaves such a panel open.
+function Flyout.IsDetached()
+    if not (panel and panel._opts and panel._opts.detached) then return false end
     return panel:IsOpen() and true or false
 end
 

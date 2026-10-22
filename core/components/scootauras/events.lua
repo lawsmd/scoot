@@ -106,6 +106,13 @@ local SAU_EVENTS = {
     "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW",
     "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE",
     "GROUP_ROSTER_UPDATE",
+    -- The Spell Cooldown kind (cooldown.lua): the two cooldown events repaint
+    -- its values, and a talent change re-resolves the spell and whether the
+    -- character knows it. A client without the talent event hands back an
+    -- inert handle; the trait and spell events above cover the gate then.
+    "SPELL_UPDATE_COOLDOWN",
+    "SPELL_UPDATE_CHARGES",
+    "PLAYER_TALENT_UPDATE",
 }
 
 local specResolvePending = false
@@ -131,6 +138,16 @@ end
 -- PLAYER_SPECIALIZATION_CHANGED, a spell id for the two glow events, a base
 -- spell id for the override event, whose arg2 is the spell replacing it.
 local function onAuraEvent(event, arg1, arg2)
+    if event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES" then
+        -- Coalesced inside, and nothing happens while no cooldown tracker is
+        -- live; the first arrives on every GCD.
+        if SAU.Cooldown then SAU.Cooldown.RequestRepaint() end
+        return
+    end
+    if event == "PLAYER_TALENT_UPDATE" then
+        if SAU.Cooldown then SAU.Cooldown.RefreshKnown() end
+        return
+    end
     if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW"
         or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
         if SAU.Missing then
@@ -166,6 +183,7 @@ local function onAuraEvent(event, arg1, arg2)
         -- description each time a player shifts form.
         SAU.NoteSpellOverride(arg1, arg2)
         if SAU.Missing then SAU.Missing.OnOverrideChanged(arg1) end
+        if SAU.Cooldown then SAU.Cooldown.RefreshKnown() end
         return
     end
     if event == "UPDATE_SHAPESHIFT_FORM" or event == "SPELLS_CHANGED" then
@@ -174,13 +192,16 @@ local function onAuraEvent(event, arg1, arg2)
         -- fires repeatedly over a login, so coalesce into one deferred pass.
         -- These run on the shared frame for every user, so bail before any
         -- work when nothing reads them.
-        if overrideResolvePending or not SAU.Missing or not SAU.Missing.AnyLive() then
+        local wantMissing = SAU.Missing and SAU.Missing.AnyLive()
+        local wantCooldown = SAU.Cooldown and SAU.Cooldown.AnyLive()
+        if overrideResolvePending or not (wantMissing or wantCooldown) then
             return
         end
         overrideResolvePending = true
         C_Timer.After(0, function()
             overrideResolvePending = false
-            SAU.Missing.OnOverrideChanged()
+            if SAU.Missing and SAU.Missing.AnyLive() then SAU.Missing.OnOverrideChanged() end
+            if SAU.Cooldown then SAU.Cooldown.RefreshKnown() end
         end)
         return
     end
@@ -189,6 +210,7 @@ local function onAuraEvent(event, arg1, arg2)
         or event == "TRAIT_CONFIG_UPDATED" then
         SAU.InvalidateSpellDescriptions()
         if SAU.Missing then SAU.Missing.RefreshOverrideDependents() end
+        if SAU.Cooldown then SAU.Cooldown.RefreshKnown() end
         Engine.MarkStaleFilters(event)
         return
     end

@@ -159,6 +159,8 @@ end
 --   iconSwipeBackdropShade number/nil  Vertex shade of that icon; nil leaves it unshaded.
 --   iconSwipeLine   table/nil   { r, g, b, a, texture = path }: the line drawn on the
 --                            swipe's edge; nil draws none.
+--   iconCooldown    bool     Animate a dark cooldown swipe over a default icon, running
+--                            forward (the action button look), on the same cycle.
 --   noBottomBorder  bool     Read by SettingsBuilder: skips the divider under the row.
 --   noHover         bool     Skip the accent hover highlight on the row.
 --   noLabel         bool     Skip the "Preview:" label (caller draws its own).
@@ -200,6 +202,9 @@ function Controls:CreatePreview(options)
     local caTextSource = options.caTextSource
     local caTextLiteral = options.caTextLiteral
     local caTextSuffix = options.caTextSuffix
+    -- A vertical bar (the aura editor's "vbar" shape): the fill stands, the
+    -- icon sits under or over the bar, and the inside name reads along it.
+    local barVertical = options.barVertical == true
     local previewNameLabel = options.previewNameLabel
     local useLightDim = options.useLightDim
     local rowHeight = options.rowHeight or PREVIEW_ROW_HEIGHT
@@ -405,6 +410,21 @@ function Controls:CreatePreview(options)
                 borderHost = CreateFrame("Frame", nil, previewIcon)
                 borderHost:SetAllPoints()
                 borderHost:SetFrameLevel(cd:GetFrameLevel() + 1)
+            elseif options.iconCooldown and iconTexture then
+                -- The Spell Cooldown kind's swipe: the template's dark sweep
+                -- running forward over the icon, re-armed each countdown
+                -- cycle by the animation block below. The border gets its
+                -- own frame above it, as the icon swipe does.
+                local cd = CreateFrame("Cooldown", nil, previewIcon, "CooldownFrameTemplate")
+                cd:SetAllPoints()
+                cd:SetDrawBling(false)
+                cd:SetDrawEdge(false)
+                cd:SetHideCountdownNumbers(true)
+                cd:SetReverse(false)
+                row._shapeCooldown = cd
+                borderHost = CreateFrame("Frame", nil, previewIcon)
+                borderHost:SetAllPoints()
+                borderHost:SetFrameLevel(cd:GetFrameLevel() + 1)
             end
         end
         local borderEnable = readSetting("borderEnable", nil)
@@ -547,9 +567,16 @@ function Controls:CreatePreview(options)
         if showIcon and previewIcon then
             if not trueScale then
                 -- Icon & Bar: one composite factor so the pair keeps its relative proportions
-                local offX = math.abs(clampBarOffsetX(readSetting("barOffsetX", 0)))
-                local fitW = (PREVIEW_MAX_CONTENT_WIDTH - 24) / math.max(iconW + offX + barWidth + 4, 1)
-                local fitH = (PREVIEW_MAX_ROW_HEIGHT - 28) / math.max(iconH, barHeight, 1)
+                local fitW, fitH
+                if barVertical then
+                    local gapY = math.abs(tonumber(readSetting("barIconGap", 2)) or 2)
+                    fitW = (PREVIEW_MAX_CONTENT_WIDTH - 24) / math.max(iconW, barWidth, 1)
+                    fitH = (PREVIEW_MAX_ROW_HEIGHT - 28) / math.max(iconH + gapY + barHeight + 4, 1)
+                else
+                    local offX = math.abs(clampBarOffsetX(readSetting("barOffsetX", 0)))
+                    fitW = (PREVIEW_MAX_CONTENT_WIDTH - 24) / math.max(iconW + offX + barWidth + 4, 1)
+                    fitH = (PREVIEW_MAX_ROW_HEIGHT - 28) / math.max(iconH, barHeight, 1)
+                end
                 scaleFactor = math.min(scaleFactor or 1, fitW, fitH)
                 previewIcon:SetScale(scaleFactor)
             end
@@ -581,6 +608,7 @@ function Controls:CreatePreview(options)
         -- Foreground (StatusBar at 50%)
         local barFill = CreateFrame("StatusBar", nil, previewBar)
         barFill:SetAllPoints()
+        if barVertical then barFill:SetOrientation("VERTICAL") end
         barFill:SetMinMaxValues(0, 1)
         barFill:SetValue(options.fillFraction or 0.5)
         addon.Media.ApplyBarFill(barFill, barFGTexKey, "Interface\\TargetingFrame\\UI-StatusBar")
@@ -817,7 +845,31 @@ function Controls:CreatePreview(options)
             offsetX = readSetting("nameTextOffsetX", 0),
             offsetY = readSetting("nameTextOffsetY", 0),
         }
-        AnchorTextToBar(nameTextFS, previewBar, nameTextCfg)
+        if barVertical and nameTextCfg.position ~= "outside" then
+            -- The live layout: the name's frame sized to the bar's long
+            -- axis, centered on it and held a quarter turn clockwise by a
+            -- Rotation animation, the string filling the frame on one line;
+            -- the inner anchor picks the end the string starts from (Top
+            -- reads from the bar's top).
+            local token = tostring(nameTextCfg.innerAnchor or "CENTER")
+            local justify = token:find("TOP", 1, true) and "LEFT"
+                or token:find("BOTTOM", 1, true) and "RIGHT" or "CENTER"
+            nameFrame:ClearAllPoints()
+            nameFrame:SetSize(math.max(1, previewBar:GetHeight() - 2 * CA_GAP), previewBar:GetWidth())
+            nameFrame:SetPoint("CENTER", previewBar, "CENTER",
+                nameTextCfg.offsetX or 0, nameTextCfg.offsetY or 0)
+            nameTextFS:SetAllPoints(nameFrame)
+            nameTextFS:SetJustifyH(justify)
+            nameTextFS:SetWordWrap(false)
+            local spin = nameFrame:CreateAnimationGroup()
+            local turn = spin:CreateAnimation("Rotation")
+            turn:SetDegrees(-90)
+            turn:SetDuration(0)
+            turn:SetEndDelay(2147483647)
+            spin:Play()
+        else
+            AnchorTextToBar(nameTextFS, previewBar, nameTextCfg)
+        end
     end
 
     ----------------------------------------------------------------------------
@@ -909,13 +961,43 @@ function Controls:CreatePreview(options)
 
     local totalWidth = 0
     local containerHeight = rowHeight - 20
+    -- The host box: the rect the live tracker's host frame has for this
+    -- content (scootauras layout.lua, SetHostSize), in row pixels. Outside
+    -- text and border art overhang it live, so they overhang it here too. A
+    -- caller that lays rows out by what they draw (the aura editor's preview
+    -- strip) reads it as row._hostBox; hostAnchor names the container edge
+    -- the box sits on until the container's final size turns it into an offset.
+    local hostW, hostH, hostAnchor
 
     if showIcon and previewIcon then
         -- previewIcon is scaled, so GetWidth reports its own-space width. Convert to screen.
         local iconDisplayW = previewIcon:GetWidth() * (scaleFactor or 1)
+        local iconDisplayH = previewIcon:GetHeight() * (scaleFactor or 1)
         totalWidth = totalWidth + iconDisplayW
 
-        if showBar and previewBar then
+        if showBar and previewBar and barVertical then
+            -- The live layout: the bar stands on its icon, or hangs from it
+            -- with the icon on top (barIconSide, where TOP or RIGHT is the
+            -- far side). The pair is centered as a stack in the container.
+            local side = readSetting("barIconSide", nil)
+            local above = (side == "TOP" or side == "RIGHT")
+            local gap = tonumber(readSetting("barIconGap", 2)) or 2
+            local barW = previewBar:GetWidth() * barScale
+            local barH = previewBar:GetHeight() * barScale
+            local stackH = iconDisplayH + gap * barScale + barH
+            local dy = (stackH - iconDisplayH) / 2 / (scaleFactor or 1)
+            if above then
+                previewIcon:SetPoint("CENTER", container, "CENTER", 0, dy)
+                previewBar:SetPoint("TOP", previewIcon, "BOTTOM", 0, -gap)
+            else
+                previewIcon:SetPoint("CENTER", container, "CENTER", 0, -dy)
+                previewBar:SetPoint("BOTTOM", previewIcon, "TOP", 0, gap)
+            end
+            totalWidth = math.max(totalWidth, barW)
+            containerHeight = math.max(containerHeight, stackH + PREVIEW_CONTENT_PAD)
+            -- Live: max(iconW, barW) by iconH + gap + barH, centered.
+            hostW, hostH, hostAnchor = math.max(iconDisplayW, barW), stackH, "CENTER"
+        elseif showBar and previewBar then
             local barPosition = readSetting("barPosition", "RIGHT")
             local barOffsetX = clampBarOffsetX(readSetting("barOffsetX", 0))
             local barOffsetY = clampBarOffsetY(readSetting("barOffsetY", 0))
@@ -941,7 +1023,13 @@ function Controls:CreatePreview(options)
             end
 
             totalWidth = totalWidth + barW + math.abs(barOffsetX) * barScale
+            -- Live: iconW + gap + barW by max(iconH, barH), the pair flush to
+            -- one edge of the host.
+            hostW = totalWidth
+            hostH = math.max(iconDisplayH, previewBar:GetHeight() * barScale)
+            hostAnchor = (barPosition == "LEFT") and "RIGHT" or "LEFT"
         else
+            hostW, hostH = iconDisplayW, iconDisplayH
             -- Check if CA text needs outside positioning
             local caConfig = container._caTextConfig
             if caTextFS and caConfig and caConfig.position == "outside" then
@@ -949,25 +1037,34 @@ function Controls:CreatePreview(options)
                 local anchor = caConfig.outerAnchor or "RIGHT"
                 if anchor == "RIGHT" then
                     previewIcon:SetPoint("LEFT", container, "LEFT", 2, 0)
+                    hostAnchor = "LEFT"
                 elseif anchor == "LEFT" then
                     previewIcon:SetPoint("RIGHT", container, "RIGHT", -2, 0)
+                    hostAnchor = "RIGHT"
                 elseif anchor == "ABOVE" then
                     previewIcon:SetPoint("BOTTOM", container, "BOTTOM", 0, 0)
+                    hostAnchor = "BOTTOM"
                 elseif anchor == "BELOW" then
                     previewIcon:SetPoint("TOP", container, "TOP", 0, 0)
+                    hostAnchor = "TOP"
                 end
             else
                 previewIcon:SetPoint("CENTER", container, "CENTER", 0, 0)
+                hostAnchor = "CENTER"
             end
         end
     elseif showBar and previewBar then
         -- Centered like the live bar-only layout, leaving room for outside-anchored text
         previewBar:SetPoint("CENTER", container, "CENTER", 0, 0)
         totalWidth = previewBar:GetWidth() * barScale
+        -- A vertical bar is taller than the row's floor leaves room for.
+        containerHeight = math.max(containerHeight, previewBar:GetHeight() * barScale + PREVIEW_CONTENT_PAD)
+        hostW, hostH, hostAnchor = totalWidth, previewBar:GetHeight() * barScale, "CENTER"
     elseif showPips and previewPips then
         previewPips:SetPoint("CENTER", container, "CENTER", 0, 0)
         totalWidth = previewPips:GetWidth() * pipScale
         containerHeight = math.max(containerHeight, previewPips:GetHeight() * pipScale + PREVIEW_CONTENT_PAD)
+        hostW, hostH, hostAnchor = totalWidth, previewPips:GetHeight() * pipScale, "CENTER"
     elseif showTextOnly and caTextFS then
         -- Text-only mode: center text in container, size to fit
         caTextFS:SetPoint("CENTER", container, "CENTER", SuffixShift("CENTER", caSuffixW), 0)
@@ -980,6 +1077,7 @@ function Controls:CreatePreview(options)
         local slack = math.ceil((tonumber(fontHeight) or 12) * 0.2)
         totalWidth = textW + caSuffixW + 8 + 2 * slack
         containerHeight = math.max(containerHeight, textH + 4 + 2 * slack)
+        hostW, hostH, hostAnchor = textW + caSuffixW + 2 * slack, textH + 2 * slack, "CENTER"
     end
 
     -- Grow to fit what was measured, then clamp. Dead space around the icon is fine; clipping
@@ -1058,6 +1156,15 @@ function Controls:CreatePreview(options)
                     container:SetWidth(math.max(math.max(totalWidth, textW) + 4, container:GetWidth()))
                     container:SetHeight(containerHeight)
                 end
+                -- Live, an icon's outside text is inside its host (layout.lua,
+                -- textPosition "outside"); a bar's rides the bar and is not.
+                if not previewBar and hostW then
+                    if anchor == "RIGHT" or anchor == "LEFT" then
+                        hostW = hostW + CA_GAP + textW
+                    elseif anchor == "ABOVE" or anchor == "BELOW" then
+                        hostH = hostH + CA_GAP + textH
+                    end
+                end
             end
         elseif not previewIcon then
             -- No icon or bar present: center in container
@@ -1086,6 +1193,27 @@ function Controls:CreatePreview(options)
         rowHeight = math.min(container:GetHeight() + 20, maxRowHeight)
         container:SetHeight(rowHeight - 20)
         row:SetHeight(rowHeight)
+    end
+
+    -- The host box as an offset from the row's center, now that the container
+    -- has its final size. Nothing drawn (no icon, bar, pips or text) leaves
+    -- the box the container.
+    do
+        local cw, ch = container:GetWidth(), container:GetHeight()
+        if not hostW then
+            hostW, hostH, hostAnchor = cw, ch, "CENTER"
+        end
+        local hostX, hostY = 0, 0
+        if hostAnchor == "LEFT" then
+            hostX = -cw / 2 + 2 + hostW / 2
+        elseif hostAnchor == "RIGHT" then
+            hostX = cw / 2 - 2 - hostW / 2
+        elseif hostAnchor == "BOTTOM" then
+            hostY = -ch / 2 + hostH / 2
+        elseif hostAnchor == "TOP" then
+            hostY = ch / 2 - hostH / 2
+        end
+        row._hostBox = { w = hostW, h = hostH, x = hostX, y = hostY }
     end
 
     ----------------------------------------------------------------------------

@@ -16,8 +16,9 @@
 --                                          not rebuilt under the cursor)
 --   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"|"icons"
 --   kind()                -> "buff"|"debuff"|"buffstacks"|"debuffstacks"|"missingbuff"|
---                            "classpower"|"classresource"
+--                            "classpower"|"classresource"|"cooldown"
 --   missingVisual()       -> resolved missing-state token, "none" when unset
+--   showWhen()            -> "always"|"oncooldown"|"ready" (the Spell Cooldown kind)
 -- }
 local addonName, addon = ...
 
@@ -29,6 +30,10 @@ local Tabs = addon.UI.Settings.ScootAuraEditorTabs
 
 local OUTSIDE_ANCHOR_VALUES = { LEFT = "Left", RIGHT = "Right", ABOVE = "Above", BELOW = "Below" }
 local OUTSIDE_ANCHOR_ORDER = { "LEFT", "RIGHT", "ABOVE", "BELOW" }
+-- A vertical bar's inside name reads along the bar, so its inside list is
+-- the bar's two ends and the middle (SAU.VerticalNameAnchor).
+local VERTICAL_INSIDE_VALUES = { TOP = "Top of Bar", CENTER = "Center of Bar", BOTTOM = "Bottom of Bar" }
+local VERTICAL_INSIDE_ORDER = { "TOP", "CENTER", "BOTTOM" }
 
 -- Text placement inside the host: the nine points; stack text outside: the
 -- eight edges and corners. Both are the shared catalogs.
@@ -69,7 +74,19 @@ end
 
 function Tabs.BuildIconTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
-    local isBar = ctx.shape() == "bar"
+    local isBar = addon.ScootAuras.IsBarShape(ctx.shape())
+
+    if ctx.kind and ctx.kind() == "cooldown" then
+        -- The Spell Cooldown kind: the icon grays while the spell cools, the
+        -- Cooldown Manager look, through a boolean curve on the cooldown
+        -- object so it holds in combat.
+        tabBuilder:AddToggle({
+            label = "Desaturate while on Cooldown",
+            description = "Gray the icon while the spell is on cooldown.",
+            get = function() return ctx.get("cooldownDesaturate") ~= false end,
+            set = function(v) ctx.setAndApply("cooldownDesaturate", v and true or false) end,
+        })
+    end
 
     if isBar then
         tabBuilder:AddToggle({
@@ -99,10 +116,16 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
             dimR, dimG, dimB = theme:GetDimTextColor()
         end
         local row = CreateFrame("Frame", nil, content)
+        -- One key for both orientations (SAU.BarIconSide): a vertical bar
+        -- stands on its icon or hangs from it.
+        local vertical = ctx.shape() == "vbar"
         local sideOpts = {
-            values = { LEFT = "Left of Bar", RIGHT = "Right of Bar" },
-            order = { "LEFT", "RIGHT" },
-            get = function() return ctx.get("barIconSide") or "LEFT" end,
+            values = vertical and { BOTTOM = "Below the Bar", TOP = "Above the Bar" }
+                or { LEFT = "Left of Bar", RIGHT = "Right of Bar" },
+            order = vertical and { "BOTTOM", "TOP" } or { "LEFT", "RIGHT" },
+            get = function()
+                return addon.ScootAuras.BarIconSide({ barIconSide = ctx.get("barIconSide") }, vertical)
+            end,
             set = function(v) ctx.setAndApply("barIconSide", v) ctx.refreshPreview() end,
         }
         local _, slotFrames = Controls.BuildSlotRow(row, {
@@ -176,22 +199,28 @@ end
 -- Bar tab
 --------------------------------------------------------------------------------
 
--- Bar Size, shared by the aura bar and the Class Power bar.
+-- Bar Size, shared by the aura bar and the Class Power bar. The long axis
+-- runs 20 to 400 and the thickness 4 to 48; a vertical bar swaps which
+-- slider carries which.
 -- Kept off Builder:AddOffsetPair: the pair is bar width and bar height, each with its own range.
 local function AddBarSizeRow(tabBuilder, ctx)
+    local vertical = ctx.shape() == "vbar"
+    local LONG, THICK = { min = 20, max = 400 }, { min = 4, max = 48 }
+    local wRange = vertical and THICK or LONG
+    local hRange = vertical and LONG or THICK
     tabBuilder:AddDualSlider({
         label = "Bar Size",
         sliderA = {
-            axisLabel = "W", min = 20, max = 400, step = 1,
+            axisLabel = "W", min = wRange.min, max = wRange.max, step = 1,
             get = function() return ctx.get("barWidth") or 250 end,
             set = function(v) ctx.setAndApply("barWidth", v) ctx.refreshPreview() end,
-            minLabel = "20", maxLabel = "400",
+            minLabel = tostring(wRange.min), maxLabel = tostring(wRange.max),
         },
         sliderB = {
-            axisLabel = "H", min = 4, max = 48, step = 1,
+            axisLabel = "H", min = hRange.min, max = hRange.max, step = 1,
             get = function() return ctx.get("barHeight") or 32 end,
             set = function(v) ctx.setAndApply("barHeight", v) ctx.refreshPreview() end,
-            minLabel = "4", maxLabel = "48",
+            minLabel = tostring(hRange.min), maxLabel = tostring(hRange.max),
         },
     })
 end
@@ -271,12 +300,39 @@ function Tabs.BuildBarTab(tabBuilder, ctx)
     tabBuilder:Finalize()
 end
 
+--- The Spell Cooldown kind's Bar tab: the aura Bar tab without the cadence
+-- lock, which rides an aura's duration and has nothing to lock here.
+function Tabs.BuildCooldownBarTab(tabBuilder, ctx)
+    AddBarSizeRow(tabBuilder, ctx)
+
+    tabBuilder:AddSelector({
+        label = "Fill Direction",
+        description = "Fill grows the bar as the cooldown recovers and is full when the spell is ready. Deplete starts full and empties as it recovers.",
+        values = { deplete = "Deplete", fill = "Fill" },
+        order = { "deplete", "fill" },
+        get = function() return ctx.get("barFillMode") or "deplete" end,
+        set = function(v) ctx.setAndApply("barFillMode", v) ctx.refreshPreview() end,
+    })
+
+    AddBarStyleAndBorderBlocks(tabBuilder, ctx, {
+        values = { custom = "Custom", class = "Class Color", original = "Texture Original" },
+        order = { "custom", "class", "original" },
+        infoIcons = false, textureDefault = "bevelled", colorModeDefault = "class",
+    })
+
+    tabBuilder:Finalize()
+end
+
 --------------------------------------------------------------------------------
 -- Aura Name tab (bar trackers: the name renders on the bar)
 --------------------------------------------------------------------------------
 
-function Tabs.BuildAuraNameTab(tabBuilder, ctx)
+-- opts.noun relabels the tab's strings for a kind whose text is not an aura's
+-- name (the Spell Cooldown kind passes "Spell Name").
+function Tabs.BuildAuraNameTab(tabBuilder, ctx, opts)
     local Helpers = addon.UI.Settings.Helpers
+    local noun = (opts and opts.noun) or "Aura Name"
+    local lowerNoun = noun:lower()
     -- Missing-buff trackers: the name IS the reminder, so there is no hide
     -- toggle; instead the text can carry a "missing!" suffix. It sits beside
     -- the icon (Icon & Text) or alone (Text), never on a bar.
@@ -311,10 +367,10 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
         apply = ctx.refreshPreview,
         defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", size = 10 },
         hideToggle = (not isMissing) and {
-            label = "Hide Aura Name",
-            description = "Hide the aura name text on the bar.",
+            label = "Hide " .. noun,
+            description = "Hide the " .. lowerNoun .. " text on the bar.",
         } or nil,
-        font = { description = "The font used for the aura name." },
+        font = { description = "The font used for the " .. lowerNoun .. "." },
         -- Deep Shadow needs a FontString Scoot both creates and writes: the
         -- copy is fed by hooks on SetText. Only the missing-buff reminder
         -- qualifies. On a buff or debuff tracker the aura container writes the
@@ -346,9 +402,12 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
         return
     end
 
+    local vertical = ctx.shape() == "vbar"
+    local insideValues = vertical and VERTICAL_INSIDE_VALUES or INSIDE.values
+    local insideOrder = vertical and VERTICAL_INSIDE_ORDER or INSIDE.order
     local currentPos = ctx.get("nameTextPosition") or "inside"
-    local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE.values
-    local bOrder = currentPos == "outside" and OUTSIDE_ANCHOR_ORDER or INSIDE.order
+    local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or insideValues
+    local bOrder = currentPos == "outside" and OUTSIDE_ANCHOR_ORDER or insideOrder
 
     tabBuilder:AddDualSelector({
         label = "Position",
@@ -364,7 +423,7 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
                     if v == "outside" then
                         dual:SetOptionsB(OUTSIDE_ANCHOR_VALUES, OUTSIDE_ANCHOR_ORDER)
                     else
-                        dual:SetOptionsB(INSIDE.values, INSIDE.order)
+                        dual:SetOptionsB(insideValues, insideOrder)
                     end
                 end
                 ctx.refreshPreview()
@@ -377,7 +436,12 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
                 if (ctx.get("nameTextPosition") or "inside") == "outside" then
                     return ctx.get("nameTextOuterAnchor") or "ABOVE"
                 end
-                return ctx.get("nameTextInnerAnchor") or "LEFT"
+                local inner = ctx.get("nameTextInnerAnchor") or "LEFT"
+                if vertical then
+                    local _, token = addon.ScootAuras.VerticalNameAnchor(inner)
+                    return token
+                end
+                return inner
             end,
             set = function(v)
                 if (ctx.get("nameTextPosition") or "inside") == "outside" then
@@ -451,7 +515,7 @@ end
 -- number on a bar.
 function AddTextPositionControls(tabBuilder, ctx)
     local shape = ctx.shape()
-    local host = (shape == "bar") and "Bar" or (shape == "shape") and "Shape" or "Icon"
+    local host = addon.ScootAuras.IsBarShape(shape) and "Bar" or (shape == "shape") and "Shape" or "Icon"
     local currentPos = ctx.get("textPosition") or "inside"
     local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE.values
     local bOrder = currentPos == "outside" and OUTSIDE_ANCHOR_ORDER or INSIDE.order
@@ -503,8 +567,13 @@ end
 -- Stacks tab (stack counter text)
 --------------------------------------------------------------------------------
 
-function Tabs.BuildStacksTab(tabBuilder, ctx)
+-- opts.noun and opts.singular relabel the tab's strings for a kind whose
+-- number is not a stack count (the Spell Cooldown kind passes "Charges" and
+-- "charge").
+function Tabs.BuildStacksTab(tabBuilder, ctx, opts)
     local Helpers = addon.UI.Settings.Helpers
+    local noun = (opts and opts.noun) or "Stacks"
+    local singular = (opts and opts.singular) or "stack"
     -- The Floating Number is the count alone: it cannot be hidden, has no
     -- host to sit inside or outside of, and may run larger.
     local floating = ctx.shape() == "text"
@@ -522,15 +591,15 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
         get = get, set = set, apply = ctx.refreshPreview,
         defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", size = 14 },
         hideToggle = (not floating) and {
-            label = "Hide Stacks Text",
-            description = "Hide the stack counter.",
+            label = "Hide " .. noun .. " Text",
+            description = "Hide the " .. singular .. " counter.",
         } or nil,
-        font = { description = "The font used for the stack counter." },
+        font = { description = "The font used for the " .. singular .. " counter." },
         -- Engine-written text: no Deep Shadow (see the aura name block).
         style = { order = Helpers.fontStyleOrder },
         size = { min = 6, max = floating and 96 or 48, minLabel = "6pt",
             maxLabel = floating and "96pt" or "48pt",
-            description = "Size of the stack counter in points." },
+            description = "Size of the " .. singular .. " counter in points." },
         color = { kind = "plain" },
         offset = false,
     })
@@ -542,7 +611,11 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
     end
 
     local shape = ctx.shape()
-    local host = (shape == "bar") and "Bar" or (shape == "shape") and "Shape"
+    -- On a vertical bar with its icon shown the count sits on the icon
+    -- (layout.lua), so the labels name that rect.
+    local host = (shape == "bar") and "Bar"
+        or (shape == "vbar") and (ctx.get("barShowIcon") and "Icon" or "Bar")
+        or (shape == "shape") and "Shape"
         or (shape == "icons") and "Shapes" or "Icon"
     local currentPos = ctx.get("stackTextPosition") or "inside"
     local bValues = currentPos == "outside" and OUTSIDE_8.values or INSIDE.values
@@ -1028,6 +1101,61 @@ end
 
 function Tabs.BuildVisibilityTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
+    if ctx.kind() == "cooldown" then
+        -- The Cooldown Manager's Priority System rows: a dim by cooldown
+        -- state that competes with the state opacity below (the stronger dim
+        -- wins; cooldown.lua divides the state alpha out of it). "Show it..."
+        -- hides a state outright; these rows dim what it shows.
+        local mode = ctx.get("cooldownOpacityMode") or "onCooldown"
+        local isOff = (mode == "offCooldown")
+        local modeWord = isOff and "Off Cooldown" or "On Cooldown"
+        local artWord = (ctx.shape() == "icon") and "Icon" or "Bar"
+        tabBuilder:AddDescription("Priority System", { color = { 1, 0.82, 0 }, fontSize = 14, topPadding = 4 })
+        tabBuilder:AddDescription("In Combat > With Target > Out of Combat. Only the highest active condition applies. "
+            .. modeWord .. " competes with the result: whichever is the stronger dim takes effect. "
+            .. "\"Show it...\" hides a state outright; these rows dim what it shows.", { color = { 1, 0.82, 0 } })
+        tabBuilder:AddSelector({
+            label = "Reduce Opacity While...",
+            values = { onCooldown = "On Cooldown", offCooldown = "Off Cooldown" },
+            order = { "onCooldown", "offCooldown" },
+            get = function() return ctx.get("cooldownOpacityMode") or "onCooldown" end,
+            set = function(v)
+                ctx.setAndApply("cooldownOpacityMode", v)
+                ctx.refresh()   -- the slider row below changes with the mode
+            end,
+        })
+        if isOff then
+            tabBuilder:AddSlider({
+                label = "Opacity While off Cooldown",
+                description = "Dim the tracker while the spell is ready.",
+                min = 0, max = 100, step = 1,
+                minLabel = "Hidden", maxLabel = "100%",
+                get = function() return tonumber(ctx.get("opacityOnCooldown")) or 100 end,
+                set = function(v) ctx.setAndApply("opacityOnCooldown", v) end,
+            })
+        else
+            -- Kept off Builder:AddOffsetPair: the two sliders are art opacity and text opacity on one cooldown state.
+            tabBuilder:AddDualSlider({
+                label = "Opacity While on Cooldown",
+                description = "Dim the " .. artWord:lower()
+                    .. " while the spell is on cooldown. The Text slider keeps the countdown readable.",
+                sliderA = {
+                    axisLabel = artWord,
+                    min = 0, max = 100, step = 1,
+                    minLabel = "Hidden", maxLabel = "100%",
+                    get = function() return tonumber(ctx.get("opacityOnCooldown")) or 100 end,
+                    set = function(v) ctx.setAndApply("opacityOnCooldown", v) end,
+                },
+                sliderB = {
+                    axisLabel = "Text",
+                    min = 0, max = 100, step = 1,
+                    minLabel = "Hidden", maxLabel = "100%",
+                    get = function() return tonumber(ctx.get("opacityOnCooldownText")) or 100 end,
+                    set = function(v) ctx.setAndApply("opacityOnCooldownText", v) end,
+                },
+            })
+        end
+    end
     local get, set = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, addon.Opacity.Keys.InCombat)
     tabBuilder:AddStateOpacityBlock({ get = get, set = set, min = 0 })
 
@@ -1172,6 +1300,28 @@ function Tabs.BuildTabSet(ctx)
         return tabs, buildContent
     end
 
+    if kind == "cooldown" then
+        -- One spell's cooldown: the icon with the swipe or the bar with the
+        -- fill, the countdown, the charge count, then Visibility, since the
+        -- frame is up whether or not the spell is cooling. The Stacks tab
+        -- styles the charge count and the Aura Name tab the spell name.
+        if addon.ScootAuras.IsBarShape(shape) then
+            add("bar", "Bar", Tabs.BuildCooldownBarTab)
+            add("icon", "Icon", Tabs.BuildIconTab)
+            add("spellName", "Spell Name", function(b, c)
+                Tabs.BuildAuraNameTab(b, c, { noun = "Spell Name" })
+            end)
+        else
+            add("icon", "Icon", Tabs.BuildIconTab)
+        end
+        add("duration", "Duration", Tabs.BuildDurationTab)
+        add("charges", "Charges", function(b, c)
+            Tabs.BuildStacksTab(b, c, { noun = "Charges", singular = "charge" })
+        end)
+        add("visibility", "Visibility", Tabs.BuildVisibilityTab)
+        return tabs, buildContent
+    end
+
     if addon.ScootAuras.KindTracksStacks(kind) then
         -- The count: the number on the icon, the engine-fed segments with
         -- their ticks, the shape row over its backdrop, or the number alone.
@@ -1195,7 +1345,7 @@ function Tabs.BuildTabSet(ctx)
         return tabs, buildContent
     end
 
-    if shape == "bar" then
+    if addon.ScootAuras.IsBarShape(shape) then
         add("bar", "Bar", Tabs.BuildBarTab)
         add("icon", "Icon", Tabs.BuildIconTab)
         add("auraName", "Aura Name", Tabs.BuildAuraNameTab)
@@ -1213,7 +1363,7 @@ function Tabs.BuildTabSet(ctx)
     end
     -- No Visibility tab for buff/debuff tracking: an aura is its own
     -- visibility condition. BuildVisibilityTab serves the kinds whose frame
-    -- is always up (Class Power above; cooldowns later).
+    -- is always up (Class Power, Class Resource and Spell Cooldown above).
 
     return tabs, buildContent
 end

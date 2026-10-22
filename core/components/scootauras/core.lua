@@ -374,6 +374,12 @@ local function CharacterKnowsSpell(id)
     return false
 end
 
+--- The strict test: known or in the spellbook, overrides included. The Spell
+-- Cooldown kind gates its art on this one; PlayerHasSpell below also passes
+-- a talent the Cooldown Manager lists but this character has not taken,
+-- which has no cooldown to show.
+SAU.CharacterKnowsSpell = CharacterKnowsSpell
+
 --- Whether this character has a spell: known, in its spellbook, or listed by
 -- its Cooldown Manager, which carries the current spec's talents taken or not.
 -- These are the sources the spell picker offers. The game has no call naming
@@ -537,9 +543,10 @@ end
 -- missingbuff: the visual shows while the player LACKS the buff (missing.lua).
 -- classpower: the player's display power as a bar or a number (classpower.lua).
 -- classresource: the player's point resource as pips (classresource.lua).
+-- cooldown: one spell's cooldown as an icon or a bar (cooldown.lua).
 SAU.VALID_KINDS = {
     buff = true, debuff = true, buffstacks = true, debuffstacks = true,
-    missingbuff = true, classpower = true, classresource = true,
+    missingbuff = true, classpower = true, classresource = true, cooldown = true,
 }
 
 -- Shapes per kind. Buff/debuff trackers display the aura; a missing-buff
@@ -548,24 +555,58 @@ SAU.VALID_KINDS = {
 -- token the reminder uses). A Class Resource tracker is the segmented bar,
 -- or one shape per point (the "icons" token). A stacks tracker is the icon
 -- with the count on it, the segmented bar, one shape per stack, or the count
--- alone (the Floating Number, on the "text" token).
+-- alone (the Floating Number, on the "text" token). A Spell Cooldown tracker
+-- is the icon with the swipe, or the bar with the fill.
 SAU.VALID_SHAPES_BY_KIND = {
-    buff        = { icon = true, bar = true, shape = true },
-    debuff      = { icon = true, bar = true, shape = true },
+    buff        = { icon = true, bar = true, vbar = true, shape = true },
+    debuff      = { icon = true, bar = true, vbar = true, shape = true },
     buffstacks  = { icon = true, bar = true, icons = true, text = true },
     debuffstacks = { icon = true, bar = true, icons = true, text = true },
     missingbuff = { icon = true, text = true, icontext = true },
     classpower  = { bar = true, text = true },
     classresource = { bar = true, icons = true },
+    cooldown    = { icon = true, bar = true, vbar = true },
 }
 -- Union, for callers that only need "is this a shape at all".
-SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true, icons = true }
+SAU.VALID_SHAPES = { icon = true, bar = true, vbar = true, shape = true, text = true, icontext = true, icons = true }
+
+-- The two bar tokens share every bar setting and tab; "vbar" stands the bar
+-- on its icon (layout.lua). The segmented bars of the stacks and Class
+-- Resource kinds and the Class Power bar are "bar" only.
+function SAU.IsBarShape(shape)
+    return shape == "bar" or shape == "vbar"
+end
+
+-- Which side of the bar the icon sits on, from one stored key for both
+-- orientations: RIGHT and TOP are the far side, anything else the near side,
+-- so a value written on the other orientation still reads as a listed option.
+function SAU.BarIconSide(db, vertical)
+    local side = db and db.barIconSide
+    local far = (side == "RIGHT" or side == "TOP")
+    if vertical then
+        return far and "TOP" or "BOTTOM"
+    end
+    return far and "RIGHT" or "LEFT"
+end
+
+-- The inside name on a vertical bar reads along the bar, turned a quarter
+-- turn clockwise, so its left end is the bar's top: the inner anchor picks
+-- the end the string starts from. Returns the justification and the
+-- normalized token (TOP, CENTER or BOTTOM; a 9-way token written on a
+-- horizontal bar reads by its vertical half).
+function SAU.VerticalNameAnchor(token)
+    token = type(token) == "string" and token or "CENTER"
+    if token:find("TOP", 1, true) then return "LEFT", "TOP" end
+    if token:find("BOTTOM", 1, true) then return "RIGHT", "BOTTOM" end
+    return "CENTER", "CENTER"
+end
 
 -- The friendly-debuff wall: debuff information on friendly units is not
 -- acquirable, so Debuff offers hostile-capable units only. Missing-buff
 -- trackers offer the player and "group", which is the whole party or raid
 -- rather than one token (missing.lua resolves it). Class Power is the
--- player's own resource, so it offers one unit and the editor skips the row.
+-- player's own resource, so it offers one unit and the editor skips the row,
+-- and so is a spell's cooldown.
 SAU.VALID_UNITS = {
     buff        = { player = true, target = true, focus = true },
     debuff      = { target = true, focus = true },
@@ -574,6 +615,7 @@ SAU.VALID_UNITS = {
     missingbuff = { player = true, group = true },
     classpower  = { player = true },
     classresource = { player = true },
+    cooldown    = { player = true },
 }
 
 -- Per-kind traits the engine and the editor branch on, so no site outside
@@ -584,7 +626,9 @@ SAU.VALID_UNITS = {
 -- starts with Only in Combat on. `polarity`: the aura slot's filter, HELPFUL
 -- or HARMFUL. `measure`: what the display is about, the aura's duration or
 -- its application count; nil for the kinds that are not about one aura's
--- state (the reminder, the two resource kinds).
+-- state (the reminder, the two resource kinds, the cooldown). `showWhen`:
+-- the record carries the "Show it..." rule (cooldown.lua). A kind with a
+-- spell and no container is Scoot-owned art fed by duration objects.
 local KIND_TRAITS = {
     buff        = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL", measure = "duration" },
     debuff      = { spell = true,  container = true,  gated = true,  polarity = "HARMFUL", measure = "duration" },
@@ -593,6 +637,7 @@ local KIND_TRAITS = {
     missingbuff = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL" },
     classpower  = { spell = false, container = false, gated = false },
     classresource = { spell = false, container = false, gated = false },
+    cooldown    = { spell = true,  container = false, gated = false, showWhen = true },
 }
 
 -- Auto names for the kinds with no spell to name them after: a string, or a
@@ -625,6 +670,12 @@ end
 function SAU.KindStartsGated(kind)
     local traits = KIND_TRAITS[kind]
     return traits == nil or traits.gated ~= false
+end
+
+--- The kinds whose record carries the "Show it..." rule (cooldown.lua).
+function SAU.KindHasShowWhen(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits ~= nil and traits.showWhen == true
 end
 
 --- "HELPFUL" or "HARMFUL" for a kind that watches one aura slot, nil for
@@ -682,7 +733,7 @@ end
 
 function SAU.ValidateContent(spellId, kind, unit, shape)
     if not SAU.VALID_KINDS[kind] then
-        return nil, "kind must be buff, debuff, buffstacks, debuffstacks, missingbuff, classpower, or classresource"
+        return nil, "kind must be buff, debuff, buffstacks, debuffstacks, missingbuff, classpower, classresource, or cooldown"
     end
     if SAU.KindNeedsSpell(kind) and (type(spellId) ~= "number" or spellId <= 0) then
         return nil, "invalid spell ID"
@@ -707,6 +758,9 @@ SAU.VALID_MISSING_VISUALS_BY_SHAPE = {
     bar   = { emptybar = true, blinkemptybar = true, blinkicon = true, blinkdesaticon = true },
     shape = { desat = true, blink = true, blinkdesat = true },
 }
+-- The vertical bar carries the bar tokens, so a flip between the two bars
+-- keeps the choice.
+SAU.VALID_MISSING_VISUALS_BY_SHAPE.vbar = SAU.VALID_MISSING_VISUALS_BY_SHAPE.bar
 
 -- "When stacks are 0, show..." on the stacks kinds: Nothing, or one option
 -- per shape, which is the default: the empty frame of a segmented bar or a
@@ -805,6 +859,30 @@ end
 --- Trait record for a token, or nil for "none" and anything unknown.
 function SAU.MissingVisualTraits(token)
     return token and MISSING_VISUAL_TRAITS[token] or nil
+end
+
+-- "Show it..." on the Spell Cooldown kind: always, only while the spell is
+-- on cooldown, or only while it is ready. cooldown.lua applies it as the
+-- root's alpha from the duration object's IsZero, so it holds in every
+-- secrecy state. Stored explicitly on the kind, so the editor row always
+-- carries a value; nil reads as always. Every other kind stores nil.
+SAU.VALID_SHOW_WHEN = { always = true, oncooldown = true, ready = true }
+
+--- The stored value for a chosen or carried-over "Show it..." token: the
+-- token when the kind carries the field and offers it, "always" for anything
+-- else on that kind, nil on every other kind. Every write path runs its
+-- token through this.
+function SAU.CoerceShowWhen(kind, token)
+    if not SAU.KindHasShowWhen(kind) then return nil end
+    if SAU.VALID_SHOW_WHEN[token] then return token end
+    return "always"
+end
+
+--- Resolves a tracker's "Show it..." rule: "always", "oncooldown" or
+-- "ready".
+function SAU.ShowWhenFor(tracker)
+    local token = tracker and SAU.CoerceShowWhen(tracker.kind, tracker.showWhen)
+    return token or "always"
 end
 
 -- Own-cast filtering: a debuff tracker watches the player's own aura on the
@@ -1020,6 +1098,17 @@ function SAU.DefaultSettings()
         pipBackdropTint         = { type = "addon", default = { 0, 0, 0, 1 } },
         pipBackdropOpacity      = { type = "addon", default = 100 },
         variedLastPoints        = { type = "addon", default = true },
+        -- Spell Cooldown kind (cooldown.lua): desaturate the icon while the
+        -- spell is on cooldown. The swipe, the countdown and the charge
+        -- count read the icon, duration and stack keys above.
+        cooldownDesaturate      = { type = "addon", default = true },
+        -- The Visibility tab's Priority System rows, on the Cooldown
+        -- Manager's keys: dim the art and the text by cooldown state
+        -- ("onCooldown" or "offCooldown"), competing with the state opacity
+        -- above; the stronger dim wins (cooldown.lua, ResolveAlphas).
+        cooldownOpacityMode     = { type = "addon", default = "onCooldown" },
+        opacityOnCooldown       = { type = "addon", default = 100 },
+        opacityOnCooldownText   = { type = "addon", default = 100 },
     }
 end
 
@@ -1048,6 +1137,25 @@ SAU.BarShapeStartingValues = {
     barBackgroundTexture = "a1",
     barBorderStyle       = "square",
     barBorderThickness   = 2,
+}
+
+-- Vertical bar shape: the Tracked Bars vertical look (cooldowns/trackedbars/
+-- vertical.lua) at the horizontal bar's length. A 30 x 200 bar standing on
+-- a 30 px icon, the timer above the bar, the name rotated along it, a square
+-- border 2 thick like the horizontal bar's. Textures and fill color keep the
+-- registered defaults (bevelled, class color). Same stamp/unstamp rules as
+-- the horizontal values.
+SAU.VerticalBarShapeStartingValues = {
+    barWidth            = 30,
+    barHeight           = 200,
+    iconSize            = 30,
+    textPosition        = "outside",
+    textOuterAnchor     = "ABOVE",
+    textSize            = 12,
+    nameTextInnerAnchor = "CENTER",
+    nameTextSize        = 12,
+    barBorderStyle      = "square",
+    barBorderThickness  = 2,
 }
 
 local function StampEqual(a, b)
@@ -1138,11 +1246,14 @@ SAU.StackNumberStartingValues = {
 }
 
 -- The stamps a tracker of this kind and shape carries, in the order they are
--- read: the host's, then the bar shape's, then the kind's, then the kind's
--- for the shape. A stamp writes only keys still unwritten, so the first to
+-- read: the host's, then the bar shape's (horizontal or vertical), then the
+-- kind's, then the kind's for the shape. A stamp writes only keys still
+-- unwritten, so the first to
 -- name a key wins, and the host's look (AurasHost.StartingValues) leads. The
 -- editor walks the same list for a draft, so its controls and preview show
--- what materialization writes.
+-- what materialization writes. The Spell Cooldown kind carries no stamp of
+-- its own: the icon defaults already put the countdown at the center and the
+-- charge count inside bottom-right, and a bar takes the bar shape's.
 function SAU.StartingValueStamps(kind, shape)
     local stamps = {}
     local h = addon.AurasHost
@@ -1152,6 +1263,8 @@ function SAU.StartingValueStamps(kind, shape)
     end
     if shape == "bar" then
         stamps[#stamps + 1] = SAU.BarShapeStartingValues
+    elseif shape == "vbar" then
+        stamps[#stamps + 1] = SAU.VerticalBarShapeStartingValues
     end
     if kind == "missingbuff" then
         stamps[#stamps + 1] = SAU.MissingKindStartingValues
@@ -1546,6 +1659,9 @@ function SAU.CreateTracker(spec)
     -- nil on a duration kind, the shape's default on a stacks kind when the
     -- editor passed nothing.
     store.trackers[trackerId].missingVisual = SAU.CoerceMissingVisual(kind, shape, spec.missingVisual)
+    -- "Show it..." on the Spell Cooldown kind, stored explicitly; nil on
+    -- every other kind.
+    store.trackers[trackerId].showWhen = SAU.CoerceShowWhen(kind, spec.showWhen)
     -- Content, not styling: the segment count binds into the engine's stack
     -- bar, and it belongs to the spell (SetTrackerContent clears it with one).
     if SAU.KindTracksStacks(kind) and tonumber(spec.maxStacks) then
@@ -1673,6 +1789,12 @@ function SAU.SetTrackerContent(trackerId, changes)
     -- and a token the new shape does not offer both clear it on a duration
     -- kind, and fall to the shape's default on a stacks kind.
     tracker.missingVisual = SAU.CoerceMissingVisual(kind, shape, tracker.missingVisual)
+    -- "Show it..." on the Spell Cooldown kind: explicit write, then one
+    -- coercion clears it on a flip to any other kind.
+    if changes.showWhen ~= nil then
+        tracker.showWhen = changes.showWhen
+    end
+    tracker.showWhen = SAU.CoerceShowWhen(kind, tracker.showWhen)
     -- The segment count override belongs to the spell it was set for; a new
     -- spell starts from detection again. `false` clears it by hand.
     if changes.maxStacks ~= nil then
@@ -1745,6 +1867,7 @@ function SAU.DuplicateTracker(trackerId, exact)
         onlyInCombat = source.onlyInCombat,
         onlyInInstances = source.onlyInInstances,
         missingVisual = source.missingVisual,
+        showWhen = source.showWhen,
         maxStacks = source.maxStacks,
         specs = specs,
         homeSpec = homeSpec,
@@ -1987,9 +2110,9 @@ function SAU.ToggleGroupSpec(gid, specID)
     return SAU.SetGroupSpecs(gid, ToggledSpecs(group.specs, specID))
 end
 
--- Starting grow direction from the group's first member: bars are horizontal,
--- so stacking them DOWN keeps them apart; everything else reads best in a row
--- growing RIGHT. (Vertical bars, when they exist, belong on the RIGHT branch.)
+-- Starting grow direction from the group's first member: a horizontal bar
+-- stacks DOWN to keep the bars apart; everything else, a vertical bar
+-- included, reads best in a row growing RIGHT.
 local function ApplyDefaultGrow(group, tracker)
     if group.settings and group.settings.growTouched then return end
     group.settings = group.settings or CopyTable(SAU.GROUP_SETTING_DEFAULTS)

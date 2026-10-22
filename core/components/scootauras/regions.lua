@@ -36,6 +36,32 @@ local function CreateTextElement(parent, elemDef, textParent)
     return { type = "text", widget = fs, def = elemDef }
 end
 
+-- The aura name: its FontString sits in a frame of its own under the text
+-- host, so a vertical bar can turn it. A Rotation animation on that frame
+-- holds a quarter turn clockwise for as long as it plays (the Tracked Bars
+-- vertical mechanism, verified on screen); FontString:SetRotation turns the
+-- glyphs about a point the engine does not document, and the first screen
+-- showed the string off the bar's center. Word wrap is off from creation so
+-- a name longer than the bar runs to an ellipsis on one line (a Deep Shadow
+-- companion copies the flag when it is paired).
+local function CreateNameElement(parent, textHost)
+    local host = CreateFrame("Frame", nil, textHost)
+    host:SetAllPoints(textHost)
+    host:SetFrameLevel(textHost:GetFrameLevel())
+    local elem = CreateTextElement(parent, {
+        type = "text", key = "name", source = "name", baseSize = 10,
+    }, host)
+    elem.widget:SetWordWrap(false)
+    local spin = host:CreateAnimationGroup()
+    local turn = spin:CreateAnimation("Rotation")
+    turn:SetDegrees(-90)
+    turn:SetDuration(0)
+    turn:SetEndDelay(2147483647)
+    elem.host = host
+    elem.spin = spin
+    return elem
+end
+
 local function CreateTextureElement(parent, elemDef)
     local tex = parent:CreateTexture(nil, "ARTWORK")
     local size = elemDef.defaultSize or { 32, 32 }
@@ -261,9 +287,7 @@ function Engine.WireButton(trackerId, tracker, state, entry, button)
         SAU.Cadence.OnWire(entry)
     end
 
-    table.insert(elements, CreateTextElement(button, {
-        type = "text", key = "name", source = "name", baseSize = 10,
-    }, textHost))
+    table.insert(elements, CreateNameElement(button, textHost))
 
     -- Stack count; the wire-time corner anchor is a pre-layout default only
     -- (LayoutElements repositions it per the stackText* settings). It must not
@@ -342,6 +366,9 @@ local function GetDurationFormatter(tenths)
     durationFormatters[tenths] = f
     return f
 end
+
+-- The Spell Cooldown kind binds its own countdown to the same formatter.
+Engine.GetDurationFormatter = GetDurationFormatter
 
 -- Tenths change ten times a second, and SetToDefaults does not document the
 -- update interval it leaves, so the tenths bind hands the engine a template
@@ -494,9 +521,16 @@ function Engine.BindForMode(trackerId, tracker, state)
                     -- The lock bar is reverse-filled in fill mode
                     -- (Cadence.Configure): its texture is the remaining share
                     -- on the right, so left edge to texture left edge = elapsed.
+                    -- A vertical bar reverse-fills from the top, so the
+                    -- elapsed share is bar bottom edge to texture bottom edge.
                     elem.lockClip:ClearAllPoints()
-                    elem.lockClip:SetPoint("TOPLEFT", lockBar, "TOPLEFT", 0, 0)
-                    elem.lockClip:SetPoint("BOTTOMRIGHT", lockTex, "BOTTOMLEFT", 0, 0)
+                    if vis.vertical then
+                        elem.lockClip:SetPoint("BOTTOMLEFT", lockBar, "BOTTOMLEFT", 0, 0)
+                        elem.lockClip:SetPoint("TOPRIGHT", lockTex, "BOTTOMRIGHT", 0, 0)
+                    else
+                        elem.lockClip:SetPoint("TOPLEFT", lockBar, "TOPLEFT", 0, 0)
+                        elem.lockClip:SetPoint("BOTTOMRIGHT", lockTex, "BOTTOMLEFT", 0, 0)
+                    end
                     elem.lockClip:Show()
                 else
                     elem.lockClip:Hide()
@@ -579,9 +613,7 @@ function Engine.BuildElementSet(root)
         type = "bar", key = "durationBar", source = "duration", defaultSize = { 120, 12 },
     }))
 
-    table.insert(elements, CreateTextElement(root, {
-        type = "text", key = "name", source = "name", baseSize = 10,
-    }, textHost))
+    table.insert(elements, CreateNameElement(root, textHost))
 
     table.insert(elements, CreateTextElement(root, {
         type = "text", key = "stacks", source = "applications", baseSize = 14,
@@ -664,11 +696,13 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
         -- own preview (Edit Mode is out of combat); a preview set left by an
         -- earlier occupant hides. The missing-state underlay's gate reads the
         -- Edit Mode flag on its own, and so does the Class Resource gate,
-        -- which shows an inapplicable resource as empty pips here.
+        -- which shows an inapplicable resource as empty pips here, and the
+        -- Spell Cooldown gate, which shows an unknown or alpha-hidden spell.
         activePreviews[entry] = nil
         if entry.preview then entry.preview.root:Hide() end
         if SAU.Underlay then SAU.Underlay.UpdateGate(trackerId) end
         if SAU.ClassResource then SAU.ClassResource.UpdateGate(trackerId) end
+        if SAU.Cooldown then SAU.Cooldown.UpdateGate(trackerId) end
         return
     end
 
@@ -791,5 +825,8 @@ function Engine.HideEditModePreview(state)
     end
     if SAU.ClassResource and entry.occupantId then
         SAU.ClassResource.UpdateGate(entry.occupantId)
+    end
+    if SAU.Cooldown and entry.occupantId then
+        SAU.Cooldown.UpdateGate(entry.occupantId)
     end
 end

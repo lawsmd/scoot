@@ -91,7 +91,7 @@ function SAU.ResolveVisibility(tracker, db)
         }
     end
     local showIcon
-    if shape == "bar" then
+    if SAU.IsBarShape(shape) then
         showIcon = db and db.barShowIcon or false
     elseif shape == "icons" or shape == "text" then
         -- The Group of Shapes (stacks.lua) and the Floating Number carry no
@@ -117,13 +117,19 @@ function SAU.ResolveVisibility(tracker, db)
             showName = (shape == "bar") and not (db and db.hideNameText),
         }
     end
+    -- The duration kinds, and the Spell Cooldown kind (cooldown.lua), whose
+    -- icon or bar reads the same flags; its charge count rides showStacks and
+    -- the module hides it itself for a spell with one charge. `vertical` is
+    -- the vbar token: the bar stands on its icon and the name reads along it.
+    local isBar = SAU.IsBarShape(shape)
     return {
         shape = shape,
+        vertical = (shape == "vbar"),
         showIcon = showIcon,
-        showBar = (shape == "bar"),
+        showBar = isBar,
         showText = not (db and db.hideText),
         showStacks = not (db and db.hideStackText),
-        showName = (shape == "bar") and not (db and db.hideNameText),
+        showName = isBar and not (db and db.hideNameText),
     }
 end
 
@@ -410,12 +416,14 @@ local function LayoutElements(trackerId, tracker, state)
 
     local textPosition = (db and db.textPosition) or "inside"
 
-    if vis.shape == "bar" then
-        -- Bar shape: the bar is the anchor and the icon is an optional
-        -- addition beside it. Both sit INSIDE the host, so the shell (the
-        -- Edit Mode drag box) wraps the whole tracker. Duration text rides
-        -- the bar and is positioned after the bar block below.
-        local iconSide = (db and db.barIconSide) or "LEFT"
+    if SAU.IsBarShape(vis.shape) then
+        -- Bar shapes: the bar is the anchor and the icon is an optional
+        -- addition beside it (a horizontal bar) or under it (a vertical bar).
+        -- Both sit INSIDE the host, so the shell (the Edit Mode drag box)
+        -- wraps the whole tracker. Duration text rides the bar and is
+        -- positioned after the bar block below.
+        local vertical = vis.vertical == true
+        local iconSide = SAU.BarIconSide(db, vertical)
         local iconGap = tonumber(db and db.barIconGap) or 2
 
         -- The cadence lock bar (state.lockBar, outside the button tree) mirrors
@@ -431,11 +439,12 @@ local function LayoutElements(trackerId, tracker, state)
         local function PlaceLockBar(point)
             local lockBar = state.lockBar
             if not lockBar then return end
-            local dx = (inL - inR) / 2
-            if point == "LEFT" then dx = inL elseif point == "RIGHT" then dx = -inR end
+            local dx, dy = (inL - inR) / 2, (inB - inT) / 2
+            if point == "LEFT" then dx = inL elseif point == "RIGHT" then dx = -inR
+            elseif point == "BOTTOM" then dy = inB elseif point == "TOP" then dy = -inT end
             lockBar:ClearAllPoints()
             lockBar:SetSize(math.max(1, barW - inL - inR), math.max(1, barH - inT - inB))
-            lockBar:SetPoint(point, state.container, point, dx, (inB - inT) / 2)
+            lockBar:SetPoint(point, state.container, point, dx, dy)
         end
 
         if barElem and vis.showBar then
@@ -446,7 +455,19 @@ local function LayoutElements(trackerId, tracker, state)
             texElem.widget:SetSize(iconW, iconH)
             texElem.widget:Show()
             if barElem and vis.showBar then
-                if iconSide == "RIGHT" then
+                if vertical then
+                    -- The bar stands on its icon (the Tracked Bars vertical
+                    -- look), or hangs from it with the icon on top.
+                    if iconSide == "TOP" then
+                        barElem.widget:SetPoint("BOTTOM", state.container, "BOTTOM", 0, 0)
+                        texElem.widget:SetPoint("BOTTOM", barElem.widget, "TOP", 0, iconGap)
+                        PlaceLockBar("BOTTOM")
+                    else
+                        barElem.widget:SetPoint("TOP", state.container, "TOP", 0, 0)
+                        texElem.widget:SetPoint("TOP", barElem.widget, "BOTTOM", 0, -iconGap)
+                        PlaceLockBar("TOP")
+                    end
+                elseif iconSide == "RIGHT" then
                     barElem.widget:SetPoint("LEFT", state.container, "LEFT", 0, 0)
                     texElem.widget:SetPoint("LEFT", barElem.widget, "RIGHT", iconGap, 0)
                     PlaceLockBar("LEFT")
@@ -458,7 +479,11 @@ local function LayoutElements(trackerId, tracker, state)
             else
                 texElem.widget:SetPoint("CENTER", state.container, "CENTER", 0, 0)
             end
-            SetHostSize(iconW + iconGap + barW, math.max(iconH, barH))
+            if vertical then
+                SetHostSize(math.max(iconW, barW), iconH + iconGap + barH)
+            else
+                SetHostSize(iconW + iconGap + barW, math.max(iconH, barH))
+            end
         else
             if barElem and vis.showBar then
                 barElem.widget:SetPoint("CENTER", state.container, "CENTER", 0, 0)
@@ -564,8 +589,8 @@ local function LayoutElements(trackerId, tracker, state)
         SetHostSize(iconW, iconH)
     end
 
-    -- Bar shape: duration text anchors to the bar, inside or outside.
-    if vis.shape == "bar" and textElem and vis.showText and barElem and vis.showBar then
+    -- Bar shapes: duration text anchors to the bar, inside or outside.
+    if SAU.IsBarShape(vis.shape) and textElem and vis.showText and barElem and vis.showBar then
         textElem.widget:ClearAllPoints()
         local txOff = tonumber(db and db.textOffsetX) or 0
         local tyOff = tonumber(db and db.textOffsetY) or 0
@@ -598,22 +623,56 @@ local function LayoutElements(trackerId, tracker, state)
         textElem.widget:Show()
     end
 
-    -- Stack count: the bar hosts it for bar shape, the icon/host rect
-    -- otherwise.
-    PlaceStackText((vis.shape == "bar" and barElem and vis.showBar) and barElem.widget or state.container)
+    -- Stack count: the bar hosts it on the bar shapes, except on a vertical
+    -- bar with its icon shown, where the count sits on the icon (the Tracked
+    -- Bars look); the icon/host rect otherwise.
+    local stackHost = state.container
+    if SAU.IsBarShape(vis.shape) and barElem and vis.showBar then
+        stackHost = barElem.widget
+        if vis.vertical and texElem and vis.showIcon and iconW > 0 then
+            stackHost = texElem.widget
+        end
+    end
+    PlaceStackText(stackHost)
 
-    -- Aura name text, anchored to the bar.
+    -- Aura name text, anchored to the bar. On a vertical bar the inside name
+    -- reads along the bar: its host frame (regions.lua, CreateNameElement) is
+    -- sized to the bar's long axis, centered on it and held a quarter turn
+    -- clockwise by its Rotation animation, with the string filling the host.
+    -- Every other placement is an unrotated, auto-sized string anchored to
+    -- the bar itself, with the host back over the text host, so both are
+    -- reset first.
     if nameElem then
+        local nameFS = nameElem.widget
+        local host, spin = nameElem.host, nameElem.spin
         if not (vis.showName and barElem and vis.showBar) then
-            nameElem.widget:Hide()
+            nameFS:Hide()
         else
-            nameElem.widget:ClearAllPoints()
+            nameFS:ClearAllPoints()
+            nameFS:SetSize(0, 0)
             local namePos = (db and db.nameTextPosition) or "inside"
             local nxOff = tonumber(db and db.nameTextOffsetX) or 0
             local nyOff = tonumber(db and db.nameTextOffsetY) or 0
             local anchorW = barElem.widget
+            local turned = vis.vertical and namePos ~= "outside" and host ~= nil and spin ~= nil
 
-            if namePos == "outside" then
+            if host then
+                host:ClearAllPoints()
+                if not turned then host:SetAllPoints(host:GetParent()) end
+            end
+            if spin and not turned and spin:IsPlaying() then spin:Stop() end
+
+            if turned then
+                -- The inner anchor picks the end the string starts from
+                -- (SAU.VerticalNameAnchor): after the turn, the host's left
+                -- end is the bar's top.
+                local justify = SAU.VerticalNameAnchor(db and db.nameTextInnerAnchor)
+                host:SetSize(math.max(1, barH - 2 * GAP), barW)
+                host:SetPoint("CENTER", anchorW, "CENTER", nxOff, nyOff)
+                nameFS:SetAllPoints(host)
+                nameFS:SetJustifyH(justify)
+                if not spin:IsPlaying() then spin:Play() end
+            elseif namePos == "outside" then
                 local anchor = (db and db.nameTextOuterAnchor) or "ABOVE"
                 if anchor == "RIGHT" then
                     nameElem.widget:SetJustifyH("LEFT")

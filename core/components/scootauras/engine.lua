@@ -451,8 +451,8 @@ function Engine.ApplyAll(trackerId)
 
     if not SAU.KindOwnsContainer(tracker.kind) then
         -- No AuraContainer to build: the visible set is Scoot-owned and fed
-        -- by plain setters (classpower.lua, classresource.lua), painted from
-        -- ApplyStyling, so
+        -- by plain setters (classpower.lua, classresource.lua) or duration
+        -- objects (cooldown.lua), painted from ApplyStyling, so
         -- nothing here waits on the structural gate or the pending queue. A
         -- container parked on this entry by an earlier occupant stays parked.
         -- Before the gate check on purpose, or the kind would queue for
@@ -567,9 +567,9 @@ function Engine.MarkStaleFilters(reason)
         local marked = {}
         for trackerId, entry in pairs(byTracker) do
             local tracker = SAU.GetTracker(trackerId)
-            -- A kind with no spell has no filter; a container on its entry
-            -- belongs to an earlier occupant and stays parked as it is.
-            if tracker and SAU.KindNeedsSpell(tracker.kind) and entry.container and entry.wiredFilterKey then
+            -- A kind with no container has no filter; a container on its
+            -- entry belongs to an earlier occupant and stays parked as it is.
+            if tracker and SAU.KindOwnsContainer(tracker.kind) and entry.container and entry.wiredFilterKey then
                 local _, key = BuildCandidateFilters(tracker, nil)
                 -- Never rebuild toward a degenerate key. An empty or partial
                 -- catalog expands to the bare spell id, and acting on that
@@ -669,6 +669,9 @@ function Engine.ReleaseForTracker(trackerId)
     end
     if SAU.ClassResource then
         SAU.ClassResource.OnEntryReleased(entry, trackerId)
+    end
+    if SAU.Cooldown then
+        SAU.Cooldown.OnEntryReleased(entry, trackerId)
     end
     -- A grouped visual must not stay parented in the group: the next occupant
     -- of this entry would render inside it.

@@ -411,7 +411,7 @@ local function LifecycleDump()
     local store = SAU.GetStore()
     local rows = SAU.SortedTrackers()
     if not store or not next(store.trackers or {}) then
-        push("No trackers. Start with: " .. SLASH .. " add <spellId> [unit] [buff|debuff] [icon|bar|shape]")
+        push("No trackers. Start with: " .. SLASH .. " add <spellId> [unit] [buff|debuff] [icon|bar|vbar|shape]")
     else
         local loaded, notLoaded = 0, 0
         push("--- Trackers (account-wide) ---")
@@ -947,10 +947,10 @@ end
 --------------------------------------------------------------------------------
 
 local VALID_UNITS = { player = true, group = true, target = true, focus = true }
-local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true, icons = true }
+local VALID_SHAPES = { icon = true, bar = true, vbar = true, shape = true, text = true, icontext = true, icons = true }
 local VALID_KINDS = {
     buff = true, debuff = true, buffstacks = true, debuffstacks = true,
-    missingbuff = true, classpower = true, classresource = true,
+    missingbuff = true, classpower = true, classresource = true, cooldown = true,
 }
 
 local Commands = addon.Commands
@@ -1058,7 +1058,7 @@ local function cadence(a1, a2, a3)
         ids[1] = trackerId
     else
         for _, row in ipairs(SAU.SortedTrackers()) do
-            if row.tracker.spellId == trackerId and row.tracker.shape == "bar" then
+            if row.tracker.spellId == trackerId and SAU.IsBarShape(row.tracker.shape) then
                 table.insert(ids, row.id)
             end
         end
@@ -1123,7 +1123,7 @@ addon:RegisterDebugCommand({
         { word = "host", help = "the host in effect: brand, tokens, store, spec axis, Cooldown Manager, saved variable", fn = HostDump },
         { word = "catalog", help = "every picker cell: shown name, stored base", fn = CatalogDump },
         { word = "log", help = "probe log", fn = DumpLog },
-        { word = "add", usage = "add <spellId|classpower|classresource> [player|group|target|focus] [buff|debuff|buffstacks|debuffstacks|missingbuff] [icon|bar|shape|text|icontext|icons]",
+        { word = "add", usage = "add <spellId|classpower|classresource> [player|group|target|focus] [buff|debuff|buffstacks|debuffstacks|missingbuff|cooldown] [icon|bar|vbar|shape|text|icontext|icons]",
           help = "create a tracker; the arguments after the first are order-free", fn = function(a1, a2, a3, a4)
             local spellId = tonumber(a1)
             local unit, shape, kind = nil, nil, "buff"
@@ -1243,6 +1243,12 @@ addon:RegisterDebugCommand({
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.ClassResource then return Commands.USAGE end
             addon.DebugShowWindow(Title("Class Resource t") .. trackerId, SAU.ClassResource.DebugInfo(trackerId))
+        end },
+        { word = "cooldown", usage = "cooldown <id>", help = "spell cooldown tracker: resolved spell, known gate, secrecy of every read, show rule, last paint", fn = function(a1)
+            local SAU = addon.ScootAuras
+            local trackerId = tonumber(a1)
+            if not trackerId or not SAU.Cooldown then return Commands.USAGE end
+            addon.DebugShowWindow(Title("Spell Cooldown t") .. trackerId, SAU.Cooldown.DebugInfo(trackerId))
         end },
         { word = "cadence", usage = "cadence <id|spellId> [on|off|set <0..1>|alpha <0..1>|mirror <y|off>]",
           help = "cadence lock record and probes", fn = cadence },

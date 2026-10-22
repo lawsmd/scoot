@@ -22,7 +22,7 @@ local NAME_MAX = 64
 -- migration markers stay home: the importer assigns them.
 local TRACKER_FIELDS = {
     "kind", "spellId", "unit", "shape", "name", "enabled",
-    "onlyInCombat", "onlyInInstances", "missingVisual", "maxStacks", "specs", "homeSpec",
+    "onlyInCombat", "onlyInInstances", "missingVisual", "showWhen", "maxStacks", "specs", "homeSpec",
 }
 
 -- Read at call time: core/importexport.lua loads after this file.
@@ -218,6 +218,9 @@ local function ValidateTrackerRecord(rec, label, exact, known)
             clean.maxStacks = math.min(math.floor(n), SAU.MAX_STACK_PIPS)
         end
     end
+    -- "always" on the cooldown kind for anything it does not offer; nil on
+    -- every other kind.
+    clean.showWhen = SAU.CoerceShowWhen(kind, (type(rec.showWhen) == "string") and rec.showWhen or nil)
 
     clean.specs = SAU._NormalizeSpecs(rec.specs)
     clean.homeSpec = tonumber(rec.homeSpec) or nil
@@ -364,6 +367,7 @@ local function WriteTrackerRecord(store, clean, groupId)
         onlyInCombat = clean.onlyInCombat,
         onlyInInstances = clean.onlyInInstances,
         missingVisual = clean.missingVisual,
+        showWhen = clean.showWhen,
         maxStacks = clean.maxStacks,
         specs = clean.specs,
         homeSpec = clean.homeSpec,

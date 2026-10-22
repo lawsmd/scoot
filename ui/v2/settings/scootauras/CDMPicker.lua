@@ -130,7 +130,12 @@ end
 -- that icon while the talent is taken). Name and icon come from
 -- SAU.DescribeSpell, the same describer the editor chip and the Aura List
 -- use, so a click never changes what the player saw.
-local function BuildCatalog()
+--
+-- `scope` narrows the catalog for a kind: `categories`, the category values
+-- to walk in place of every one, and `baseIdentity`, which keys cells on the
+-- base spell alone. Absent, the catalog is the aura kinds' (every category,
+-- the tooltip override else the base).
+local function BuildCatalog(scope)
     local entries = {}
     local SAU = addon.ScootAuras
     local enum = Enum and Enum.CooldownViewerCategory
@@ -143,12 +148,21 @@ local function BuildCatalog()
     SAU.InvalidateSpellDescriptions()
 
     local cats = {}
-    for _, value in pairs(enum) do
-        if type(value) == "number" then
-            table.insert(cats, value)
+    if scope and scope.categories then
+        for _, value in ipairs(scope.categories) do
+            if type(value) == "number" then
+                table.insert(cats, value)
+            end
         end
+    else
+        for _, value in pairs(enum) do
+            if type(value) == "number" then
+                table.insert(cats, value)
+            end
+        end
+        table.sort(cats)
     end
-    table.sort(cats)
+    local baseIdentity = scope and scope.baseIdentity == true
 
     local seen = {}
     for _, catValue in ipairs(cats) do
@@ -161,7 +175,15 @@ local function BuildCatalog()
                         local sid = not issecretvalue(info.spellID) and info.spellID or nil
                         local tid = not issecretvalue(info.overrideTooltipSpellID)
                             and info.overrideTooltipSpellID or nil
-                        local identity = (type(tid) == "number" and tid > 0) and tid or sid
+                        -- The cooldown kind keys on the castable spell: a
+                        -- tooltip override (an Eclipse) has no cooldown, and an
+                        -- equip-slot entry has no spell and is skipped.
+                        local identity
+                        if baseIdentity then
+                            identity = sid
+                        else
+                            identity = (type(tid) == "number" and tid > 0) and tid or sid
+                        end
                         if type(identity) == "number" and not seen[identity] then
                             seen[identity] = true
                             local name, icon, shownId = SAU.DescribeSpell(identity)
@@ -187,6 +209,20 @@ end
 
 -- Exposed for the debug dump (/scoot debug sa catalog).
 Picker.BuildCatalog = BuildCatalog
+
+-- The catalog a kind draws from. The Spell Cooldown kind lists the cooldown
+-- categories (the Essential and Utility viewers, and the spec-agnostic
+-- essentials), keyed by the castable base spell; every other kind takes the
+-- whole catalog.
+local function CatalogScopeForKind(kind)
+    if kind ~= "cooldown" then return nil end
+    local enum = Enum and Enum.CooldownViewerCategory
+    if not enum then return nil end
+    return {
+        categories = { enum.Essential, enum.Utility, enum.SpecAgnosticEssential },
+        baseIdentity = true,
+    }
+end
 
 --------------------------------------------------------------------------------
 -- Extra cells per tracker kind
@@ -405,7 +441,7 @@ function Picker.Attach(parent, opts)
         end
         widgets = {}
 
-        local catalog = BuildCatalog()
+        local catalog = BuildCatalog(CatalogScopeForKind(kind))
         local extra = ExtraEntriesForKind(kind, catalog)
         local width = child:GetWidth()
         if not width or width < CELL_W then width = parent:GetWidth() or 400 end

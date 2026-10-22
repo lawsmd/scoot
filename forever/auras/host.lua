@@ -110,6 +110,9 @@ addon.AurasHost = {
     StartingValues = function(_, shape)
         if shape == "icon" then return ICON_STAMPS end
         if shape == "bar" then return BAR_STAMPS end
+        -- A vertical bar ("vbar") takes no host look: the Cooldown Manager
+        -- atlas is a horizontal nine-slice, so it opens on Scoot's own
+        -- SAU.VerticalBarShapeStartingValues on both hosts.
         return NO_STAMPS
     end,
 }

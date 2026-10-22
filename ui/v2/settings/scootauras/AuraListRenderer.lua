@@ -71,20 +71,16 @@ local function BoxBtnReserve()
     return BoxClusterW() + 58
 end
 
--- The page header. With the header in the content pane (the skin's
--- contentHeader.placement "pane") the how-to line hangs under the title at
--- an explicit width, and the search box and Import button sit on the
--- divider line at the header's bottom-right. With the header in the title
--- band ("band") the title line has no room under it: the two widgets stand
--- at the line's right end, where the other pages' action buttons go, and
--- the how-to text is the tooltip of an info icon beside the title.
+-- The page header. The how-to text is the tooltip of an info icon beside
+-- the title, whichever skin draws the header. With the header in the
+-- content pane (the skin's contentHeader.placement "pane") the search box
+-- and Import button sit on the divider line at the header's bottom-right;
+-- with the header in the title band ("band") they stand at the title
+-- line's right end, where the other pages' action buttons go.
 local HOW_TO = "Auras are shared by every character on your account and load in the specializations you pick. "
     .. "Click a tracker to edit it. Drag trackers into groups; drag a group's icons to reorder or remove them. "
     .. "Position frames in Edit Mode."
 local HEADER_SIDE = 16           -- header inset, title and widgets alike
-local SUBTITLE_TOP = 36          -- header top to the how-to line
-local SUBTITLE_BOTTOM = 6        -- how-to line to the header bottom
-local SUBTITLE_CLUSTER_GAP = 12  -- how-to line to the search box
 local SEARCH_W = 180
 local SEARCH_H = 22
 local SEARCH_CLUSTER_GAP = 8     -- search box to the Import button
@@ -139,12 +135,13 @@ local KIND_LABELS = {
     buffstacks = "Buff Stacks", debuffstacks = "Debuff Stacks",
     missingbuff = "Missing Buff",
     classpower = "Class Power", classresource = "Class Resource",
+    cooldown = "Spell Cooldown",
 }
 local UNIT_LABELS = {
     player = "Player", group = "Group", target = "Target", focus = "Focus",
 }
 local SHAPE_LABELS = {
-    icon = "Icon", bar = "Horizontal Bar", shape = "Shape",
+    icon = "Icon", bar = "Horizontal Bar", vbar = "Vertical Bar", shape = "Shape",
     text = "Text", icontext = "Icon & Text",
 }
 -- A Class Power tracker's two shapes read as the editor names them, and a
@@ -255,10 +252,13 @@ local function Cleanup(panel)
     if Drag.active then EndDrag(true) end
     -- The spec and gear fly-outs outlive the page (one instance each,
     -- re-anchored per row), so close them before their anchors are destroyed.
-    -- The exception is a re-render one of them asked for: RenderList hands it
-    -- the rebuilt trigger instead.
+    -- The exceptions are a re-render one of them asked for, where RenderList
+    -- hands it the rebuilt trigger, and a spec fly-out hanging from the
+    -- editor's title row, whose trigger this page does not own.
     local SpecFlyout = addon.UI.ScootAuraSpecFlyout
-    if SpecFlyout and not SpecFlyout.IsReanchoring() then SpecFlyout.Close() end
+    if SpecFlyout and not SpecFlyout.IsReanchoring() and not SpecFlyout.IsDetached() then
+        SpecFlyout.Close()
+    end
     local GearFlyout = addon.UI.ScootAuraGearFlyout
     if GearFlyout and not GearFlyout.IsReanchoring() then GearFlyout.Close() end
     for _, row in ipairs(state.rows) do
@@ -486,9 +486,8 @@ local function EnsureHeaderWidgets(contentPane)
     contentPane._scootAuraImportBtn = importBtn
     EnsureImportFlyout(contentPane, importBtn)
 
-    -- The band's title line has no room for the how-to line, so it hangs on
-    -- an info icon beside the page name.
-    if hdr.placement == "band" and contentPane._headerTitle and Controls.CreateInfoIcon then
+    -- The how-to line hangs on an info icon beside the page name.
+    if contentPane._headerTitle and Controls.CreateInfoIcon then
         local info = Controls:CreateInfoIcon({
             parent = header,
             tooltipTitle = "Aura List",
@@ -586,30 +585,6 @@ local function GroupMatch(SAU, gid, group, query)
         end
     end
     return { shown = any, keep = keep }
-end
-
--- The how-to line's width: from the header's left inset to a gap short of
--- the search box. Before the header has a rect it reads 0, and a stand-in
--- keeps the header at its base height until the deferred pass in RenderList
--- lays the line out again.
-local function SubtitleWidth(contentPane)
-    local headerW = contentPane._header:GetWidth() or 0
-    if headerW <= 0 then return 600 end
-    local importBtn = contentPane._scootAuraImportBtn
-    local clusterW = SEARCH_W + SEARCH_CLUSTER_GAP + ((importBtn and importBtn:GetWidth()) or 0)
-    return math.max(120, headerW - HEADER_SIDE * 2 - clusterW - SUBTITLE_CLUSTER_GAP)
-end
-
--- The header height the wrapped how-to line wants, never under the stock
--- height. GetStringHeight reports the wrapped height once the FontString
--- has an explicit width; a cold font measures short, so the deferred pass
--- in RenderList asks again.
-local function HeaderHeightFor(contentPane)
-    local base = contentPane._headerBaseHeight or 66
-    local sub = contentPane._headerSubtitle
-    local subH = (sub and sub:GetStringHeight()) or 0
-    if subH <= 0 then return base end
-    return math.max(base, SUBTITLE_TOP + math.ceil(subH) + SUBTITLE_BOTTOM)
 end
 
 --------------------------------------------------------------------------------
@@ -1294,8 +1269,6 @@ RenderList = function(panel, scrollContent, corrective)
     local ar, ag, ab = theme:GetAccentColor()
     local totalW = scrollContent:GetWidth() or 600
 
-    -- Header widgets first: the how-to line's width reads the Import
-    -- button's, which the button control sets at build.
     EnsureHeaderWidgets(contentPane)
     if contentPane and contentPane._scootAuraImportBtn then
         contentPane._scootAuraImportBtn:Show()
@@ -1306,37 +1279,24 @@ RenderList = function(panel, scrollContent, corrective)
     if contentPane and contentPane._scootAuraSearch then
         contentPane._scootAuraSearch:Show()
     end
-
-    -- The how-to line. With the header in the content pane it rides the
-    -- header as its subtitle: gray like the row meta text, hung under the
-    -- title at an explicit width that ends before the search box, so it
-    -- wraps instead of running under it. The stock header leaves 26px under
-    -- the title, two lines at most, so the header grows to what the wrapped
-    -- line needs. Cleanup restores the stock look through
-    -- UIPanel:ResetHeaderSubtitle before another page reuses the FontString;
-    -- the flag keeps the theme subscription from recoloring it to accent.
-    -- With the header in the title band the line is the info icon's tooltip
-    -- (EnsureHeaderWidgets) and the panes start at the top of the content.
-    local inBand = addon.UI.Controls.Metrics().contentHeader.placement == "band"
-    if not inBand and contentPane and contentPane._headerSubtitle and contentPane._header then
-        local sub = contentPane._headerSubtitle
-        sub:SetText(HOW_TO)
-        sub:ClearAllPoints()
-        sub:SetPoint("TOPLEFT", contentPane._header, "TOPLEFT", HEADER_SIDE, -SUBTITLE_TOP)
-        sub:SetFont(theme:GetFont("LABEL"), 10, "")
-        sub:SetJustifyH("LEFT")
-        sub:SetJustifyV("TOP")
-        sub:SetWordWrap(true)
-        sub:SetTextColor(0.55, 0.55, 0.55, 1)
-        sub:SetHeight(0)
-        sub:SetWidth(SubtitleWidth(contentPane))
-        contentPane._header:SetHeight(HeaderHeightFor(contentPane))
-        contentPane._headerSubtitleCustom = true
-        sub:Show()
+    -- The pane header has no subtitle on this page, so it shrinks until the
+    -- Import button and search box, pinned 8px off its bottom, are centred
+    -- on the title, which hangs 10px under its top (CreateContentPane). A
+    -- cold font measures short; the stale-viewport re-render below lays the
+    -- page out again. Cleanup restores the base height through
+    -- UIPanel:ResetHeaderSubtitle.
+    local title, importBtn = contentPane and contentPane._headerTitle, contentPane and contentPane._scootAuraImportBtn
+    if title and importBtn and contentPane._header
+        and addon.UI.Controls.Metrics().contentHeader.placement ~= "band" then
+        local titleH = title:GetStringHeight() or 0
+        local btnH = importBtn:GetHeight() or 0
+        if titleH > 0 and btnH > 0 then
+            contentPane._header:SetHeight(math.ceil(10 + titleH / 2 + btnH / 2 + 8))
+        end
     end
 
-    -- A resize moves the width the how-to line wraps to and the widths the
-    -- rows and boxes wrap to; rebuild once the drag settles.
+    -- A resize moves the widths the rows and boxes wrap to; rebuild once the
+    -- drag settles.
     if contentPane then
         contentPane._onResize = function()
             addon.UI.Controls.Debounce(RESIZE_DEBOUNCE_KEY, 0.2, Refresh)
@@ -1516,8 +1476,8 @@ RenderList = function(panel, scrollContent, corrective)
     -- render after a page switch can also read a stale viewport height (the
     -- scroll frame re-anchors in the same tick, and the header above it is
     -- resized in this one); one corrective re-render pins the add buttons to
-    -- the true bottom. The viewport height depends on the header's width and
-    -- the how-to line, never on the list, so this cannot loop.
+    -- the true bottom. The viewport height depends on the header, never on
+    -- the list, so this cannot loop.
     C_Timer.After(0, function()
         if contentPane and contentPane._scrollbar and contentPane._scrollbar.Sync then
             contentPane._scrollbar:Sync()
@@ -1542,24 +1502,6 @@ RenderList = function(panel, scrollContent, corrective)
                 if moved then
                     RenderList(panel, scrollContent, true)
                     return
-                end
-            end
-            -- The how-to line measured cold, or before the header had a rect.
-            -- Lay it out again; when the header's height moves, the viewport
-            -- moves with it a frame later, so the rebuild waits for that
-            -- frame and reads the settled height.
-            if contentPane and contentPane._headerSubtitleCustom and contentPane._header then
-                local header, sub = contentPane._header, contentPane._headerSubtitle
-                local wantW = SubtitleWidth(contentPane)
-                if math.abs(wantW - (sub:GetWidth() or 0)) > 1 then sub:SetWidth(wantW) end
-                local wantH = HeaderHeightFor(contentPane)
-                if math.abs(wantH - (header:GetHeight() or 0)) > 1 then
-                    header:SetHeight(wantH)
-                    C_Timer.After(0, function()
-                        if state.active and state.scrollContent == scrollContent then
-                            RenderList(panel, scrollContent, true)
-                        end
-                    end)
                 end
             end
         end
