@@ -56,9 +56,12 @@
 -- (ApplySystemAnchor -> BreakFromFrameManager -> SetParent(UIParent),
 -- EditModeSystemTemplates.lua:335-365), PlayerCastingBarFrame and
 -- BossTargetFrameContainer among them, and it runs on EDIT_MODE_LAYOUTS_UPDATED
--- and PLAYER_SPECIALIZATION_CHANGED, in combat too. Every re-park here skips
--- combat, so a pass that lands mid-fight leaves Blizzard's frame on screen
--- until PLAYER_REGEN_ENABLED.
+-- and PLAYER_SPECIALIZATION_CHANGED, in combat too. The lockdown blocks a
+-- parent write on a PROTECTED frame only (a secure template, or a protected
+-- descendant), so the combat gate here is per frame (Locked): a plain frame is
+-- parked in combat as it is out of it, at a /reload in a fight and after
+-- Blizzard's own re-parent, and the gap is the protected frames' alone. A
+-- protected frame moved mid-fight stays on screen until PLAYER_REGEN_ENABLED.
 --
 -- A "park" claim closes that gap with a QUIET list: entries of
 -- { frame = f, events = { ... }, hide = true }. Park unregisters each named
@@ -140,19 +143,27 @@ local function Resolve(frame)
     return frame
 end
 
+--- True when the lockdown forbids a write on this frame: in combat, and the
+--- frame is protected by its own template or by a protected descendant
+--- (IsProtected's first return covers both). A plain frame takes SetParent,
+--- Hide and EnableMouse in combat as it does out of it.
+local function Locked(frame)
+    return InCombatLockdown() and frame:IsProtected() == true
+end
+
 --- Re-run every claim once the Edit Mode gate clears.
 ---
 --- One ticker at a time, polling the gate rather than waiting a fixed delay: a
 --- skip can land at any point of an open session, and the window after the
---- exit is a second long. Combat is checked too, so the Reapply it fires never
---- meets the lockdown skip; a skip that is combat's alone is the regen
---- handler's, not this one's.
+--- exit is a second long. Combat is not checked: Park and Unpark decide per
+--- frame, so the Reapply it fires parks every plain frame at once, and a
+--- protected frame's skip is the regen handler's, not this one's.
 local retryTicker
 
 local function ScheduleRetry()
     if retryTicker then return end
     retryTicker = C_Timer.NewTicker(0.25, function()
-        if EditModeOpen() or InCombatLockdown() then return end
+        if EditModeOpen() then return end
         retryTicker:Cancel()
         retryTicker = nil
         NativeFrame:Reapply()
@@ -179,17 +190,19 @@ local function ApplySelection(frame, suppress)
         return
     end
 
-    -- The Selection box is an XML child of a system frame that inherits
+    -- A unit frame's Selection box is an XML child of a frame that inherits
     -- SecureUnitButtonTemplate (PlayerFrame.xml:14), so it is protected by
-    -- parentage and EnableMouse on it is combat-blocked. This path is genuinely
-    -- reachable in lockdown: Reapply runs from both Edit Mode callbacks, and
-    -- CanEnterEditMode (EditModeManager.lua:1636-1655) has no lockdown check, so
-    -- Edit Mode opens and closes mid-fight. Skipping whole rather than dropping
-    -- only the mouse write is deliberate, per the note above: an invisible box
-    -- that still swallows clicks is worse than a visible one. Nothing is lost --
-    -- the state flags are untouched, so the PLAYER_REGEN_ENABLED Reapply below
-    -- re-runs Park/Unpark and lands the writes then.
-    if InCombatLockdown() then return end
+    -- parentage and EnableMouse on it is combat-blocked; a chat window's or a
+    -- cast bar's is plain and takes the writes in combat. This path is
+    -- genuinely reachable in lockdown: Reapply runs from both Edit Mode
+    -- callbacks, and CanEnterEditMode (EditModeManager.lua:1636-1655) has no
+    -- lockdown check, so Edit Mode opens and closes mid-fight. Skipping whole
+    -- rather than dropping only the mouse write is deliberate, per the note
+    -- above: an invisible box that still swallows clicks is worse than a
+    -- visible one. Nothing is lost -- the state flags are untouched, so the
+    -- PLAYER_REGEN_ENABLED Reapply below re-runs Park/Unpark and lands the
+    -- writes then.
+    if Locked(selection) then return end
 
     local d = State(selection)
 
@@ -211,7 +224,7 @@ local function ApplySelection(frame, suppress)
             -- the deferral: the hook observes, the timer writes.
             hooksecurefunc(selection, "Show", function(self)
                 C_Timer.After(0, function()
-                    if InCombatLockdown() then return end
+                    if Locked(self) then return end
                     if State(self).selectionSuppressed then
                         self:SetAlpha(0)
                         self:EnableMouse(false)
@@ -266,18 +279,18 @@ end
 
 --- Silence the events a claim's quiet list names, and hide what it asks for.
 ---
---- Runs under the same gate as the re-park, and after it, so a Hide lands on a
---- frame the holder has already taken off screen. Safe to repeat: a
---- registration is captured once, and an event registered again since is
---- removed again.
+--- Runs under the same gates as the re-park, the Edit Mode one whole and the
+--- combat one per frame, and after it, so a Hide lands on a frame the holder
+--- has already taken off screen. Safe to repeat: a registration is captured
+--- once, and an event registered again since is removed again.
 local function Quiet(d)
     local quiet = d.quiet
-    if not quiet or InCombatLockdown() or EditModeOpen() then return end
+    if not quiet or EditModeOpen() then return end
 
     d.captured = d.captured or {}
     for _, entry in ipairs(quiet) do
         local frame = Resolve(entry.frame)
-        if frame then
+        if frame and not Locked(frame) then
             local captured = d.captured[frame] or {}
             d.captured[frame] = captured
             for _, event in ipairs(entry.events) do
@@ -335,7 +348,7 @@ local function Park(frame)
         if d.origParent == nil then
             d.origParent = frame:GetParent()
         end
-        if not InCombatLockdown() and not gated then
+        if not Locked(frame) and not gated then
             frame:SetParent(hidden)
         end
     end
@@ -354,7 +367,7 @@ local function Park(frame)
                 if not (cur and cur.parked) or self:GetParent() == holder then return end
                 if EditModeOpen() then
                     ScheduleRetry()
-                elseif not InCombatLockdown() then
+                elseif not Locked(self) then
                     self:SetParent(holder)
                 end
             end)
@@ -381,7 +394,7 @@ local function Unpark(frame)
         ScheduleRetry()
         return
     end
-    if InCombatLockdown() then return end
+    if Locked(frame) then return end
 
     -- Before the ownership check below: the silenced events are Scoot's own
     -- write, and they go back whoever holds the frame now.

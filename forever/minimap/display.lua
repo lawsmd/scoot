@@ -81,10 +81,10 @@ end
 -- MinimapCluster is a UIParent child and parks under the hidden holder. The
 -- park's own SetParent hook re-parks the cluster alone, never its children,
 -- so the leased widget is untouched. Never released: the Features switch
--- lands at reload, and a feature off at login never claims. The park is
--- skipped in combat and while Edit Mode is open, and paid by NativeFrame's
--- retry, so a reload in a fight shows the cluster's ring and header with no
--- map in them until regen.
+-- lands at reload, and a feature off at login never claims. NativeFrame's
+-- combat gate is per frame, so a plain cluster parks in a fight too, a reload
+-- included; only the Edit Mode gate defers the park, paid by NativeFrame's
+-- retry.
 
 function Display.Claim()
     if claimed or not MR.IsEnabled() then return end

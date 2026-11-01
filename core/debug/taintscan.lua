@@ -8,7 +8,11 @@
 -- manager, the account settings, every registered system frame, the party and
 -- compact frames, the panel manager tables) and lists every tainted key, the
 -- widget methods shadowed on a frame's own table (hooksecurefunc and override
--- sites), and every tainted global, grouped by the addon that tainted it.
+-- sites), and every tainted global, grouped by the addon that tainted it. It
+-- opens with the fields each stage of the game menu's Edit Mode path writes,
+-- in path order, so the first tainted one names the stage the taint entered
+-- at; a clean show or entry since rewrites them secure, so the scan runs
+-- right after the error, before anything else is opened.
 -- Usage: /<slash> debug taintscan
 local addonName, addon = ...
 
@@ -66,9 +70,58 @@ local ROOTS = {
     { "ObjectiveTrackerFrame", 1 },
     { "PersonalResourceDisplayFrame", 1 },
     { "UIErrorsFrame", 0 },
+    -- Forever's gamepad UI: every panel close runs the frame controls manager
+    -- and the binding stack into a protected call. Absent on retail.
+    { "GamepadMode", 2 },
+    { "GamepadSharedUtility", 3 },
+    { "GamepadMainActionBarFrame", 3 },
+    { "SpellFlyout", 1 },
+    { "InputDeviceIconSetManager", 1 },
+    -- The game menu's OnShow and OnHide run UpdateMicroButtons over every
+    -- micro button before the menu builds its buttons, and the settings
+    -- window shares the menuOpen trigger with the menu. Retail lacks a few
+    -- of Forever's buttons.
+    { "SettingsPanel", 1 },
+    { "MicroMenuContainer", 1 },
+    { "MicroMenu", 1 },
+    { "BagsBar", 1 },
+    { "MainMenuMicroButton", 1 },
+    { "CharacterMicroButton", 1 },
+    { "ProfessionMicroButton", 1 },
+    { "SpellbookMicroButton", 1 },
+    { "PlayerSpellsMicroButton", 1 },
+    { "TalentMicroButton", 1 },
+    { "LegacyMicroButton", 1 },
+    { "QuestLogMicroButton", 1 },
+    { "HousingMicroButton", 1 },
+    { "GuildMicroButton", 1 },
+    { "LFDMicroButton", 1 },
+    { "AchievementMicroButton", 1 },
+    { "CollectionsMicroButton", 1 },
+    { "EJMicroButton", 1 },
+    { "HelpMicroButton", 1 },
+    { "StoreMicroButton", 1 },
 }
 
 local GLOBALS_PER_SOURCE = 200
+
+-- The fields each stage of the game menu's Edit Mode path writes, in path
+-- order: the menu's OnShow (Reset and AddButton), the panel manager's
+-- SetUIPanel for a center panel, EnterEditMode, the account settings'
+-- OnEditModeEnter, and the party frame preview's SetUpFrame and UpdateInRange.
+-- A write marks the field with its writer's taint and a later secure write
+-- clears it, so right after an error the first tainted marker is the stage
+-- the taint entered at. { stage, root, key..., field }.
+local MARKERS = {
+    { "the game menu's OnShow", "GameMenuFrame", "buttonCount" },
+    { "the game menu's OnShow", "GameMenuFrame", "nextLayoutIndex" },
+    { "the panel manager's show", "FramePositionDelegate", "center" },
+    { "EnterEditMode", "EditModeManagerFrame", "editModeActive" },
+    { "OnEditModeEnter", "EditModeManagerFrame", "AccountSettings", "oldActionBarSettings" },
+    { "the party frame preview", "CompactPartyFrameMember1", "newUnit" },
+    { "the party frame preview", "CompactPartyFrameMember1", "isLootObject" },
+    { "the party frame preview", "CompactPartyFrameMember1", "outOfRange" },
+}
 
 local function isFrame(t)
     return type(rawget(t, 0)) == "userdata"
@@ -94,6 +147,24 @@ local function taintOf(...)
     if not ok then return "unreadable" end
     if secure then return nil end
     return tostring(by or "?")
+end
+
+-- One marker's verdict: absent (the root or a step is missing, or the field
+-- is nil), secure, unreadable, or the addon that wrote it.
+local function markerVerdict(marker)
+    local t = _G[marker[2]]
+    for i = 3, #marker - 1 do
+        if type(t) ~= "table" or (canaccesstable and not canaccesstable(t)) then return "absent" end
+        local ok, step = pcall(rawget, t, marker[i])
+        if not ok then return "unreadable" end
+        t = step
+    end
+    if type(t) ~= "table" or (canaccesstable and not canaccesstable(t)) then return "absent" end
+    local field = marker[#marker]
+    local ok, value = pcall(rawget, t, field)
+    if not ok then return "unreadable" end
+    if type(value) == "nil" then return "absent" end
+    return taintOf(t, field) or "secure"
 end
 
 -- The world map's data providers write dataProviderEventsCount on every show,
@@ -278,6 +349,15 @@ local function Scan()
         tostring(EditModeManagerFrame and EditModeManagerFrame:IsShown()))
     push("fields checked: %d, globals checked: %d", fields, total)
     if #missing > 0 then push("roots absent on this client: %s", table.concat(missing, ", ")) end
+    push("")
+
+    push("Where the taint entered: the fields each stage of the game menu's Edit Mode path writes, in path order.")
+    push("  The first tainted one is the stage; a clean show or entry since rewrites them secure.")
+    for _, marker in ipairs(MARKERS) do
+        local path = marker[2]
+        for i = 3, #marker do path = path .. "." .. marker[i] end
+        push("  %-28s %-62s %s", marker[1], path, markerVerdict(marker))
+    end
     push("")
 
     push("Tainted fields on the Edit Mode path (%d):", #tainted)

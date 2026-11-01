@@ -201,8 +201,8 @@ end
 --------------------------------------------------------------------------------
 -- Blizzard's frame is a UIParent child and parks under the hidden holder.
 -- Never released: the Features switch lands at reload, and a feature off at
--- login never claims. The park is skipped in combat, so a reload in a fight
--- leaves Blizzard's frame live until regen.
+-- login never claims. The frame is plain, so the park lands in combat too, a
+-- reload in a fight included; only the Edit Mode gate defers it.
 
 local claimed = false
 

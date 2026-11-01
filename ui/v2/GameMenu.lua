@@ -426,13 +426,22 @@ end
 -- Hook Installation (called once on PLAYER_ENTERING_WORLD)
 --------------------------------------------------------------------------------
 
+-- A post-hook on the global Blizzard's menu shows through, never a HookScript
+-- on GameMenuFrame: a HookScript on a Blizzard frame taints that frame's
+-- script dispatch (the taint rules, Rule 9), and the menu's OnShow
+-- builds every button's OnClick closure, so the hook that stood here made
+-- Blizzard's own Edit Mode button open Edit Mode tainted. Every show of the
+-- menu is a ShowUIPanel (GameMenuFrame_Show, the micro button, the re-show
+-- after a child panel closes), and the post-hook runs after the secure show
+-- with the setting read live, so the frame carries no addon mark either way.
 function GameMenu:InstallHook()
     if hookInstalled then return end
     hookInstalled = true
 
-    if not GameMenuFrame then return end
+    if not GameMenuFrame or type(_G.ShowUIPanel) ~= "function" then return end
 
-    GameMenuFrame:HookScript("OnShow", function(self)
+    hooksecurefunc("ShowUIPanel", function(frame)
+        if frame ~= GameMenuFrame then return end
         if not IsSettingEnabled() then return end
         if InCombatLockdown() then return end
 
@@ -441,11 +450,8 @@ function GameMenu:InstallHook()
     end)
 end
 
--- Installed only once the replacement is on. A HookScript marks
--- GameMenuFrame with addon taint, and its
--- OnShow builds the button callbacks, so with the hook in place Blizzard's own
--- Edit Mode button opens Edit Mode tainted. Turning the setting off leaves the
--- hook inert until a reload.
+-- Installed only once the replacement is on; the Misc page installs it when
+-- the setting turns on, and the setting is read live inside the hook.
 addon.Events.Once("UI:GameMenu", "PLAYER_ENTERING_WORLD", function()
     if IsSettingEnabled() then GameMenu:InstallHook() end
 end)

@@ -325,8 +325,9 @@ end
 -- Every window, the dock (every docked tab is its child after the first dock
 -- pass, so no tab is parked on its own), and the UIParent children that hang
 -- off the chat. Never released: the Features switch lands at reload, and a
--- feature off at login never claims. The park is skipped in combat and while
--- Edit Mode is open, and paid by NativeFrame's retry.
+-- feature off at login never claims. Every frame here is plain, so the park
+-- lands in combat too, a reload in a fight included; only the Edit Mode gate
+-- defers it, paid by NativeFrame's retry.
 
 local function park(frame, label)
     if not (frame and addon.NativeFrame) then return end

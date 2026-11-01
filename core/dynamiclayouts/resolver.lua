@@ -506,8 +506,17 @@ for _, event in ipairs(EVENTS) do
     handles[event] = addon.Events.On(OWNER, event, onEvent)
 end
 
--- The menu frames' shows and hides arm a resolution (menuOpen). Each frame is
--- hooked once, at the first world entry it exists by. The branded menu is
+-- The menu frames' shows and hides arm a resolution (menuOpen). Blizzard's
+-- two frames are never hooked on their own scripts: a HookScript on a
+-- Blizzard frame taints that frame's script dispatch (the taint rules, Rule
+-- 9), and the game menu's OnShow is where every button's OnClick closure is
+-- built, so the hooks that stood here made Blizzard's own Edit Mode button
+-- open Edit Mode tainted and the party frame preview throw secret errors
+-- (19 to 22 October 2026). Both frames show and hide only through the panel
+-- manager (GameMenuFrame_Show and CloseMenu, SettingsPanel's Open and Close),
+-- so a post-hook on the two globals hears every show and hide, and a
+-- hooksecurefunc post-hook hands nothing back to Blizzard's caller. The
+-- branded menu is Camelot's own frame and keeps its script hooks; it is
 -- created on its first Show, so a hook on GameMenu.Show catches it there and
 -- arms for that first show, which ran before the frame's own hook existed.
 local menuHooked = {}
@@ -515,16 +524,27 @@ local menuHooked = {}
 local function onMenuShow() onEvent("MENU_SHOW") end
 local function onMenuHide() onEvent("MENU_HIDE") end
 
+local function isBlizzardMenu(frame)
+    local menu, settings = menuFrames()
+    return frame ~= nil and (frame == menu or frame == settings)
+end
+
+if type(_G.ShowUIPanel) == "function" and type(_G.HideUIPanel) == "function" then
+    hooksecurefunc("ShowUIPanel", function(frame)
+        if isBlizzardMenu(frame) then onMenuShow() end
+    end)
+    hooksecurefunc("HideUIPanel", function(frame)
+        if isBlizzardMenu(frame) then onMenuHide() end
+    end)
+end
+
 local function installMenuHooks()
-    local frames = { menuFrames() }
-    for i = 1, 3 do
-        local frame = frames[i]
-        if frame and not menuHooked[frame] and frame.HookScript then
-            menuHooked[frame] = true
-            -- Kept off addon.Enforce: the hooks read visibility, they hide nothing.
-            frame:HookScript("OnShow", onMenuShow)
-            frame:HookScript("OnHide", onMenuHide)
-        end
+    local _, _, branded = menuFrames()
+    if branded and not menuHooked[branded] and branded.HookScript then
+        menuHooked[branded] = true
+        -- Kept off addon.Enforce: the hooks read visibility, they hide nothing.
+        branded:HookScript("OnShow", onMenuShow)
+        branded:HookScript("OnHide", onMenuHide)
     end
 end
 
