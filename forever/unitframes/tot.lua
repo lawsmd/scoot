@@ -95,7 +95,7 @@ Frame.Define({
     -- The free spot, for the attach off: level with the target's default and
     -- 2 units off its right edge, which the attach at 0, 0 all but matches.
     -- Vanilla's spot is TOPLEFT 373, -73.
-    default = { point = "CENTER", relPoint = "CENTER", x = 505, y = -300 },
+    default = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 615, y = -175 },
     -- Over the target frame, whose corner it covers.
     strataLevel = 20,
     -- TargetOfTargetMixin:Update hides the frame while the target is dead. Its

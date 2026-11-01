@@ -22,6 +22,17 @@ local Harness = UF.Harness
 local Dynamic = {}
 UF.Dynamic = Dynamic
 
+-- Camelot's start enrolls the unit frames, and the player frame's dynamic
+-- spot is the owner's from the beta's saved profile on 22 October 2026,
+-- rounded to 5: the top-left corner at 0.8 scale and half opacity. The other
+-- frames have no record and keep their regular spots. Neither preset enrolls
+-- them; a preset start reads no record (forever/dynamiclayouts/host.lua).
+DB.RegisterDefaults({ ["dynamicLayouts.participating.unitFrames"] = true })
+DB.RegisterStock({ ["dynamicLayouts.participating.unitFrames"] = false })
+addon.DynamicLayoutsStore.RegisterDefaultRecord("player", {
+    point = "TOPLEFT", x = 65, y = -65, scale = 0.8, opacity = 0.5,
+})
+
 local GEOMETRY = { "scale", "position" }
 
 local CHANNELS = { "opacity", "scale", "position" }

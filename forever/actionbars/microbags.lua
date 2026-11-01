@@ -61,7 +61,7 @@ MicroBags.RANGES = {
 local SLOT_KEYS = { "backpack", "bag1", "bag2", "bag3", "bag4", "reagent", "keyring" }
 
 local defaults = {
-    [PATH .. "style"] = "forever",
+    [PATH .. "style"] = "combined",
     [PATH .. "micro.orientation"] = "horizontal",
     [PATH .. "micro.order"] = "default",
     [PATH .. "micro.size"] = 100,
@@ -74,7 +74,16 @@ local defaults = {
 for _, key in ipairs(SLOT_KEYS) do
     defaults[PATH .. "slots." .. key .. ".shown"] = true
 end
+-- The keyring slot starts hidden, the owner's setup off the beta's saved
+-- profile.
+defaults[PATH .. "slots.keyring.shown"] = false
 DB.RegisterDefaults(defaults)
+-- Camelot starts on the combined line, the owner's call of 22 October 2026;
+-- a preset start draws Forever's own two bars, every slot shown.
+DB.RegisterStock({
+    [PATH .. "style"] = "forever",
+    [PATH .. "slots.keyring.shown"] = true,
+})
 
 -- Forever's frame art around each bar (its Camelot MainMenuBarMicroMenu.xml
 -- and MainMenuBarBagButtons.xml).
@@ -296,7 +305,8 @@ end
 local defaultRecords = {
     micro = { point = "BOTTOMRIGHT", x = 0, y = EDGE },
     bags = { point = "BOTTOMRIGHT", x = -EDGE, y = EDGE },
-    combined = { point = "BOTTOMRIGHT", x = -EDGE, y = EDGE },
+    -- On the screen's bottom edge, where the owner keeps it.
+    combined = { point = "BOTTOMRIGHT", x = -EDGE, y = 0 },
 }
 MicroBags.DEFAULTS = defaultRecords
 

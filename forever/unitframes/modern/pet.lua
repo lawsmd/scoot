@@ -46,12 +46,12 @@ Frame.Define({
     unit = "pet",
     label = "Pet",
     frameName = "CamelotModernPetFrame",
-    -- The Camelot layout's spot, the Classic instance's own, so a style swap
-    -- on that layout keeps the frame where it was; a profile started from a
-    -- Blizzard preset has both instances' defaults rewritten from the
-    -- preset's data. One table per frame, never shared: Edit Mode keeps it
-    -- by reference.
-    default = { point = "CENTER", relPoint = "CENTER", x = -312, y = -336 },
+    -- The Camelot layout's spot, centered where the Classic instance's is,
+    -- so a style swap on that layout keeps the frame where it was; a profile
+    -- started from a Blizzard preset has both instances' defaults rewritten
+    -- from the preset's data. One table per frame, never shared: Edit Mode
+    -- keeps it by reference.
+    default = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 235, y = -210 },
     -- Over the player frame, whose lower edge it overlaps.
     strataLevel = 20,
 

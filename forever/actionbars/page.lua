@@ -231,12 +231,11 @@ function Page.VisibilityRows(tab, token)
             apply()
         end })
 
+    -- Stored as given, 100 and false too: a nil would read back Camelot's
+    -- default, which for some bars is a fade (visibility.lua).
     local get, set = Helpers.CreateFlatAccessors(
         function(key) return DB.Get(Visibility.Path(token, key)) end,
-        function(key, value)
-            if tonumber(value) == 100 then value = nil end
-            DB.Set(Visibility.Path(token, key), value)
-        end,
+        function(key, value) DB.Set(Visibility.Path(token, key), value) end,
         Visibility.OPACITY_KEYS)
     tab:AddStateOpacityBlock({ get = get, set = set, apply = apply, min = 0, ooc = false,
         infoIcon = OPACITY_TOOLTIP })
@@ -244,9 +243,21 @@ function Page.VisibilityRows(tab, token)
     tab:AddToggle({ label = "Mouseover Mode",
         get = function() return DB.Get(Visibility.Path(token, "mouseoverMode")) == true end,
         set = function(v)
-            DB.Set(Visibility.Path(token, "mouseoverMode"), v and true or nil)
+            DB.Set(Visibility.Path(token, "mouseoverMode"), v and true or false)
             apply()
         end })
+
+    -- The eight standard bars hide under the gamepad UI by default, as
+    -- Blizzard's own do; the row shows only there, where the profile is the
+    -- gamepad layout's own. The last row of the section.
+    if Visibility.TakesGamepadRule(token) and addon.Gamepad and addon.Gamepad.IsActive() then
+        tab:AddToggle({ label = "Hide In Gamepad UI",
+            get = function() return not Visibility.GamepadShown(token) end,
+            set = function(v)
+                DB.Set(Visibility.Path(token, "gamepadShown"), (not v) and true or nil)
+                apply()
+            end })
+    end
     tab:Finalize()
 end
 

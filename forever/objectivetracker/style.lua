@@ -141,21 +141,32 @@ do
             map[Style.PanePath(pane, key, "color")] = { 1, 1, 1, 1 }
         end
     end
-    -- 100 is no fade. Scoot stores nil for the same state. One setting for
-    -- both panes.
-    map[Style.Path("opacityInInstanceCombat")] = 100
-    -- Combat outside a dungeon or raid: the main tracker only, so the
-    -- Current Objectives pane stays readable.
-    map[Style.Path("opacityInCombat")] = 100
-    -- The current pane's behaviour (current.lua). Camelot ships on.
+    -- The owner's setup, read off the beta's saved profile on 22 October
+    -- 2026, where it departs from Blizzard's tracker; each has a stock entry
+    -- below. The main tracker at 0.75: Blizzard's is 1, and the default
+    -- position in tracker.lua is in this scale.
+    map[Style.Path("scale")] = 0.75
+    -- The fades: 100 is no fade, Blizzard's tracker. Scoot stores nil for
+    -- the same state. Instance combat is one setting for both panes; combat
+    -- outside a dungeon or raid fades the main tracker only, so the Current
+    -- Objectives pane stays readable.
+    map[Style.Path("opacityInInstanceCombat")] = 20
+    map[Style.Path("opacityInCombat")] = 50
+    -- The current pane's behaviour (current.lua). Camelot ships on. The hold
+    -- is the owner's 120 against the range's 90.
     map[Style.Path("current", "enabled")] = true
     map[Style.Path("current", "onEnterArea")] = true
     map[Style.Path("current", "onProgress")] = true
-    map[Style.Path("current", "holdSeconds")] = Style.HOLD.default
+    map[Style.Path("current", "holdSeconds")] = 120
     map[Style.Path("current", "fadeSeconds")] = Style.FADE.default
     map[Style.Path("current", "flashProgress")] = true
-    -- The pane's style, and the cards' look.
-    map[Style.Path("current", "style")] = "classic"
+    -- The Classic pane's text, the owner's: the header in Deep Shadow, the
+    -- quest names and objectives in Crisp Shadow Thick Outline.
+    map[Style.Path("current", "textHeader", "style")] = "DEEPSHADOWTHICKOUTLINE"
+    map[Style.Path("current", "textQuestName", "style")] = "SHADOWTHICKOUTLINESLUG"
+    map[Style.Path("current", "textQuestObjective", "style")] = "SHADOWTHICKOUTLINESLUG"
+    -- The pane's style, the owner's cards, and the cards' look.
+    map[Style.Path("current", "style")] = "camelot"
     local cards = Style.CARDS
     map[Style.PanePath(cards, "layout")] = "row"
     map[Style.PanePath(cards, "width")] = Style.CARD_WIDTH.default
@@ -172,8 +183,14 @@ do
         map[Style.PanePath(cards, key, "color")] = { 1, 1, 1, 1 }
     end
     DB.RegisterDefaults(map)
-    -- Blizzard Default: Blizzard's tracker has no current pane.
-    DB.RegisterStock({ [Style.Path("current", "enabled")] = false })
+    -- Blizzard Default: Blizzard's tracker at its own scale with no fades,
+    -- and no current pane, so the pane's other departures never draw there.
+    DB.RegisterStock({
+        [Style.Path("scale")] = Style.SCALE.default,
+        [Style.Path("opacityInInstanceCombat")] = 100,
+        [Style.Path("opacityInCombat")] = 100,
+        [Style.Path("current", "enabled")] = false,
+    })
 end
 
 --------------------------------------------------------------------------------

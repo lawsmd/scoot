@@ -176,6 +176,12 @@ local cooldownHidden = setmetatable({}, { __mode = "k" })
 
 local COOLDOWN_FIELDS = { "fontFace", "size", "style", "color", "offsetX", "offsetY" }
 
+-- Action Bar 1's cooldown text in a thick shadowed outline, the owner's setup
+-- off the beta's saved profile. A preset start's false is the font object's
+-- own outline.
+DB.RegisterDefaults({ [Text.Path("bar1", "cooldown", "style")] = "SHADOWTHICKOUTLINESLUG" })
+DB.RegisterStock({ [Text.Path("bar1", "cooldown", "style")] = false })
+
 local function cooldownString(button)
     local cooldown = button.cooldown
     return cooldown and cooldown.GetCountdownFontString and cooldown:GetCountdownFontString() or nil
@@ -228,8 +234,9 @@ function Text.Cooldown(button)
     local fs = token and cooldownString(button)
     if not fs then return end
     local stored = false
+    -- A false is a preset's "the font object's own", which stores nothing.
     for _, field in ipairs(COOLDOWN_FIELDS) do
-        if getCooldown(token, field) ~= nil then stored = true break end
+        if getCooldown(token, field) then stored = true break end
     end
     -- Alpha, as the keybind's: written to 0 where Hide is set, and back to 1
     -- only where this pass wrote the 0.

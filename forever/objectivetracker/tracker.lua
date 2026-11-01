@@ -52,18 +52,20 @@ end
 --------------------------------------------------------------------------------
 -- The two containers, each free-positioned in Edit Mode under its own key,
 -- with positions per layout in layout.<key>.positions, the unit frames'
--- shape. The tracker's default is the Modern preset's anchor for Blizzard's
--- ObjectiveTracker system (Blizzard_EditMode/Mainline/EditModePresetLayouts.lua);
--- the pane's is a draft above the character, clear of the minimap.
+-- shape. Both defaults are the owner's placement, read off the beta's saved
+-- profile on 22 October 2026 and rounded to 5: the tracker centered on the right edge, in
+-- its 0.75 scale (style.lua), and the pane to its left. The Modern preset's
+-- anchor for Blizzard's ObjectiveTracker system, TOPRIGHT -110, -275, is the
+-- presets' position, read at run time (startingpoints.lua).
 
 local PANES = {
     {
         frameName = "CamelotObjectiveTracker", key = NAV_KEY, name = "Objective Tracker",
-        default = { point = "TOPRIGHT", x = -110, y = -275 }, styleKey = "MAIN",
+        default = { point = "RIGHT", x = -10, y = 0 }, styleKey = "MAIN",
     },
     {
         frameName = "CamelotCurrentObjectiveTracker", key = "currentObjectives", name = "Current Objectives",
-        default = { point = "TOP", x = 0, y = -120 }, styleKey = "CURRENT",
+        default = { point = "RIGHT", x = -355, y = 35 }, styleKey = "CURRENT",
     },
 }
 

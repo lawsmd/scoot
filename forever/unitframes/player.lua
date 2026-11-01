@@ -84,10 +84,10 @@ Frame.Define({
     unit = "player",
     label = "Player",
     frameName = "CamelotPlayerFrame",
-    -- Beta stand-in, in center-origin coordinates: the Forever beta keeps no
-    -- Edit Mode position across a reload, so the default is the layout.
-    -- Vanilla's own spot, from the PlayerFrame XML, is TOPLEFT -19, -4.
-    default = { point = "CENTER", relPoint = "CENTER", x = -340, y = -300 },
+    -- The owner's placement, off the beta's saved profile on 22 October
+    -- 2026, rounded to 5. Vanilla's own spot, from the PlayerFrame XML, is
+    -- TOPLEFT -19, -4.
+    default = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 150, y = -150 },
     strataLevel = 10,
 
     -- 6603 is Auto Attack; a reload mid-swing sends no PLAYER_ENTER_COMBAT.

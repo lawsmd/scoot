@@ -44,7 +44,9 @@ local FRAME_NAME = "CamelotCurrentObjectiveCards"
 local KEY = "currentObjectivesCards"
 local NAV_KEY = "currentObjectives"
 local LABEL = "Current Objective Cards"
-local DEFAULT = { point = "TOP", x = 0, y = -40 }
+-- The owner's placement, off the beta's saved profile on 22 October 2026,
+-- rounded to 5.
+local DEFAULT = { point = "TOP", x = 0, y = -20 }
 local SLIDE_RATE = 12  -- per second: a slide is 95% there in a quarter second
 local INSTANT = { install = true, apply = true, ["editmode enter"] = true, ["editmode exit"] = true }
 

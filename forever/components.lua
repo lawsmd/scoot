@@ -147,6 +147,18 @@ end
 
 local shapes = {}    -- component id -> key -> default
 
+-- Camelot's departures from a shared component's own defaults, by path under
+-- the component's id: the owner's tooltip of 22 October 2026. A preset start
+-- keeps the component's value.
+local CAMELOT_DEFAULTS = {
+    tooltip = {
+        ["textTitle.size"] = 18,
+        ["textTitle.style"] = "SHADOWTHICKOUTLINESLUG",
+        hideHealthBar = true,
+        showTooltipIDs = true,
+    },
+}
+
 local function shapeOf(component)
     local shape = shapes[component.id]
     if shape then return shape end
@@ -159,6 +171,13 @@ local function shapeOf(component)
             registerDefaults(component.id .. "." .. key, meta.default, flat)
         end
     end
+    local stock = {}
+    for key, value in pairs(CAMELOT_DEFAULTS[component.id] or {}) do
+        local path = component.id .. "." .. key
+        stock[path] = flat[path]
+        flat[path] = value
+    end
+    DB.RegisterStock(stock)
     DB.RegisterDefaults(flat)
     shapes[component.id] = shape
     return shape

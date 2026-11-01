@@ -12,11 +12,11 @@
 	<!-- Blizzard_ObjectiveTracker.xml: ObjectiveTrackerFrame, minus the two
 	templates that make it a right-managed frame and an Edit Mode system. -->
 	<Frame name="CamelotObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW">
-		<!-- The Modern preset's anchor for Blizzard's tracker, so the frame has
-		a rect from the moment it exists; the Edit Mode restore in tracker.lua
-		replaces it with the stored position. -->
+		<!-- Camelot's default from tracker.lua, so the frame has a rect from the
+		moment it exists; the Edit Mode restore there replaces it with the
+		stored position. -->
 		<Anchors>
-			<Anchor point="TOPRIGHT" x="-110" y="-275"/>
+			<Anchor point="RIGHT" x="-10" y="0"/>
 		</Anchors>
 		<KeyValues>
 			<KeyValue key="topPadding" value="0" type="number"/>
@@ -39,10 +39,11 @@
 	<!-- The Current Objectives pane (docs/objectivetracker/current.md): a second
 	container from the same template, holding one module. It has no header of
 	its own; its module's header is the pane's title, so the first module sits
-	at the top. The anchor is a draft the Edit Mode restore replaces. -->
+	at the top. The anchor is tracker.lua's default, which the Edit Mode
+	restore replaces. -->
 	<Frame name="CamelotCurrentObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW">
 		<Anchors>
-			<Anchor point="TOP" x="0" y="-120"/>
+			<Anchor point="RIGHT" x="-355" y="35"/>
 		</Anchors>
 		<KeyValues>
 			<KeyValue key="topPadding" value="0" type="number"/>

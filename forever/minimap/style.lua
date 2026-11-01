@@ -328,10 +328,16 @@ end
 
 -- After a profile switch the frame re-reads the new profile. A resync pass
 -- keeps the profile it had; re-landing the base there would cut short the
--- Dynamic Layouts tween that leaving Edit Mode starts.
+-- Dynamic Layouts tween that leaving Edit Mode starts. The layout pass that
+-- came with the switch landed the map on the old profile's default, so it
+-- lands again once Apply has synced the new one.
 addon.Profiles.RegisterApplyStep(MR.OWNER, function(_, ctx)
     if ctx.initial or ctx.resync then return end
     Style.Apply()
+    local frame = Style.Frame()
+    if frame and addon.EditMode.RestorePositionable then
+        addon.EditMode.RestorePositionable(frame)
+    end
 end, 30)
 
 --------------------------------------------------------------------------------

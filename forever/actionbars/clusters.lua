@@ -58,37 +58,60 @@ end
 -- Camelot preset constants.
 local SPACING = 4
 
+-- The owner's setup off the beta's saved profile: no end caps, Action Bars 1 to 3 compact with their empty buttons hidden,
+-- and Action Bar 5 in a cluster of its own, two rows at 80 percent.
+local function compact(identity, extra)
+    local m = member(identity, extra)
+    m.compact, m.alwaysShowButtons = true, false
+    return m
+end
+
 Clusters.DEFAULTS = {
-    { id = 1, axis = "vertical", spacing = SPACING, endCaps = true, endCapStyle = "standing", endCapScale = 100,
+    { id = 1, axis = "vertical", spacing = SPACING, endCaps = false, endCapStyle = "sitting", endCapScale = 100,
       members = {
-          member("bar1", { barArt = true, pageArrows = true }),
-          member("bar2"), member("bar3"), member("bar4"),
+          compact("bar1", { barArt = true, pageArrows = true }),
+          compact("bar2"), compact("bar3"), member("bar4"),
       } },
     { id = 2, axis = "vertical", spacing = SPACING, endCaps = false,
       members = { member("pet", { buttons = 10 }) } },
+    { id = 3, axis = "vertical", spacing = SPACING, endCaps = false, endCapScale = 100,
+      members = { member("bar5", { lines = 2, iconSize = 80, alwaysShowButtons = false }) } },
 }
 
--- A profile started from Blizzard's Modern or Classic preset wears Blizzard's
--- own sitting end caps.
+-- A profile started from Blizzard's Modern or Classic preset keeps the
+-- arrangement Camelot shipped before the owner's: Action Bars 1 to 4 full,
+-- under Blizzard's own sitting end caps, and Action Bar 5 parked.
 DB.RegisterStockDocument(DOCUMENT, function()
-    local doc = CopyTable(Clusters.DEFAULTS)
-    for _, cluster in ipairs(doc) do
-        if cluster.endCapStyle then cluster.endCapStyle = "sitting" end
-    end
-    return doc
+    return {
+        { id = 1, axis = "vertical", spacing = SPACING, endCaps = true, endCapStyle = "sitting", endCapScale = 100,
+          members = {
+              member("bar1", { barArt = true, pageArrows = true }),
+              member("bar2"), member("bar3"), member("bar4"),
+          } },
+        { id = 2, axis = "vertical", spacing = SPACING, endCaps = false,
+          members = { member("pet", { buttons = 10 }) } },
+    }
 end)
 
--- Where each default cluster stands until Edit Mode stores a position. The
--- main cluster is centered at the bottom of the screen with its bottom
--- member 55 units up: the owner's call after the first look, the bars
--- being the one place Camelot departs from the stock arrangement on
--- purpose. The pet cluster takes Blizzard's bottom stacking rule when it is
--- built. A cluster with no row here, a new one, stands at the screen center.
--- The micro menu, the bags and the stance bar are not clusters: they are
--- anchors of their own (microbags.lua, stance.lua).
+-- Where each default cluster stands until Edit Mode stores a position, under
+-- every start. The main cluster is centered at the bottom of the screen with
+-- its bottom member 75 units up, and Action Bar 5's cluster stands right of
+-- it at the bottom edge: the owner's spots off the beta's saved profile,
+-- rounded to 5. The pet cluster takes Blizzard's bottom stacking rule when
+-- it is built. A cluster with no row here, a new one, stands at the screen
+-- center. The micro menu, the bags and the stance bar are not clusters: they
+-- are anchors of their own (microbags.lua, stance.lua).
 Clusters.DEFAULT_ANCHOR = {
-    [1] = { point = "BOTTOM", relativeTo = "UIParent", relativePoint = "BOTTOM", x = 0, y = 55 },
+    [1] = { point = "BOTTOM", relativeTo = "UIParent", relativePoint = "BOTTOM", x = 0, y = 75 },
+    [3] = { point = "BOTTOM", relativeTo = "UIParent", relativePoint = "BOTTOM", x = 415, y = 5 },
 }
+
+-- Camelot's start enrolls the clusters in Dynamic Layouts, and the main
+-- cluster's dynamic state takes it off the bottom edge: the owner's. Neither
+-- preset enrolls them; a preset start reads no record.
+DB.RegisterDefaults({ ["dynamicLayouts.participating.actionBarClusters"] = true })
+DB.RegisterStock({ ["dynamicLayouts.participating.actionBarClusters"] = false })
+addon.DynamicLayoutsStore.RegisterDefaultRecord(Clusters.Key(1), { offscreen = "BOTTOM" })
 
 --- The layout key a cluster's Edit Mode positions and its dynamic record
 --- sit under.

@@ -239,7 +239,7 @@ Frame.Define({
     -- started from a Blizzard preset has both instances' defaults rewritten
     -- from the preset's data. One table per frame, never shared: Edit Mode
     -- keeps it by reference.
-    default = { point = "CENTER", relPoint = "CENTER", x = -340, y = -300 },
+    default = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 150, y = -150 },
     strataLevel = 10,
 
     unitEvents = { "UNIT_FACTION" },

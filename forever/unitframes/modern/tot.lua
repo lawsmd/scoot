@@ -54,12 +54,12 @@ Frame.Define({
     unit = "targettarget",
     label = "Target of Target",
     frameName = "CamelotModernTargetOfTargetFrame",
-    -- The Camelot layout's spot, the Classic instance's own, so a style swap
-    -- on that layout keeps the frame where it was; a profile started from a
-    -- Blizzard preset has both instances' defaults rewritten from the
-    -- preset's data. One table per frame, never shared: Edit Mode keeps it
-    -- by reference.
-    default = { point = "CENTER", relPoint = "CENTER", x = 505, y = -300 },
+    -- The Camelot layout's spot, centered where the Classic instance's is,
+    -- so a style swap on that layout keeps the frame where it was; a profile
+    -- started from a Blizzard preset has both instances' defaults rewritten
+    -- from the preset's data. One table per frame, never shared: Edit Mode
+    -- keeps it by reference.
+    default = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 600, y = -175 },
     -- Over the target frame, whose corner it covers.
     strataLevel = 20,
     visibilityDriver = "[@target,dead] hide; [@targettarget,exists] show; hide",

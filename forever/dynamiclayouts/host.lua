@@ -60,6 +60,7 @@ DL.RegisterGroup("castBars", "Cast Bars", 20)
 DL.RegisterGroup("actionBarClusters", "Action Bar Clusters", 30)
 DL.RegisterGroup("microBags", "Micro & Bag Bar", 40)
 DL.RegisterGroup("stanceBar", "Stance Bar", 45)
+DL.RegisterGroup("gamepadBar", "Gamepad Bars", 46)
 DL.RegisterGroup("objectiveTracker", "Objective Tracker", 50)
 DL.RegisterGroup("statusBars", "Status Bars", 60)
 
@@ -83,27 +84,51 @@ local function enabled()
     return DB.SessionGet(FEATURE_PATH) == true
 end
 
+-- Camelot's own records, by frame id: what a profile started as Camelot reads
+-- while it stores no record of its own. A preset start has none. The first
+-- write stores a copy and merges into it, so a stored record always wins.
+local defaultRecords = {}
+
+local function defaultRecord(id)
+    local rec = defaultRecords[id]
+    if not rec or DB.StartingPoint() ~= "camelot" then return nil end
+    local copy = {}
+    for k, v in pairs(rec) do copy[k] = v end
+    return copy
+end
+
 addon.DynamicLayoutsStore = {
     IsEnabled = enabled,
     GetRecord = function(id)
         if not enabled() then return nil end
         local entry = DB.GetLayout(id)
-        return entry and entry.dynamic or nil
+        if entry and entry.dynamic then return entry.dynamic end
+        return defaultRecord(id)
+    end,
+    --- Register Camelot's record for one frame id, in the stored shape
+    --- (the header). Called at load, beside the frame's other defaults.
+    RegisterDefaultRecord = function(id, record)
+        if type(id) ~= "string" or type(record) ~= "table" then return false end
+        defaultRecords[id] = record
+        return true
     end,
     GetParticipating = function(key)
         if not enabled() or type(key) ~= "string" then return false end
         return DB.Get(participatingPath(key)) == true
     end,
+    -- False, not nil, for off: a key Camelot enrolls by default would read
+    -- its default back through a nil.
     SetParticipating = function(key, on)
         if type(key) ~= "string" then return false end
-        return DB.Set(participatingPath(key), on and true or nil)
+        return DB.Set(participatingPath(key), on and true or false)
     end,
-    --- Merge fields into the record, creating it. A nil in `fields` cannot
-    --- clear a field; pass false to clear one.
+    --- Merge fields into the record, creating it from Camelot's own when the
+    --- profile has none. A nil in `fields` cannot clear a field; pass false
+    --- to clear one.
     SetRecord = function(id, fields)
         if type(id) ~= "string" or type(fields) ~= "table" then return false end
         local entry = DB.GetLayout(id) or {}
-        entry.dynamic = entry.dynamic or {}
+        entry.dynamic = entry.dynamic or defaultRecord(id) or {}
         for k, v in pairs(fields) do
             entry.dynamic[k] = v
         end

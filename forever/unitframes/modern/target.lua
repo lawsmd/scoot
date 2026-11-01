@@ -240,6 +240,6 @@ local function define(key, unit, label, frameName, default, changeEvent)
 end
 
 define("target", "target", "Target", "CamelotModernTargetFrame",
-    { point = "CENTER", relPoint = "CENTER", x = 340, y = -300 }, "PLAYER_TARGET_CHANGED")
+    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -150 }, "PLAYER_TARGET_CHANGED")
 define("focus", "focus", "Focus", "CamelotModernFocusFrame",
-    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 174, y = -178 }, "PLAYER_FOCUS_CHANGED")
+    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -350 }, "PLAYER_FOCUS_CHANGED")

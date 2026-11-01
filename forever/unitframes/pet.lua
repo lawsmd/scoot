@@ -76,10 +76,10 @@ Frame.Define({
     unit = "pet",
     label = "Pet",
     frameName = "CamelotPetFrame",
-    -- Beta stand-in: vanilla's offset from the player frame (80 right, 60
-    -- down), kept against the player's stand-in. Vanilla's spot is TOPLEFT
-    -- 61, -64.
-    default = { point = "CENTER", relPoint = "CENTER", x = -312, y = -336 },
+    -- Its center 28 right of and 36 under the player's default center, the
+    -- offset the presets keep too (forever/startingpoints.lua), rounded to 5.
+    -- Vanilla's spot is TOPLEFT 61, -64.
+    default = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 230, y = -210 },
     -- Over the player frame, whose lower edge it overlaps.
     strataLevel = 20,
 

@@ -20,7 +20,8 @@ DB.RegisterDefaults({
     ["actionBars.enabled"] = true,
     -- Cluster ids are handed out from here and never reused, so a deleted
     -- cluster's layout entry can never reattach to a new one. The five
-    -- default clusters take 1 to 5.
+    -- default clusters take 1 to 3, and 4 and 5 belonged to clusters a
+    -- default once held.
     ["actionBars.nextClusterId"] = 6,
 })
 

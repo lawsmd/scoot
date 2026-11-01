@@ -233,9 +233,10 @@ end
 do
     local map = {}
     for _, key in ipairs(UF.ORDER) do
-        -- The Classic rebuild is the Camelot look; a start from a preset,
-        -- below, takes that preset's style.
-        map[Text.StylePath(key, "camelot", "style")] = "camelot"
+        -- Camelot ships the client's own frames, the owner's call of 22
+        -- October 2026; a start from a preset, below, takes that preset's
+        -- style.
+        map[Text.StylePath(key, "camelot", "style")] = "modern"
         if Settings.ATTACH[key] then
             map[Settings.AttachPath(key, "attach")] = true
             map[Settings.AttachPath(key, "attachX")] = 0

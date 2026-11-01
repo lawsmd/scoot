@@ -23,7 +23,16 @@
 -- override and pet battle clauses join VEHICLE_CLAUSES once each has been
 -- seen to flip on the beta.
 --
--- Nothing is stored for a new profile: a nil value is the stock behaviour.
+-- Under Forever's gamepad UI the eight standard bars are hidden whatever
+-- Bar Visible says, Blizzard's rule for its own (ActionBar.lua, SetShowGrid:
+-- "The standard action bars should never be shown with gamepad UI"), unless
+-- the bar's Hide In Gamepad UI toggle is off. The stance, pet, micro and
+-- bag bars stay: the gamepad map places them. The rule is a plain "hide"
+-- driver, so the bar keeps its slot and shows in Edit Mode as every bar
+-- does; a gamepad transition inside a session re-applies it.
+--
+-- A nil value is the stock behaviour. Camelot's start registers the owner's
+-- own fades, below; a preset start writes the stock values over them.
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -67,6 +76,22 @@ function Visibility.Path(token, field)
     return "actionBars.visibility." .. token .. "." .. field
 end
 
+-- The owner's setup off the beta's saved profile: Action Bar 4 at 30 until
+-- the mouse is over it, and the combined micro and bag line at 50. Blizzard's
+-- bars stay at full opacity.
+local CAMELOT_FADES = { bar4 = 30, microBags = 50 }
+local camelot, stock = {}, {}
+for token, value in pairs(CAMELOT_FADES) do
+    for _, key in pairs(KEYS) do
+        camelot[Visibility.Path(token, key)] = value
+        stock[Visibility.Path(token, key)] = 100
+    end
+end
+camelot[Visibility.Path("bar4", "mouseoverMode")] = true
+stock[Visibility.Path("bar4", "mouseoverMode")] = false
+DB.RegisterDefaults(camelot)
+DB.RegisterStock(stock)
+
 local function get(token, field)
     return DB.Get(Visibility.Path(token, field))
 end
@@ -80,18 +105,25 @@ local function isStance(token)
     return Stance ~= nil and token == Stance.KEY
 end
 
+local function isGamepad(token)
+    local GamepadBar = ActionBars.GamepadBar
+    return GamepadBar ~= nil and token == GamepadBar.KEY
+end
+
 local function barOf(token)
     if isBar(token) then return ActionBars.Frames[token] end
     if isStance(token) then return ActionBars.Stance.Face(token) end
+    if isGamepad(token) then return ActionBars.GamepadBar.Face(token) end
     local MicroBags = ActionBars.MicroBags
     return MicroBags and MicroBags.Face(token) or nil
 end
 
 -- Only a bar a cluster holds takes a driver; a parked one draws nowhere. A
 -- micro or bag holder takes one while its style is in use, the stance bar
--- while it has forms to show.
+-- while it has forms to show, the gamepad bar while it is built.
 local function placed(token)
     if isStance(token) then return ActionBars.Stance.IsActive(token) end
+    if isGamepad(token) then return ActionBars.GamepadBar.IsActive(token) end
     if not isBar(token) then
         local MicroBags = ActionBars.MicroBags
         return MicroBags ~= nil and MicroBags.IsActive(token)
@@ -101,13 +133,14 @@ local function placed(token)
 end
 
 --- Every token the tab can apply to: the pool's bars, the micro and bag
---- holders, then the stance bar.
+--- holders, the stance bar, then the gamepad bar.
 function Visibility.Tokens()
     local tokens = {}
     for _, token in ipairs(ActionBars.POOL_ORDER or {}) do tokens[#tokens + 1] = token end
     local MicroBags = ActionBars.MicroBags
     for _, key in ipairs(MicroBags and MicroBags.ORDER or {}) do tokens[#tokens + 1] = MicroBags.KEYS[key] end
     if ActionBars.Stance then tokens[#tokens + 1] = ActionBars.Stance.KEY end
+    if ActionBars.GamepadBar then tokens[#tokens + 1] = ActionBars.GamepadBar.KEY end
     return tokens
 end
 
@@ -117,8 +150,28 @@ function Visibility.Mode(token)
     return "always"
 end
 
+--- The eight standard bars take the gamepad rule; the pet bar, the stance
+--- bar, the micro and bag holders and the gamepad bar itself do not.
+function Visibility.TakesGamepadRule(token)
+    local row = ActionBars.POOL and ActionBars.POOL[token]
+    return row ~= nil and row.kind == "action"
+end
+
+--- The stored exception: the player unchecked Hide In Gamepad UI.
+function Visibility.GamepadShown(token)
+    return get(token, "gamepadShown") == true
+end
+
+--- Whether the gamepad rule hides this bar now.
+function Visibility.HiddenUnderGamepad(token)
+    if not Visibility.TakesGamepadRule(token) or Visibility.GamepadShown(token) then return false end
+    local Gamepad = addon.Gamepad
+    return (Gamepad and Gamepad.IsActive and Gamepad.IsActive()) and true or false
+end
+
 --- The driver string for a bar, or nil when it always shows.
 function Visibility.Driver(token)
+    if Visibility.HiddenUnderGamepad(token) then return DRIVERS.hidden end
     local rule = DRIVERS[Visibility.Mode(token)]
     if not rule then
         return VEHICLE_CLAUSES ~= "" and (VEHICLE_CLAUSES .. " show") or nil
@@ -223,8 +276,12 @@ function Visibility.Describe(token)
     if get(token, "mouseoverMode") then
         hover = addon.HoverFade.IsOver(bar) and "over" or "out"
     end
-    return string.format("visible %s, driver %s, shown %s, alpha %.2f, hover %s",
-        Visibility.Mode(token), drivers[bar] or "none", tostring(bar:IsShown()), bar:GetAlpha(), hover)
+    local gamepad = ""
+    if Visibility.TakesGamepadRule(token) and addon.Gamepad and addon.Gamepad.IsActive() then
+        gamepad = Visibility.HiddenUnderGamepad(token) and ", gamepad hidden" or ", gamepad shown"
+    end
+    return string.format("visible %s, driver %s, shown %s, alpha %.2f, hover %s%s",
+        Visibility.Mode(token), drivers[bar] or "none", tostring(bar:IsShown()), bar:GetAlpha(), hover, gamepad)
 end
 
 --------------------------------------------------------------------------------
@@ -244,3 +301,11 @@ addon.Events.On(OWNER, "PLAYER_REGEN_DISABLED", function() C_Timer.After(0, refr
 addon.Events.On(OWNER, "PLAYER_REGEN_ENABLED", function() C_Timer.After(0.1, refreshAlpha) end)
 addon.Events.On(OWNER, "PLAYER_TARGET_CHANGED", refreshAlpha)
 addon.Events.On(OWNER, "PLAYER_ENTERING_WORLD", refreshAlpha)
+
+-- A gamepad transition inside a session re-reads the gamepad rule on every
+-- bar; the options switch reloads instead, and the build at login reads it.
+if addon.Gamepad and addon.Gamepad.OnChange then
+    addon.Gamepad.OnChange(OWNER, function()
+        if ActionBars.IsBuilt and ActionBars.IsBuilt() then Visibility.ApplyAll() end
+    end)
+end

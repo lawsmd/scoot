@@ -254,10 +254,11 @@ local function define(key, unit, label, frameName, default, changeEvent)
     })
 end
 
--- The target is on a beta stand-in that mirrors the player frame around the
--- screen center. Vanilla's own spot, from the TargetFrame XML, is TOPLEFT
--- 250, -4. The focus frame takes the Classic Edit Mode preset's.
+-- The target's free spot, for the attach off, is where the attach puts it:
+-- level with the player's default, against its right edge, rounded to 5.
+-- Vanilla's own spot, from the TargetFrame XML, is TOPLEFT 250, -4. The focus
+-- frame shares the target's x, far enough down to clear the target's auras.
 define("target", "target", "Target", "CamelotTargetFrame",
-    { point = "CENTER", relPoint = "CENTER", x = 340, y = -300 }, "PLAYER_TARGET_CHANGED")
+    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -150 }, "PLAYER_TARGET_CHANGED")
 define("focus", "focus", "Focus", "CamelotFocusFrame",
-    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 174, y = -178 }, "PLAYER_FOCUS_CHANGED")
+    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -350 }, "PLAYER_FOCUS_CHANGED")

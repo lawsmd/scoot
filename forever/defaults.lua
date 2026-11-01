@@ -96,18 +96,23 @@ local SCOPES = {
     resourceDisplayResource = { prefixes = { "personalResourceDisplay.classResource." } },
     resourceDisplayCastBar = { prefixes = { "personalResourceDisplay.castBar." } },
     actionBarClusters = {
-        prefixes = { "actionBars.text." },
+        -- "visibility.bar" holds bar1 to bar8, and not bagBar.
+        prefixes = { "actionBars.text.", "actionBars.visibility.bar", "actionBars.visibility.pet." },
         paths = { "actionBars.nextClusterId" },
         layouts = { "actionBarCluster." },
         documents = { "actionBars.clusters", "actionBars.memberMemory" },
     },
     actionBarMicroBags = {
-        prefixes = { "actionBars.microBags." },
+        prefixes = { "actionBars.microBags.", "actionBars.visibility.microMenu.",
+                     "actionBars.visibility.bagBar.", "actionBars.visibility.microBags." },
         layouts = { "microMenu", "bagBar", "microBags" },
     },
     actionBarStance = {
         prefixes = { "actionBars.stance.", "actionBars.visibility.stanceBar." },
         layouts = { "stanceBar" },
+    },
+    actionBarGamepad = {
+        prefixes = { "actionBars.gamepad.", "actionBars.visibility.gamepadBar." },
     },
 }
 
@@ -291,6 +296,7 @@ function PageDefaults.Dump(navKey)
         return value == nil and "same" or show(value)
     end
     push("Profile start: %s", DB.StartingPoint())
+    push("Reads set: %s", DB.PresetSet(DB.StartingPoint()) or "camelot")
     push("%s: path | stored | Camelot | Modern | Classic", navKey)
     for _, path in ipairs(paths) do
         push("  %s | %s | %s | %s | %s", path, show(profile and profile.settings[path]),

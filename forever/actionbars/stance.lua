@@ -55,13 +55,19 @@ Stance.RANGES = {
 local NUM_BUTTONS = 10
 local BUTTON_SIZE = 30
 
+-- Camelot's two rows flowing right to left are the owner's, off the beta's
+-- saved profile; Blizzard's bar is one row flowing right.
 DB.RegisterDefaults({
     [PATH .. "orientation"] = "horizontal",
-    [PATH .. "lines"] = 1,
+    [PATH .. "lines"] = 2,
     [PATH .. "iconSize"] = 100,
     [PATH .. "iconPadding"] = 2,
-    [PATH .. "flowX"] = "right",
+    [PATH .. "flowX"] = "left",
     [PATH .. "flowY"] = "up",
+})
+DB.RegisterStock({
+    [PATH .. "lines"] = 1,
+    [PATH .. "flowX"] = "right",
 })
 
 -- Forever's indent for the stance and pet bars and its spacer between the
@@ -209,10 +215,18 @@ end
 local defaultRecord = { point = "BOTTOM", x = 0, y = 140 }
 Stance.DEFAULT = defaultRecord
 
--- Over cluster 1 by Forever's spacer, indented from its left edge, in the
--- container's base scale; the record stays the same table, since the Edit
--- Mode library and the adapter hold it.
+-- Camelot's start puts the bar at the bottom edge left of cluster 1, the
+-- owner's spot rounded to 5.
+local CAMELOT_SPOT = { point = "BOTTOM", x = -335, y = 5 }
+
+-- A preset start stands it over cluster 1 by Forever's spacer, indented from
+-- its left edge, in the container's base scale. The record stays the same
+-- table, since the Edit Mode library and the adapter hold it.
 local function UpdateDefault()
+    if DB.StartingPoint() == "camelot" then
+        defaultRecord.point, defaultRecord.x, defaultRecord.y = CAMELOT_SPOT.point, CAMELOT_SPOT.x, CAMELOT_SPOT.y
+        return
+    end
     local Clusters = ActionBars.Clusters
     local container = Clusters and Clusters.Container and Clusters.Container(Clusters.PRIMARY)
     if not (container and container:IsShown()) then return end
