@@ -6,8 +6,9 @@
 --
 -- Each verb registers with the command registry in core/commands.lua, which
 -- reads the brand and the slash word from the entry file, so `/camelot` lists
--- these beside the debug commands the borrowed files bring with them. This
--- file loads last on Camelot.toc and binds the slash word at its end.
+-- these beside the debug commands the borrowed files bring with them. The
+-- word itself is bound by forever/slash.lua, a shipped file, before this one
+-- loads; the registry dispatches at call time, so a verb added here answers.
 --
 -- Output goes to the copyable window, never to chat.
 --------------------------------------------------------------------------------
@@ -405,11 +406,3 @@ addon:RegisterSlashCommand({
     name = "db", help = "dump CamelotDB: schema, profile, stored values",
     handler = function() addon.DB.Dump() end,
 })
-
--- /camelot. The registry owns the word, the parse and the dispatch; a bare
--- /camelot opens the settings panel, the one behavior that is this addon's.
-addon.Commands.InstallSlash(function()
-    if addon.UI and addon.UI.SettingsPanel and addon.UI.SettingsPanel.Toggle then
-        addon.UI.SettingsPanel:Toggle()
-    end
-end)

@@ -1,8 +1,8 @@
 ## Interface: 120105, 16001
 ## Title: Camelot
-## Notes: Classic-look unit frames for Forever. Development build, not released.
+## Notes: The Classic interface for WoW Forever, rebuilt as Camelot frames with the conveniences of a modern UI.
 ## Author: Scooter
-## Version: 0.0.1
+## Version: 1.0.0
 ## IconTexture: Interface\AddOns\Camelot\forever\media\CamelotLogoBronze.png
 ## SavedVariables: CamelotDB
 ## SlashCmd: /camelot
@@ -211,8 +211,8 @@ core/components/tooltip.lua
 ## precedes events, which aliases the engine table; every file reads
 ## addon.AurasHost above at the moment of use and addon.Specs, addon.AuraIds,
 ## addon.Opacity and the icon border helpers from the blocks above.
-## core/debug/scootauras.lua is development tooling, stripped from a release
-## the way forever/debug.lua is. No game-type gate: the trackers own their
+## core/debug/scootauras.lua, its probe battery, is development tooling and
+## sits in the block at the end. No game-type gate: the trackers own their
 ## frames and ask both clients the same questions, so retail runs
 ## CamelotAuras beside the other addon's copy, as it does the Tooltip.
 core/components/scootauras/core.lua
@@ -232,7 +232,6 @@ core/components/scootauras/cooldown.lua
 core/components/scootauras/stacks.lua
 core/components/scootauras/events.lua
 core/components/scootauras/importexport.lua
-core/debug/scootauras.lua
 ## The HUD, the unit frames and the cast bar, is Forever's alone. Retail loads
 ## this TOC too, through the AddOns\Camelot junction, for the settings panel,
 ## so every HUD line carries [ExcludeLoadGameType standard]: retail's game type
@@ -627,8 +626,8 @@ ui/v2/settings/scootauras/AuraListDrag.lua
 ui/v2/settings/scootauras/AuraListRenderer.lua
 
 ## Camelot's page tree, the minimap button's icon and storage, the Defaults
-## button's scopes (defaults.lua), then the slash entry, which binds the word
-## last.
+## button's scopes (defaults.lua), the starting points, then forever/slash.lua,
+## which binds the word last of the shipped files.
 forever/menu.lua
 ui/v2/settings/StartHereRenderer.lua
 forever/castbars/page.lua [ExcludeLoadGameType standard]
@@ -654,9 +653,19 @@ forever/actionbars/gamepadpage.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
 forever/defaults.lua
 forever/startingpoints.lua
+forever/slash.lua
+# >>> CAMELOT-DEV-ONLY
+# Development tooling. docs/scripts/export-camelot.ps1 drops this block from
+# the release TOC and skips the files it names, so a CurseForge install has
+# core/debug/core.lua (the debug window, DebugLines and the command registry)
+# and core/debug/export.lua and nothing else from core/debug/. A shipped file reads a name defined
+# in this block only behind a bare test (the gate's release-read check). A
+# junctioned repo install keeps everything.
+core/debug/scootauras.lua
 forever/gallery.lua
 core/debug/taintscan.lua
 forever/debug.lua
+# <<< CAMELOT-DEV-ONLY
 # >>> CAMELOT-LOCAL
 # Local-only tooling in the gitignored doc base (docs/debugging/local/local.md).
 # A clone without docs/ skips the line; a Camelot release strips the block.
