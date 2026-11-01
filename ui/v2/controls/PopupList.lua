@@ -815,7 +815,7 @@ function Controls.CreatePopupList(opts)
         end
 
         popup:Show()
-        if withFilter then filterBox:SetFocus() end
+        if withFilter then addon.Keyboard.TakeFocus(filterBox) end
         if not opts.silent then PlaySound(opts.openSound or SOUNDKIT.IG_MAINMENU_OPEN) end
         return totalHeight
     end

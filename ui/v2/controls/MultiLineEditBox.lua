@@ -277,7 +277,7 @@ function Controls:CreateMultiLineEditBox(options)
     bordered:EnableMouse(true)
     bordered:SetScript("OnMouseDown", function()
         if not readOnly then
-            editBox:SetFocus()
+            addon.Keyboard.TakeFocus(editBox)
         end
     end)
 
@@ -350,7 +350,7 @@ function Controls:CreateMultiLineEditBox(options)
     end
 
     function container:SetFocus()
-        self._editBox:SetFocus()
+        return addon.Keyboard.TakeFocus(self._editBox)
     end
 
     function container:ClearFocus()

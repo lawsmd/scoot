@@ -189,7 +189,7 @@ function Controls:CreateSingleLineEditBox(options)
     -- Click on bordered area focuses the editbox
     bordered:EnableMouse(true)
     bordered:SetScript("OnMouseDown", function()
-        editBox:SetFocus()
+        addon.Keyboard.TakeFocus(editBox)
     end)
 
     -- Public API
@@ -210,7 +210,7 @@ function Controls:CreateSingleLineEditBox(options)
     end
 
     function container:SetFocus()
-        self._editBox:SetFocus()
+        return addon.Keyboard.TakeFocus(self._editBox)
     end
 
     function container:ClearFocus()
@@ -315,7 +315,7 @@ function Controls:CreateSearchBox(options)
 
     container.GetText = function(c) return c._editBox:GetText() end
     container.SetText = function(c, text) c._editBox:SetText(text or "") end
-    container.SetFocus = function(c) c._editBox:SetFocus() end
+    container.SetFocus = function(c) return addon.Keyboard.TakeFocus(c._editBox) end
     container.ClearFocus = function(c) c._editBox:ClearFocus() end
     container.HasFocus = function(c) return c._editBox:HasFocus() end
     container.SetOnClear = function(c, fn) c._onClear = fn end

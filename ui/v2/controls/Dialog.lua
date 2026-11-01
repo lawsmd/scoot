@@ -514,7 +514,7 @@ function Controls:ShowDialog(name, options)
         f._editBox:SetText(options.editBoxText or def.editBoxText or "")
         f._editBox:SetMaxLetters(options.maxLetters or def.maxLetters or 32)
         f._editBox:HighlightText()
-        f._editBox:SetFocus()
+        addon.Keyboard.TakeFocus(f._editBox)
         body = body + m.controlGap + m.inputHeight
     else
         f._editBox:Hide()

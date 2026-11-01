@@ -733,7 +733,7 @@ function Search:RenderSearchPage(panel, scrollContent)
         -- Auto-focus with cursor at end
         C_Timer.After(0, function()
             if searchInput._editBox then
-                searchInput._editBox:SetFocus()
+                addon.Keyboard.TakeFocus(searchInput._editBox)
                 searchInput._editBox:SetCursorPosition(searchInput._editBox:GetNumLetters())
             end
         end)

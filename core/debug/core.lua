@@ -64,7 +64,7 @@ local function ShowDebugCopyWindow(title, text)
         copyBtn:SetText("Copy All")
         copyBtn:SetScript("OnClick", function()
             f.EditBox:HighlightText()
-            f.EditBox:SetFocus()
+            addon.Keyboard.TakeFocus(f.EditBox)
         end)
         local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         closeBtn:SetSize(80, 22)
@@ -77,13 +77,14 @@ local function ShowDebugCopyWindow(title, text)
     if f.title then f.title:SetText(title or (addon.Brand .. " Debug")) end
     if f.EditBox then f.EditBox:SetText(text or "") end
     f:Show()
-    -- Defer focus/highlight to avoid scroll system taint.
-    -- These operations trigger Blizzard's scroll callbacks which can
-    -- encounter secret values if called synchronously from addon context
+    -- Deferred: focus and highlight run Blizzard's scroll callbacks, which can
+    -- meet secret values when called synchronously from addon context. Under a
+    -- gamepad layout the box takes focus only when nothing else holds it; the
+    -- chat edit box keeps it after a send there, and Escape in chat frees it.
     C_Timer.After(0, function()
         if f.EditBox and f:IsShown() then
             f.EditBox:HighlightText()
-            f.EditBox:SetFocus()
+            addon.Keyboard.TakeFocus(f.EditBox)
         end
     end)
 end
