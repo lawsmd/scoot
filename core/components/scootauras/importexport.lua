@@ -284,6 +284,10 @@ local function DecodeAuraString(str)
     if profilePrefix and str:sub(1, #profilePrefix) == profilePrefix then
         return nil, "That is a " .. addon.Brand .. " profile string. Import it under Profiles > Import/Export."
     end
+    local keybindsPrefix = codec.PREFIX_KEYBINDS
+    if keybindsPrefix and str:sub(1, #keybindsPrefix) == keybindsPrefix then
+        return nil, "That is a keybind string. Import it under Quality of Life > Keybinds."
+    end
     local ok, envelope = codec:DecodeEnvelope(str, codec.PREFIX_AURA, "aura")
     if not ok then return nil, envelope end
     -- The other addon's string is refused as the profile importer refuses

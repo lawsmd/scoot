@@ -567,6 +567,8 @@ end
 --   set         : Function(newText) to save text
 --   placeholder : Optional placeholder text
 --   height      : Edit box height (default 120)
+--   readOnly    : Block typing; Ctrl+A and Ctrl+C still work
+--   fontSize    : Text size (default 12)
 --   key         : Optional unique key for dynamic updates
 --------------------------------------------------------------------------------
 
@@ -579,6 +581,8 @@ function Builder:AddMultiLineEditBox(options)
         label = options.label,
         placeholder = options.placeholder,
         height = options.height or 120,
+        readOnly = options.readOnly,
+        fontSize = options.fontSize,
         text = options.get and options.get() or "",
         width = scrollContent:GetWidth() - (self._contentPadding * 2),
     })

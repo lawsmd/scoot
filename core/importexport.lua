@@ -7,10 +7,11 @@ local IE = addon.ImportExport
 local VERSION = 1
 local PREFIX = "!SM1!"
 
--- Both importers read one table, so a string pasted into the wrong box is
+-- All three importers read one table, so a string pasted into the wrong box is
 -- named rather than rejected as garbage.
 IE.PREFIX_PROFILE = PREFIX
 IE.PREFIX_AURA = "!SA1!"
+IE.PREFIX_KEYBINDS = "!SK1!"
 
 -- Both addons write strings with the same prefixes, and a profile from one
 -- means nothing to the other, so the envelope carries the writer's name and
@@ -185,6 +186,9 @@ end
 function IE:ImportProfile(importStr)
     if type(importStr) == "string" and importStr:sub(1, #IE.PREFIX_AURA) == IE.PREFIX_AURA then
         return false, "That is a " .. brand() .. " aura string. Import it from the Aura List."
+    end
+    if type(importStr) == "string" and importStr:sub(1, #IE.PREFIX_KEYBINDS) == IE.PREFIX_KEYBINDS then
+        return false, "That is a keybind string. Import it under Quality of Life > Keybinds."
     end
 
     local ok, envelope = self:DecodeEnvelope(importStr, PREFIX, "profile")
