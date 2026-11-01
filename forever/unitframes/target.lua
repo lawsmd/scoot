@@ -257,8 +257,9 @@ end
 -- The target's free spot, for the attach off, is where the attach puts it:
 -- level with the player's default, against its right edge, rounded to 5.
 -- Vanilla's own spot, from the TargetFrame XML, is TOPLEFT 250, -4. The focus
--- frame shares the target's x, far enough down to clear the target's auras.
+-- frame's is the owner's off the beta's saved profile, rounded to 5: on the
+-- left edge above the middle of the screen.
 define("target", "target", "Target", "CamelotTargetFrame",
     { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -150 }, "PLAYER_TARGET_CHANGED")
 define("focus", "focus", "Focus", "CamelotFocusFrame",
-    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -350 }, "PLAYER_FOCUS_CHANGED")
+    { point = "LEFT", relPoint = "LEFT", x = 130, y = 170 }, "PLAYER_FOCUS_CHANGED")

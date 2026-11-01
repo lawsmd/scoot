@@ -59,14 +59,26 @@ end
 Style.WIDTH = { min = 25, max = 130, step = 5, default = 100 }
 Style.OPACITY = { min = 0, max = 100, step = 1, default = 100 }
 
+-- The owner's spots off the beta's saved profile, rounded: bar 1 on the
+-- bottom edge, bar 2 on the top edge left of center. Kept by reference: Reset
+-- To Default Position returns a bar here. A preset start reads
+-- STOCK_POSITIONS instead (forever/startingpoints.lua).
+Style.DEFAULT_POSITIONS = {
+    { point = "BOTTOM", x = 0, y = 3 },
+    { point = "TOPLEFT", x = 232, y = 0 },
+}
+
 -- Forever's preset anchors for the two systems (Blizzard_EditMode/Camelot/
 -- EditModePresetLayoutConstants.lua, STATUS_BAR_1 and STATUS_BAR_2), which
--- Blizzard's bottom stack overrides at run time. Kept by reference: Reset To
--- Default Position returns a bar here.
-Style.DEFAULT_POSITIONS = {
+-- Blizzard's bottom stack overrides at run time.
+Style.STOCK_POSITIONS = {
     { point = "BOTTOM", x = 0, y = 0 },
     { point = "BOTTOM", x = 0, y = 17 },
 }
+
+-- The owner's widths and bar 1's opacity, off the same profile.
+local CAMELOT_WIDTH = 40
+local CAMELOT_OPACITY = { 50, Style.OPACITY.default }
 
 --- The dotted path of a bar's setting: Style.Path(1, "width").
 function Style.Path(index, key)
@@ -82,15 +94,18 @@ function Style.Set(index, key, value)
 end
 
 do
-    local map = {}
+    local map, stock = {}, {}
     map["statusBars.enabled"] = true
     for index = 1, 2 do
-        map[Style.Path(index, "width")] = Style.WIDTH.default
-        map[Style.Path(index, "opacity")] = Style.OPACITY.default
+        map[Style.Path(index, "width")] = CAMELOT_WIDTH
+        map[Style.Path(index, "opacity")] = CAMELOT_OPACITY[index]
         map[Style.Path(index, "alwaysShowText")] = false
         map[Style.Path(index, "showLevel")] = true
+        stock[Style.Path(index, "width")] = Style.WIDTH.default
+        stock[Style.Path(index, "opacity")] = Style.OPACITY.default
     end
     DB.RegisterDefaults(map)
+    DB.RegisterStock(stock)
 end
 
 --------------------------------------------------------------------------------

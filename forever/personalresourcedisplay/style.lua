@@ -11,11 +11,13 @@
 -- runs against it when it exists and returns when it does not.
 --
 -- The defaults are Forever's shipped PRD, retail's Modern preset (vanilla had
--- no PRD): both bars 15 high, the full 200 width, no spacing, full opacity,
--- always shown, and both texts on, the percent at the left and the value at
--- the right, as Blizzard's bars draw with Show Bar Text on. The text keys
--- register no face, size or style: nil leaves the string on the
--- TextStatusBarText font object.
+-- no PRD): both bars 15 high, the full 200 width, full opacity, always shown,
+-- with the owner's setup off the beta's saved profile laid over it: 10 of
+-- spacing, the value alone at the center of each bar in a thick shadowed
+-- outline at 11, the cast bar on with its timer, and the display centered
+-- low on the screen. Each departure has Blizzard's value in the stock map
+-- after the defaults. A text key with no stored face, size or style leaves
+-- the string on the TextStatusBarText font object.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -88,8 +90,10 @@ Style.THICKNESS = { min = 1, max = 8, step = 0.5, default = 1 }
 -- The frame's XML width, Blizzard's defaultBarWidth; Bar Width scales it.
 Style.DEFAULT_BAR_WIDTH = 200
 
--- The Modern preset's anchor for the system, on UIParent.
-Style.DEFAULT_POSITION = { point = "BOTTOM", x = -410, y = 380 }
+-- The owner's spot off the beta's saved profile (27 October 2026), centered
+-- over the action bars. The Modern preset's anchor for the system, BOTTOM
+-- -410, 380, is what a preset start reads (forever/startingpoints.lua).
+Style.DEFAULT_POSITION = { point = "BOTTOM", x = 0, y = 298 }
 
 Style.BARS = { "health", "power" }
 
@@ -150,7 +154,8 @@ do
     map[Style.Path("visibility")] = "always"
     map[Style.Path("scale")] = Style.SCALE.default
     map[Style.Path("barWidth")] = Style.BAR_WIDTH.default
-    map[Style.Path("padding")] = Style.PADDING.default
+    -- The owner's 10; Blizzard's preset is 0.
+    map[Style.Path("padding")] = 10
     map[Style.Path("opacity")] = Style.OPACITY.default
     for _, bar in ipairs(Style.BARS) do
         local function set(value, ...) map[Style.Path(bar, ...)] = value end
@@ -179,20 +184,32 @@ do
             set({ 1, 1, 1, 1 }, "text", slot, "color")
             set(Style.TEXT_ALIGN[slot], "text", slot, "alignment")
         end
+        -- The owner's: the value alone, centered, at 11 in Crisp Shadow
+        -- Thick Outline; the percent off.
+        set("SHADOWTHICKOUTLINESLUG", "text", "value", "style")
+        set(11, "text", "value", "size")
+        set("CENTER", "text", "value", "alignment")
+        set("never", "text", "percent", "show")
     end
     map[Style.Path("power", "hideManaCostPrediction")] = false
-    -- The cast bar, a Camelot addition and so off: Blizzard's PRD has none.
-    -- Its bar is fixed (castbar.lua); its two strings take the bars' text
-    -- keys. No fontFace, size or style: nil keeps the font object's own.
-    map[Style.Path("castBar", "enabled")] = false
+    -- The cast bar, a Camelot addition Blizzard's PRD does not have, on by
+    -- the owner's setup with its timer, and so the player's only Camelot
+    -- cast bar (castbar.lua, standsInFor). Its bar is fixed; its two strings
+    -- take the bars' text keys, at 11, the name in Crisp Thick Outline and
+    -- the timer in Crisp Shadow Thick Outline. No fontFace: nil keeps the
+    -- font object's own.
+    map[Style.Path("castBar", "enabled")] = true
     map[Style.Path("castBar", "position")] = "above"
     map[Style.Path("castBar", "height")] = Style.HEIGHT.default
-    map[Style.Path("castBar", "castTime")] = false
+    map[Style.Path("castBar", "castTime")] = true
     for _, slot in ipairs(Style.CAST_BAR_TEXTS) do
         map[Style.Path("castBar", slot, "colorMode")] = "default"
         map[Style.Path("castBar", slot, "color")] = { 1, 1, 1, 1 }
         map[Style.Path("castBar", slot, "alignment")] = Style.CAST_BAR_TEXT_ALIGN[slot]
+        map[Style.Path("castBar", slot, "size")] = 11
     end
+    map[Style.Path("castBar", "spellName", "style")] = "THICKOUTLINESLUG"
+    map[Style.Path("castBar", "timer", "style")] = "SHADOWTHICKOUTLINESLUG"
     map[Style.Path("castBar", "timer", "readout")] = "remaining"
     -- The combo points are a switch per spec, on until a spec is switched
     -- off: an unstored spec reads on (Style.ResourceOn), so they show at the
@@ -206,6 +223,25 @@ do
         map[Style.Path("health", field)] = true
     end
     DB.RegisterDefaults(map)
+
+    -- Blizzard Default: the preset's spacing, both texts on the font object
+    -- at their own sides, and no cast bar. False on a style or size is the
+    -- font object's own.
+    local stock = {}
+    stock[Style.Path("padding")] = Style.PADDING.default
+    for _, bar in ipairs(Style.BARS) do
+        stock[Style.Path(bar, "text", "value", "style")] = false
+        stock[Style.Path(bar, "text", "value", "size")] = false
+        stock[Style.Path(bar, "text", "value", "alignment")] = Style.TEXT_ALIGN.value
+        stock[Style.Path(bar, "text", "percent", "show")] = "always"
+    end
+    stock[Style.Path("castBar", "enabled")] = false
+    stock[Style.Path("castBar", "castTime")] = false
+    for _, slot in ipairs(Style.CAST_BAR_TEXTS) do
+        stock[Style.Path("castBar", slot, "size")] = false
+        stock[Style.Path("castBar", slot, "style")] = false
+    end
+    DB.RegisterStock(stock)
 end
 
 --------------------------------------------------------------------------------

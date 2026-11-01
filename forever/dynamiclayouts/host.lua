@@ -69,10 +69,18 @@ DB.RegisterDefaults({
     [triggerPath("inCombat")] = true,
     [triggerPath("targetAcquired")] = true,
     [triggerPath("insideInstance")] = true,
-    [SPEED_PATHS["in"]] = DL.SPEED_DEFAULT,
+    -- The owner's timings off the beta's saved profile: the move into the
+    -- dynamic state over 1 second, out of it over the engine's 0.5, and the
+    -- return to it 10 seconds after the last trigger ends. The engine's own
+    -- are 0.5 and 0, which a preset start keeps.
+    [SPEED_PATHS["in"]] = 1,
     [SPEED_PATHS.out] = DL.SPEED_DEFAULT,
-    [DELAY_PATH] = DL.DELAY_DEFAULT,
+    [DELAY_PATH] = 10,
     [TARGET_RULE_PATH] = DL.TARGET_ATTACKABLE_NPCS_DEFAULT,
+})
+DB.RegisterStock({
+    [SPEED_PATHS["in"]] = DL.SPEED_DEFAULT,
+    [DELAY_PATH] = DL.DELAY_DEFAULT,
 })
 
 -- Listed after components.lua in the TOC, so the row follows Minimap and

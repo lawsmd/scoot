@@ -51,6 +51,11 @@ local COUNTERPARTS = {
     targettarget = { follows = "target" },
     objectiveTracker = { system = "ObjectiveTracker" },
     personalResourceDisplay = { system = "PersonalResourceDisplay" },
+    -- The presets anchor the status bars to UIParent on Modern and to
+    -- StatusTrackingBarManager on Classic, so both starts read Modern's
+    -- constants, kept beside the bars' own defaults.
+    statusBar1 = { stock = function() return addon.StatusBars.Style.STOCK_POSITIONS[1] end },
+    statusBar2 = { stock = function() return addon.StatusBars.Style.STOCK_POSITIONS[2] end },
 }
 
 -- Systems the position preset lacks read this one. The gamepad map lacks the
@@ -170,6 +175,11 @@ end
 local function presetRecord(key, presetName)
     local counterpart = COUNTERPARTS[key]
     if not counterpart then return nil end
+
+    if counterpart.stock then
+        local p = counterpart.stock()
+        return { point = p.point, x = p.x, y = p.y }
+    end
 
     if counterpart.follows then
         -- Camelot's own offset from the followed frame's center to this one's,

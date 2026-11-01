@@ -19,6 +19,7 @@
 
 local addonName, addon = ...
 
+local DB = addon.DB
 local PRD = addon.PersonalResourceDisplay
 local Style = PRD.Style
 local DL = addon.DynamicLayouts
@@ -28,6 +29,22 @@ local Dynamic = {}
 PRD.Dynamic = Dynamic
 
 local ID = PRD.KEY
+
+-- Camelot's start enrolls the display, and its dynamic state is the owner's
+-- from the beta's saved profile: down to 78 over the bottom edge, the health
+-- and power bars and the combo points at half opacity, the cast bar whole.
+-- Neither preset enrolls it; a preset start reads no record
+-- (forever/dynamiclayouts/host.lua).
+DB.RegisterDefaults({ ["dynamicLayouts.participating." .. ID] = true })
+DB.RegisterStock({ ["dynamicLayouts.participating." .. ID] = false })
+do
+    local store = addon.DynamicLayoutsStore
+    store.RegisterDefaultRecord(ID, { point = "BOTTOM", x = 0, y = 78 })
+    store.RegisterDefaultRecord(ID .. ".health", { opacity = 0.5 })
+    store.RegisterDefaultRecord(ID .. ".power", { opacity = 0.5 })
+    store.RegisterDefaultRecord(ID .. ".comboPoints", { opacity = 0.5 })
+    store.RegisterDefaultRecord(ID .. ".castBar", { opacity = 1 })
+end
 
 -- The bars and the combo point row, in the dialog's order.
 local PARTS = {

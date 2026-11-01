@@ -242,4 +242,4 @@ end
 define("target", "target", "Target", "CamelotModernTargetFrame",
     { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -150 }, "PLAYER_TARGET_CHANGED")
 define("focus", "focus", "Focus", "CamelotModernFocusFrame",
-    { point = "TOPLEFT", relPoint = "TOPLEFT", x = 380, y = -350 }, "PLAYER_FOCUS_CHANGED")
+    { point = "LEFT", relPoint = "LEFT", x = 130, y = 170 }, "PLAYER_FOCUS_CHANGED")

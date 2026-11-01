@@ -56,7 +56,8 @@ local HOLDER_W, HOLDER_H = 80, 6 + GAP + 6 + GAP + 8
 -- which the Edit Mode box covers.
 local REACH = { left = 2, right = 6, top = 3, bottom = 7 }
 
-local DEFAULT_POSITION = { point = "CENTER", x = 0, y = 60 }
+-- The owner's spot off the beta's saved profile.
+local DEFAULT_POSITION = { point = "CENTER", x = 0, y = 80 }
 
 -- After a bar stops (full, or its aura gone): hold, then fade.
 local HOLD, FADE = 1.0, 0.5

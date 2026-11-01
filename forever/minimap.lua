@@ -21,7 +21,9 @@ local addonName, addon = ...
 
 local DOCUMENT = "minimapButton"
 
-local DEFAULT_POSITION = 220
+-- The button's angle around the minimap, the owner's off the beta's saved
+-- profile, rounded.
+local DEFAULT_POSITION = 205
 
 -- Called at login and again on every profile change, so it creates the
 -- document for a profile that has never carried one.
