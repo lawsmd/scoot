@@ -169,7 +169,11 @@ Skin.Register("forever", {
         -- (dropdown.fontRole, field.fontRole). It reads as a button, so it
         -- takes the button's crisp outline rather than the names' Deep Shadow.
         fieldValue    = { path = UI_FACE, size = 12, style = "THICKOUTLINESLUG" },
-        proportional    = { path = PROP_REG, size = 12 },
+        -- The version beside the home page's banner, where Scoot's sits beside
+        -- its wordmark: Morpheus, the client's own carved face, nearer the
+        -- banner's lettering than the panel face is.
+        homeVersion   = { path = "Fonts\\MORPHEUS.TTF", size = 22, style = "DEEPSHADOWTHICKOUTLINE" },
+        proportional   = { path = PROP_REG, size = 12 },
         proportionalMed = { path = PROP_MED, size = 12 },
     },
 
@@ -1058,6 +1062,9 @@ Skin.Register("forever", {
             borderWidth = 1, borderAlpha = 0.6, contentPadding = 8, maxPerRow = 5,
             fontSize = 12, infoIconSize = 12, infoIconGap = 4, hoverAlpha = 0.15,
             labelOffsetY = -5,
+            -- The footer button set into the body's bottom edge, and the
+            -- break in the line either side of it, past the sliced art's edge
+            footerHeight = 20, footerFontSize = 10, footerGap = 8,
         },
         collapsible = {
             borderWidth = 1, borderAlpha = 0.6, contentPadding = 12,
@@ -1094,6 +1101,12 @@ Skin.Register("forever", {
             guideInset = 40, guideIconSize = 24, guideRowSpacing = 11, guideTextWidth = 304,
             guideTextSize = 11, guideIconTextGap = 8, accentInset = 6,
             logoFontSize = 26, mascotFontSize = 6, textSize = 13,
+            -- The image title's lockup (titleflight.lua): the corner pair at
+            -- lockupScale, centred lockupOffsetY above the page's middle; the
+            -- version's offset from the banner's bottom-right; the flight
+            -- back to the corner and the banner's start after the emblem's.
+            lockupScale = 2.4, lockupOffsetY = 40, versionX = 4, versionY = 14,
+            flightDuration = 0.45, bannerDelay = 0.05,
         },
 
         -- Dual-row slots

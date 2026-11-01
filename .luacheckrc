@@ -44,6 +44,7 @@ read_globals = {
     "CreateAbbreviateConfig",
     "CreateFrame",
     "Enum",
+    "GetCurrentKeyBoardFocus",
     "GetTime",
     "hooksecurefunc",
     "InCombatLockdown",
@@ -516,6 +517,10 @@ files["forever/actionbars/compact.lua"] = {
         "MultiActionBar_ShowAllGrids", "MultiActionBar_HideAllGrids",
     },
 }
+files["forever/gamepad.lua"] = {
+    read_globals = { "InputUtil", "GamepadMode", "GamepadSharedUtility", "GamepadMainActionBarFrame",
+        "issecurevariable" },
+}
 files["forever/actionbars/suppression.lua"] = {
     read_globals = { "MainActionBar" },
 }
@@ -545,6 +550,28 @@ files["forever/actionbars/bars.lua"] = {
 files["forever/actionbars/stance.lua"] = {
     read_globals = {
         "GetShapeshiftFormInfo", "GetNumShapeshiftForms", "BaseActionButtonMixin", "GameTooltip_Hide",
+    },
+}
+-- The gamepad bar replica (docs/actionbars/gamepadbar.md). gamepadmixins.lua
+-- owns the globals gamepadframes.xml names in its mixin= attributes and
+-- reads Blizzard_GamepadActionBars' mixins and utilities; gamepad.lua reads
+-- Blizzard's gamepad frame and the keys.
+files["forever/actionbars/gamepadmixins.lua"] = {
+    globals = {
+        "CamelotGamepadButtonMixin", "CamelotGamepadClickMixin", "CamelotGamepadBarMixin",
+        "CamelotGamepadPageUnitMixin", "CamelotGamepadInputIconMixin", "CamelotGamepadInputPairMixin",
+    },
+    read_globals = {
+        "CamelotActionButtonMixin", "GamepadActionBarButtonMixin", "GamepadActionBarButtonFlyoutMixin",
+        "GamepadActionBarMixin", "GamepadActionBarBindingUtil", "GamepadActionBarStyleUtil",
+        "ActionBarActionButtonMixin", "ClearActionButtonCooldowns",
+        "C_ActionBar", "InputIconTextureSetUtility", "InputDeviceIconVariant",
+    },
+}
+files["forever/actionbars/gamepad.lua"] = {
+    read_globals = {
+        "GamepadMainActionBarFrame", "C_GamepadUI", "IsKeyDown", "InputUtil",
+        "InputDeviceIconSetManager", "issecurevariable",
     },
 }
 files["core/debug/taintscan.lua"] = {
@@ -628,4 +655,13 @@ files["ui/v2/groupfinder/"] = {
 -- display file moves.
 files["forever/qualityoflife/messagesdisplay.lua"] = {
     read_globals = { "UIErrorsFrame" },
+}
+
+-- Keybind export and import (core/keybinds.lua, both TOCs): the binding
+-- enumeration and writes.
+files["core/keybinds.lua"] = {
+    read_globals = {
+        "GetNumBindings", "GetBinding", "SetBinding", "SaveBindings",
+        "GetCurrentBindingSet", "GetBindingAction", "C_KeyBindings",
+    },
 }

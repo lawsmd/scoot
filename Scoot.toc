@@ -28,6 +28,7 @@ core/events.lua
 core/commands.lua
 core/framestate.lua
 core/escapekey.lua
+core/keyboard.lua
 core/strata.lua
 core/secretsafe.lua
 core/percent.lua
@@ -196,9 +197,12 @@ core/components/castbarz/events.lua
 core/components/castbarz/editmode.lua
 ## Quality of Life. qolhost is Scoot's store for the shared QoL files; smallfixes
 ## loads before Unit Frames Z, which registers a click refresher with it at file scope.
+## keybinds carries every keybinding out as a string and back in, on the profile
+## codec; it stores nothing.
 core/qolhost.lua
 core/qol.lua
 core/smallfixes.lua
+core/keybinds.lua
 ## Unit Frames Z (Text — Scoot-owned frames, the promoted health-text engine)
 core/components/unitframesz/core.lua
 core/components/unitframesz/engine.lua
@@ -427,6 +431,7 @@ ui/v2/settings/qol/LootVendorsRenderer.lua
 ui/v2/settings/qol/QuestsRenderer.lua
 ui/v2/settings/qol/DungeonJournalRenderer.lua
 ui/v2/settings/qol/SmallFixesRenderer.lua
+ui/v2/settings/qol/KeybindsRenderer.lua
 ui/v2/settings/profiles/ManageRenderer.lua
 ui/v2/settings/profiles/PresetsRenderer.lua
 ui/v2/settings/profiles/RulesRenderer.lua
@@ -448,6 +453,7 @@ ui/v2/groupframes/AuraTrackingRenderer.lua
 ui/v2/settingspanel/searchmatch.lua
 ui/v2/settingspanel/search.lua
 ui/v2/settingspanel/ascii.lua
+ui/v2/settingspanel/titleflight.lua
 ui/v2/settingspanel/core.lua
 ui/v2/settingspanel/navigation.lua
 ui/v2/settingspanel/deeplink.lua

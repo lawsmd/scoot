@@ -7,7 +7,7 @@
 ## SavedVariables: CamelotDB
 ## SlashCmd: /camelot
 ## Dependencies: Blizzard_ObjectiveTracker, Blizzard_ActionBar, Blizzard_ChatFrameBase
-## OptionalDeps: Blizzard_StatusTrackingBar
+## OptionalDeps: Blizzard_StatusTrackingBar, Blizzard_GamepadActionBars
 
 ## Two interface numbers, one TOC. 120105 is retail 12.1.5 and 16001 is
 ## Forever build 1.60.1; each client takes the number from the list that
@@ -82,6 +82,9 @@ core/abbrev.lua
 ## blindfit sizes the unit frame names and reads fonts.lua at call time.
 core/commands.lua
 core/escapekey.lua
+## keyboard reads addon.Gamepad at call time: focus taken by Lua yields to the
+## frame holding it under a gamepad layout.
+core/keyboard.lua
 core/media.lua
 core/lsm.lua
 core/fonts.lua
@@ -140,6 +143,11 @@ core/debug/export.lua
 
 ## Camelot
 forever/db.lua
+## The gamepad UI as Camelot reads it: one predicate over the active layout's
+## interface style and the client's gamepad switch, and the transition event
+## (docs/gamepad/gamepad.md). Stands on events, commands, profiles/core and
+## db above; reads the client at call time and answers no on retail.
+forever/gamepad.lua
 forever/features.lua
 forever/profiles.lua
 ## The aura tracker's host: the store under CamelotDB.global, the editor
@@ -159,12 +167,14 @@ forever/recolor.lua
 ## selling, faster loot, the quest log count, map coordinates) and smallfixes
 ## (modifier click targeting) on secretsafe, events and fonts. smallfixes
 ## loads before forever/unitframes/harness.lua, which registers a click
-## refresher with it at file scope.
+## refresher with it at file scope. keybinds carries every keybinding out as a
+## string and back in, on the profile codec; it stores nothing.
 forever/qualityoflife/host.lua
 core/editmode/nudgearrows.lua
 core/editmode/subgrid.lua
 core/qol.lua
 core/smallfixes.lua
+core/keybinds.lua
 
 ## Dynamic Layouts: resolver publishes base-or-dynamic edges; tween is the
 ## OnUpdate driver; engine holds the adapter registry and reads the store seam
@@ -342,11 +352,17 @@ forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 ## settings, holders, layout and Edit Mode anchors, and micro.lua and
 ## bagbar.lua, which hang off it, build their secure click twins of
 ## Blizzard's buttons; stance.lua holds the stance bar on an anchor of its
-## own (docs/actionbars/stance.md); bars.lua builds on world entry and
-## registers /camelot actionbars. text.lua holds the keybind and cooldown
-## text settings and their passes, before frames.xml, since a button's load
-## runs it. page.lua, the Clusters page, microbagspage.lua and stancepage.lua
-## sit in the page block below.
+## own (docs/actionbars/stance.md); gamepadmixins.lua and gamepadframes.xml
+## hold the gamepad bar replica's mixins and virtual templates, after
+## mixins.lua and frames.xml whose button mixin the gamepad button lists
+## first and from Blizzard_GamepadActionBars' templates, which the
+## OptionalDeps line above has parsed by then, and gamepad.lua builds the
+## replica under the gamepad UI (docs/actionbars/gamepadbar.md); bars.lua
+## builds on world entry and registers /camelot actionbars. text.lua holds
+## the keybind and cooldown text settings and their passes, before
+## frames.xml, since a button's load runs it. page.lua, the Clusters page,
+## microbagspage.lua, stancepage.lua and gamepadpage.lua sit in the page
+## block below.
 ## Stands on nativeframe, events, strata, editmode/positionables,
 ## dynamiclayouts, forever/db.lua and forever/features.lua. Every line is
 ## Forever's alone, style.lua included.
@@ -355,6 +371,8 @@ forever/actionbars/text.lua [ExcludeLoadGameType standard]
 forever/actionbars/events.lua [ExcludeLoadGameType standard]
 forever/actionbars/mixins.lua [ExcludeLoadGameType standard]
 forever/actionbars/frames.xml [ExcludeLoadGameType standard]
+forever/actionbars/gamepadmixins.lua [ExcludeLoadGameType standard]
+forever/actionbars/gamepadframes.xml [ExcludeLoadGameType standard]
 forever/actionbars/paging.lua [ExcludeLoadGameType standard]
 forever/actionbars/compact.lua [ExcludeLoadGameType standard]
 forever/actionbars/visibility.lua [ExcludeLoadGameType standard]
@@ -368,6 +386,7 @@ forever/actionbars/microbags.lua [ExcludeLoadGameType standard]
 forever/actionbars/micro.lua [ExcludeLoadGameType standard]
 forever/actionbars/bagbar.lua [ExcludeLoadGameType standard]
 forever/actionbars/stance.lua [ExcludeLoadGameType standard]
+forever/actionbars/gamepad.lua [ExcludeLoadGameType standard]
 forever/actionbars/bars.lua [ExcludeLoadGameType standard]
 
 ## The Personal Resource Display: Forever's PRD on a Camelot-owned frame
@@ -553,6 +572,7 @@ ui/v2/settingspanel/renderers.lua
 ui/v2/settingspanel/searchmatch.lua
 ui/v2/settingspanel/search.lua
 ui/v2/settingspanel/ascii.lua
+ui/v2/settingspanel/titleflight.lua
 ui/v2/settingspanel/core.lua
 ui/v2/settingspanel/navigation.lua
 ui/v2/settingspanel/deeplink.lua
@@ -624,11 +644,13 @@ ui/v2/settings/qol/EditModeRenderer.lua
 ui/v2/settings/qol/LootVendorsRenderer.lua
 ui/v2/settings/qol/QuestsRenderer.lua
 ui/v2/settings/qol/SmallFixesRenderer.lua
+ui/v2/settings/qol/KeybindsRenderer.lua
 forever/qualityoflife/miscpage.lua
 forever/qualityoflife/animationspage.lua
 forever/actionbars/page.lua [ExcludeLoadGameType standard]
 forever/actionbars/microbagspage.lua [ExcludeLoadGameType standard]
 forever/actionbars/stancepage.lua [ExcludeLoadGameType standard]
+forever/actionbars/gamepadpage.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
 forever/defaults.lua
 forever/startingpoints.lua

@@ -198,6 +198,9 @@ Skin.Register("tui", {
             height = 26, padding = 16, spacing = 2, barPadding = 8, rowSpacing = 2,
             borderWidth = 1, borderAlpha = 0.6, contentPadding = 8, maxPerRow = 5,
             fontSize = 12, infoIconSize = 12, infoIconGap = 4, hoverAlpha = 0.15,
+            -- The footer button set into the body's bottom edge, and the
+            -- break in the line either side of it
+            footerHeight = 20, footerFontSize = 10, footerGap = 8,
         },
         collapsible = {
             borderWidth = 1, borderAlpha = 0.6, contentPadding = 12,
