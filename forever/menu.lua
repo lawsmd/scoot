@@ -116,6 +116,7 @@ Navigation.NavModel = {
             { key = "actionBarClusters", label = "Action Bars 1-8" },
             { key = "actionBarMicroBags", label = "Micro & Bag" },
             { key = "actionBarStance", label = "Stance Bar" },
+            { key = "actionBarGamepad", label = "Gamepad Bars" },
         },
     },
     -- Blizzard's chat as a Camelot replica, the last of the elements on
@@ -139,8 +140,10 @@ Navigation.NavModel = {
     -- pages, shared (ui/v2/settings/qol/, storage
     -- forever/qualityoflife/host.lua); Misc holds Camelot's own ones too small
     -- for a page, today the place of Blizzard's error and quest progress text
-    -- (forever/qualityoflife/messages.lua). No `module`: each page's rows are
-    -- their own switches.
+    -- (forever/qualityoflife/messages.lua). Keybinds, shared and above Misc,
+    -- carries every keybinding out as a string and back in (core/keybinds.lua),
+    -- the transport for keys that never pass through saved variables. No
+    -- `module`: each page's rows are their own switches.
     {
         key = "qol",
         label = "Quality of Life",
@@ -151,6 +154,7 @@ Navigation.NavModel = {
             { key = "qolLootVendors", label = "Loot & Vendors" },
             { key = "qolQuests", label = "Map & Quests" },
             { key = "qolSmallFixes", label = "Small Fixes" },
+            { key = "qolKeybinds", label = "Keybinds" },
             { key = "qolMisc", label = "Misc" },
         },
     },
@@ -191,12 +195,13 @@ addon.UI.SettingsPanel.HeaderModel = {
 -- (forever/features.lua), which the owning files have filled by now.
 addon.UI.SettingsPanel.FeaturesModel = addon.Features.BuildModel()
 
--- The home page, the panel's first screen. Camelot has not designed one, so
--- the three pieces the framework draws there stay off: the product title with
--- its version beside it, the feature guide, and the accent color picker in the
--- bottom-left corner. Deleting a line brings that piece back.
+-- The home page, the panel's first screen: the emblem and the banner from the
+-- window's corner drawn large in the middle, the version off the banner's
+-- bottom-right, and the pair flying back to the corner when a page opens
+-- (ui/v2/settingspanel/titleflight.lua). The feature guide and the accent
+-- color picker stay off; deleting a line brings that piece back.
 addon.UI.SettingsPanel.HomeModel = {
-    title = false,
+    title = "image",
     featureGuide = false,
     accentColor = false,
 }

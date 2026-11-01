@@ -79,6 +79,7 @@ function UIPanel:Initialize()
     self:CreateContentPane()
 
     frame:SetScript("OnHide", function()
+        self:StopTitleFlight()
         if addon.CloseFontPicker then addon.CloseFontPicker() end
         if addon.CloseBarTexturePicker then addon.CloseBarTexturePicker() end
         if addon.CloseBarBorderPicker then addon.CloseBarBorderPicker() end
@@ -256,13 +257,28 @@ function UIPanel:CreateTitle(titleBar)
             panel:GoHome()
         end)
         passDrag(btn)
+        frame._titleBtn = btn
         frame._titleTexture = tex
 
+        -- A product whose home page draws the image large hides the corner
+        -- while home is up and flies the large copy back on the way out
+        -- (titleflight.lua); without one these calls find no lockup.
         function handle:SetHome(isHome)
             btn:EnableMouse(not isHome)
+            if isHome then
+                panel:StopTitleFlight()
+                panel:LayoutHomeLockup()
+                panel:SetCornerShown(false)
+            end
         end
-        function handle:Reveal() end
-        function handle:Cleanup() end
+        function handle:Reveal(animate)
+            if not (animate and panel:AnimateTitleFlight()) then
+                panel:SetCornerShown(true)
+            end
+        end
+        function handle:Cleanup()
+            panel:StopTitleFlight()
+        end
     else
         local btn = CreateFrame("Button", BRAND .. "TitleBtn", titleBar)
         btn:RegisterForClicks("AnyUp")
@@ -823,6 +839,43 @@ function UIPanel:CreateContentPane()
         welcomeText:Hide()
     end
 
+    -- An image title draws the corner pair large instead: the window's
+    -- portrait mark and the title image, laid out from the corner's own rects
+    -- by UIPanel:LayoutHomeLockup, with the version off the image's
+    -- bottom-right corner in the homeVersion role where the skin has one.
+    if HomeModel().title == "image" and title.texture then
+        homeAscii:Hide()
+        homeMascot:Hide()
+        welcomeText:Hide()
+
+        local lockup = CreateFrame("Frame", nil, homeContent)
+        lockup:SetPoint("CENTER", homeContent, "CENTER", 0, M().home.lockupOffsetY or 0)
+        lockup:SetSize(1, 1)
+        local emblem = lockup:CreateTexture(nil, "ARTWORK")
+        local portrait = Chrome.Spec("window").portrait
+        local mark = type(portrait) == "table" and portrait.texture
+        if mark then
+            emblem:SetTexture((Theme.Textures and Theme.Textures[mark]) or mark)
+        end
+        emblem:Hide()
+        local banner = lockup:CreateTexture(nil, "ARTWORK")
+        banner:SetTexture(title.texture)
+        if title.texCoord then
+            banner:SetTexCoord(unpack(title.texCoord))
+        end
+        lockup._emblem, lockup._banner = emblem, banner
+        homeContent._lockup = lockup
+        homeContent:HookScript("OnShow", function()
+            UIPanel:LayoutHomeLockup()
+        end)
+
+        Theme:ApplyFont(versionText, Theme._fontRoles and Theme._fontRoles.homeVersion and "homeVersion" or "label")
+        versionText:ClearAllPoints()
+        versionText:SetPoint("BOTTOMLEFT", banner, "BOTTOMRIGHT",
+            M().home.versionX or 0, M().home.versionY or 0)
+        versionText:Show()
+    end
+
     C_Timer.After(0.05, function()
         if homeAscii and homeMascot and homeContainer then
             local titleW = homeAscii:GetStringWidth() or 600
@@ -965,11 +1018,8 @@ function UIPanel:CreateContentPane()
     scrollFrame:SetPoint("TOPLEFT", contentPane, "TOPLEFT", M().paneInset, -M().paneInset)
     homeContent:Show()  -- Show home content by default
 
-    if frame._logo then
-        frame._logo:SetText("")
-    end
-    if frame._logoBtn then
-        frame._logoBtn:EnableMouse(false)
+    if frame._title then
+        frame._title:SetHome(true)
     end
 
     Theme:Subscribe("UIPanel_ContentPane", function(r, g, b)
@@ -1047,6 +1097,7 @@ function UIPanel:Teardown()
     if not frame then return end
 
     self:StopAsciiAnimation()
+    self:StopTitleFlight()
     frame:Hide()
 
     if Navigation and Navigation.Cleanup then
