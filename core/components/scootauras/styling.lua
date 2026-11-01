@@ -157,6 +157,52 @@ local function ApplyShapeStyling(trackerId, tracker, state)
 end
 
 --------------------------------------------------------------------------------
+-- The Square border's inward reach
+--------------------------------------------------------------------------------
+-- Frame alpha is applied to every region on its own, with no group
+-- compositing, so a border drawn over the icon's edge lets that edge show
+-- through once the frame fades (the missing-buff blink, a reveal blink, a
+-- tracker below full opacity). The icon art therefore stops at the border's
+-- inner edge: the bar's inner-rect rule (ApplyBarStyling), cut here by a mask
+-- (ApplyIconArtMask) because the icon texture is the layout rect every other
+-- element anchors to. Settings only, no geometry reads.
+
+local BORDER_THICKNESS_MIN, BORDER_THICKNESS_MAX = 1, 16
+-- The expandClamp ApplyBorders passes to the dispatcher.
+local BORDER_EXPAND_CLAMP = 12
+
+local function Clamp(v, lo, hi)
+    if v < lo then return lo elseif v > hi then return hi end
+    return v
+end
+
+--- Per-side reach of the Square border into a w x h icon: l, r, t, b. Zero
+-- on the Shape shape, on no border, on a style that is not Square, and on an
+-- axis the border fills entirely.
+local function IconBorderReach(tracker, db, iconW, iconH)
+    if not db or tracker.shape == "shape" then return 0, 0, 0, 0 end
+    local style = db.borderStyle or "none"
+    if style == "none" then return 0, 0, 0, 0 end
+    local styleDef = addon.IconBorders and addon.IconBorders.GetStyle and addon.IconBorders.GetStyle(style)
+    if styleDef and styleDef.type ~= "square" then return 0, 0, 0, 0 end
+
+    local thickness = Clamp(tonumber(db.borderThickness) or 1, BORDER_THICKNESS_MIN, BORDER_THICKNESS_MAX)
+    -- The slider is outward-positive on this dispatcher. An unknown style
+    -- falls to the dispatcher's plain square at expand 0.
+    local insetH, insetV = 0, 0
+    if styleDef then
+        insetH = Clamp(tonumber(db.borderInsetH) or 0, -BORDER_EXPAND_CLAMP, BORDER_EXPAND_CLAMP)
+        insetV = Clamp(tonumber(db.borderInsetV) or 0, -BORDER_EXPAND_CLAMP, BORDER_EXPAND_CLAMP)
+    end
+    local reachH = math.max(0, thickness - insetH)
+    local reachV = math.max(0, thickness - insetV)
+    -- A border thicker than the icon leaves nothing to cut on that axis.
+    if iconW and reachH * 2 >= iconW then reachH = 0 end
+    if iconH and reachV * 2 >= iconH then reachV = 0 end
+    return reachH, reachH, reachV, reachV
+end
+
+--------------------------------------------------------------------------------
 -- Icon swipe (Icon trackers)
 --------------------------------------------------------------------------------
 -- The drain Cooldown draws the spell icon in full color as its swipe, run
@@ -272,8 +318,13 @@ local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
                 w, h = math.max(w, 1), math.max(h, 1)
                 local side = math.sqrt(w * w + h * h)
                 if elem.clip then
+                    -- The clip stops where the icon art does, at the Square
+                    -- border's inner edge: the wedge, the gray half and the
+                    -- line never sit under the border.
+                    local l, r, t, b = IconBorderReach(tracker, db, w, h)
                     elem.clip:ClearAllPoints()
-                    elem.clip:SetAllPoints(iconTex)
+                    elem.clip:SetPoint("TOPLEFT", iconTex, "TOPLEFT", l, -t)
+                    elem.clip:SetPoint("BOTTOMRIGHT", iconTex, "BOTTOMRIGHT", -r, b)
                 end
                 pcall(cd.ClearAllPoints, cd)
                 pcall(cd.SetPoint, cd, "CENTER", iconTex, "CENTER", 0, 0)
@@ -458,6 +509,30 @@ local function PaintPandemicLayer(frame, style, thickness, insetH, insetV, color
     frame:Show()
 end
 
+-- Cuts the icon art at the Square border's inner edge (IconBorderReach): a
+-- solid white mask with clamp-to-black wrap, so the icon is hidden outside the
+-- mask's rect, which sits inside the icon by the reach. The mask is created
+-- with the border host (regions.lua PreCreateIconBorder); it is added to the
+-- icon here when the reach is above zero and removed when it is not, with the
+-- attach state tracked on the element rather than read off the mask.
+local function ApplyIconArtMask(elem, l, r, t, b)
+    local mask = elem.artMask
+    if not mask then return end
+    if l + r + t + b > 0 then
+        mask:ClearAllPoints()
+        mask:SetPoint("TOPLEFT", elem.widget, "TOPLEFT", l, -t)
+        mask:SetPoint("BOTTOMRIGHT", elem.widget, "BOTTOMRIGHT", -r, b)
+        mask:Show()
+        if not elem.artMaskOn and pcall(elem.widget.AddMaskTexture, elem.widget, mask) then
+            elem.artMaskOn = true
+        end
+    elseif elem.artMaskOn then
+        pcall(elem.widget.RemoveMaskTexture, elem.widget, mask)
+        elem.artMaskOn = nil
+        mask:Hide()
+    end
+end
+
 local function ApplyBorders(trackerId, tracker, state)
     local db = SAU.GetDB(trackerId)
     if not db then return end
@@ -479,6 +554,7 @@ local function ApplyBorders(trackerId, tracker, state)
                 end
                 bf:Hide()
                 addon.ClearIconMask(elem.widget)
+                ApplyIconArtMask(elem, 0, 0, 0, 0)
             else
                 bf:Show()
                 local insetH = tonumber(db.borderInsetH) or 0
@@ -512,6 +588,7 @@ local function ApplyBorders(trackerId, tracker, state)
                     maskWidth = iconW,
                     maskHeight = iconH,
                 })
+                ApplyIconArtMask(elem, IconBorderReach(tracker, db, iconW, iconH))
             end
 
             -- The pandemic pair: the same style, thickness and insets in red on

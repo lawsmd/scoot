@@ -141,6 +141,10 @@ end
 -- A fully transparent mask file: added to the live icon, it hides the icon
 -- wherever the mask is visible.
 local MASK_EMPTY = addon.MediaPath .. "media\\scootauras\\mask-empty"
+-- Solid white: with clamp-to-black wrap a texture is hidden outside the
+-- mask's rect, the cut the icon art takes at a Square border's inner edge
+-- (styling.lua ApplyIconArtMask).
+local MASK_FULL = "Interface\\BUTTONS\\WHITE8X8"
 
 -- Drain swipe host: a native Cooldown inside a clip frame. On the live
 -- button the engine drives it through SetDurationCooldown, and the swipe
@@ -200,11 +204,24 @@ end
 -- Icon border host frame ApplyBorders expects, parented to the button so it
 -- hides with it. The border art itself is created lazily on this frame by
 -- addon.ApplyIconBorderStyle.
+--
+-- Beside it, the mask that cuts the icon art at a Square border's inner edge
+-- (styling.lua IconBorderReach, ApplyIconArtMask): created here, before the
+-- engine binds the icon, and attached only once a reach exists. It snaps to
+-- the pixel grid as the square edges do (borders.lua), so the two edges land
+-- on the same pixel.
 local function PreCreateIconBorder(elem, button)
     if elem.type ~= "texture" or elem.borderFrame then return end
     local bf = CreateFrame("Frame", nil, button)
     bf:SetFrameLevel(button:GetFrameLevel() + 2)
     elem.borderFrame = bf
+
+    local mask = button:CreateMaskTexture()
+    mask:SetTexture(MASK_FULL, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    if mask.SetSnapToPixelGrid then mask:SetSnapToPixelGrid(true) end
+    if mask.SetTexelSnappingBias then mask:SetTexelSnappingBias(0) end
+    mask:Hide()
+    elem.artMask = mask
 end
 
 -- Pandemic window border host. The holder is the region the engine toggles

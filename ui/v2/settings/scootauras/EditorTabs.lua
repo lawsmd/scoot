@@ -40,6 +40,48 @@ local VERTICAL_INSIDE_ORDER = { "TOP", "CENTER", "BOTTOM" }
 local INSIDE = addon.Catalogs.Anchor9
 local OUTSIDE_8 = addon.Catalogs.Anchor8
 
+--------------------------------------------------------------------------------
+-- Copy keys: what each tab writes, for the editor's copy-to-group button
+--------------------------------------------------------------------------------
+
+-- BuildTabSet returns, beside the tabs and their builders, the styling keys
+-- each tab shows for the ctx's kind and shape; the editor copies a tab onto
+-- the group members whose same tab shows the key too. Each list sits beside
+-- the builder it mirrors, and a row added to a tab is added to its list.
+
+-- Never copied: a member's hide toggles are its own, and Show Icon decides
+-- whether a bar is a target at all rather than travelling with the tab.
+Tabs.NEVER_COPY = { hideText = true, hideStackText = true, hideNameText = true, barShowIcon = true }
+
+-- Two tabs are another tab relabelled for a kind, on the same keys.
+local TAB_FAMILY = { spellName = "auraName", charges = "stacks" }
+
+function Tabs.TabFamily(tabKey)
+    return TAB_FAMILY[tabKey] or tabKey
+end
+
+-- A tab's key list, resolved: a list, or a function of ctx where the keys
+-- follow a value or the shape.
+function Tabs.TabKeys(keySets, tabKey, ctx)
+    local keys = keySets and keySets[tabKey]
+    if type(keys) == "function" then return keys(ctx) end
+    return keys or {}
+end
+
+-- A key list from lists and single keys, in order; a nil part is skipped.
+local function Keys(...)
+    local out = {}
+    for i = 1, select("#", ...) do
+        local part = select(i, ...)
+        if type(part) == "table" then
+            for _, k in ipairs(part) do out[#out + 1] = k end
+        elseif part then
+            out[#out + 1] = part
+        end
+    end
+    return out
+end
+
 local function ColorGet(ctx, key, fallback)
     return function()
         local c = ctx.get(key)
@@ -71,6 +113,32 @@ end
 --------------------------------------------------------------------------------
 -- Icon tab (icon trackers always; bar trackers behind the Show Icon toggle)
 --------------------------------------------------------------------------------
+
+-- The Icon tab's controls serve a bar only while its icon is in use: Show
+-- Icon on, or a bar-icon missing visual, which paints the centered icon from
+-- the same settings (underlay.lua). An icon or shape tracker always.
+local function IconInUse(ctx)
+    if not addon.ScootAuras.IsBarShape(ctx.shape()) then return true end
+    if ctx.get("barShowIcon") then return true end
+    local traits = ctx.missingVisual
+        and addon.ScootAuras.MissingVisualTraits(ctx.missingVisual())
+    return (traits and traits.art == "baricon") and true or false
+end
+
+-- Copy keys for the Icon tab. Empty while the icon is not in use, so such a
+-- bar is neither a source nor a target; the side and gap row exists only
+-- with Show Icon on.
+local function IconTabKeys(ctx)
+    if not IconInUse(ctx) then return {} end
+    local keys = { "iconSize", "iconShape", "borderStyle", "borderThickness", "borderInsetH", "borderInsetV",
+        "borderTintEnable", "borderTintColor" }
+    if addon.ScootAuras.IsBarShape(ctx.shape()) and ctx.get("barShowIcon") then
+        keys[#keys + 1] = "barIconSide"
+        keys[#keys + 1] = "barIconGap"
+    end
+    if ctx.kind and ctx.kind() == "cooldown" then keys[#keys + 1] = "cooldownDesaturate" end
+    return keys
+end
 
 function Tabs.BuildIconTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
@@ -153,13 +221,7 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
     end
 
     local function iconControlsDisabled()
-        if not isBar then return false end
-        if ctx.get("barShowIcon") then return false end
-        -- A bar-icon missing visual consumes these settings even with Show
-        -- Icon off (underlay.lua paints the centered icon from them).
-        local traits = ctx.missingVisual
-            and addon.ScootAuras.MissingVisualTraits(ctx.missingVisual())
-        return not (traits and traits.art == "baricon")
+        return not IconInUse(ctx)
     end
 
     tabBuilder:AddSlider({
@@ -198,6 +260,21 @@ end
 --------------------------------------------------------------------------------
 -- Bar tab
 --------------------------------------------------------------------------------
+
+-- Copy keys for the Bar tabs below: the size row, the style and border
+-- blocks, and each builder's own rows.
+local BAR_SIZE_KEYS = { "barWidth", "barHeight" }
+local BAR_STYLE_KEYS = {
+    "barForegroundTexture", "barForegroundColorMode", "barForegroundTint",
+    "barBackgroundTexture", "barBackgroundColorMode", "barBackgroundTint", "barBackgroundOpacity",
+    "barBorderStyle", "barBorderHiddenEdges", "barBorderTintEnable", "barBorderTintColor",
+    "barBorderThickness", "barBorderInsetH", "barBorderInsetV",
+}
+local BAR_TAB_KEYS = Keys(BAR_SIZE_KEYS, "barFillMode", "barLockCadence", BAR_STYLE_KEYS)
+local COOLDOWN_BAR_TAB_KEYS = Keys(BAR_SIZE_KEYS, "barFillMode", BAR_STYLE_KEYS)
+local CLASS_POWER_BAR_TAB_KEYS = Keys(BAR_SIZE_KEYS, "barSmoothFill", BAR_STYLE_KEYS)
+-- The Class Resource and stacks bars: size, style and border alone
+local PLAIN_BAR_TAB_KEYS = Keys(BAR_SIZE_KEYS, BAR_STYLE_KEYS)
 
 -- Bar Size, shared by the aura bar and the Class Power bar. The long axis
 -- runs 20 to 400 and the thickness 4 to 48; a vertical bar swaps which
@@ -326,6 +403,18 @@ end
 --------------------------------------------------------------------------------
 -- Aura Name tab (bar trackers: the name renders on the bar)
 --------------------------------------------------------------------------------
+
+-- Copy keys for the Aura Name tab: the reminder's suffix and placement on a
+-- missing buff, the name's placement on a bar; the hide toggle stays off it.
+local NAME_TEXT_STYLE_KEYS = { "nameTextFont", "nameTextStyle", "nameTextSize", "nameTextColor" }
+local function AuraNameTabKeys(ctx)
+    if ctx.kind and ctx.kind() == "missingbuff" then
+        return Keys("missingSuffix", NAME_TEXT_STYLE_KEYS,
+            ctx.shape() == "icontext" and { "nameTextOuterAnchor", "nameTextOffsetX", "nameTextOffsetY" } or nil)
+    end
+    return Keys(NAME_TEXT_STYLE_KEYS, "nameTextPosition", "nameTextInnerAnchor", "nameTextOuterAnchor",
+        "nameTextOffsetX", "nameTextOffsetY")
+end
 
 -- opts.noun relabels the tab's strings for a kind whose text is not an aura's
 -- name (the Spell Cooldown kind passes "Spell Name").
@@ -465,6 +554,11 @@ end
 
 local AddTextPositionControls
 
+-- Copy keys for the Duration tab, and the duration-slot text's placement
+-- (AddTextPositionControls), which the Class Power Text tab's bar shares.
+local TEXT_POSITION_KEYS = { "textPosition", "textInnerAnchor", "textOuterAnchor", "textOffsetX", "textOffsetY" }
+local DURATION_TAB_KEYS = Keys("textDecimal", "textFont", "textStyle", "textSize", "textColor", TEXT_POSITION_KEYS)
+
 function Tabs.BuildDurationTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
 
@@ -566,6 +660,14 @@ end
 --------------------------------------------------------------------------------
 -- Stacks tab (stack counter text)
 --------------------------------------------------------------------------------
+
+-- Copy keys for the Stacks tab: the Floating Number has no host to place
+-- the count against, so its list carries the offsets alone.
+local function StacksTabKeys(ctx)
+    return Keys("stackTextFont", "stackTextStyle", "stackTextSize", "stackTextColor",
+        ctx.shape() ~= "text" and { "stackTextPosition", "stackTextInnerAnchor", "stackTextOuterAnchor" } or nil,
+        "stackTextOffsetX", "stackTextOffsetY")
+end
 
 -- opts.noun and opts.singular relabel the tab's strings for a kind whose
 -- number is not a stack count (the Spell Cooldown kind passes "Charges" and
@@ -742,6 +844,8 @@ local function SpliceRow(tabBuilder, row)
     tabBuilder:PlaceCustom(row, { fullBleed = true })
 end
 
+local SHAPE_TAB_KEYS = { "shapeStyle", "shapeColorMode", "shapeTint", "shapeShowDrain" }
+
 function Tabs.BuildShapeTab(tabBuilder, ctx)
     SpliceRow(tabBuilder, CreateShapeStyleRow(tabBuilder._scrollContent, ctx))
 
@@ -808,6 +912,13 @@ function Tabs.BuildClassPowerBarTab(tabBuilder, ctx)
     }, PowerOrCustom)
 
     tabBuilder:Finalize()
+end
+
+-- Copy keys for the Class Power Text tab: placement on the bar, offsets
+-- alone on the number.
+local function ClassPowerTextTabKeys(ctx)
+    return Keys("textFont", "textStyle", "textSize", "textColorMode", "textColor",
+        ctx.shape() == "bar" and TEXT_POSITION_KEYS or { "textOffsetX", "textOffsetY" })
 end
 
 function Tabs.BuildClassPowerTextTab(tabBuilder, ctx)
@@ -987,6 +1098,8 @@ function Tabs.BuildStacksBarTab(tabBuilder, ctx)
     tabBuilder:Finalize()
 end
 
+local TICKS_TAB_KEYS = { "tickThickness", "tickColor" }
+
 function Tabs.BuildClassResourceTicksTab(tabBuilder, ctx)
     tabBuilder:AddSlider({
         label = "Tick Thickness",
@@ -1007,6 +1120,11 @@ function Tabs.BuildClassResourceTicksTab(tabBuilder, ctx)
 
     tabBuilder:Finalize()
 end
+
+-- Copy keys for the Shapes tabs; the Class Resource one adds the Combo
+-- Points gear's toggle.
+local SHAPES_TAB_KEYS = { "pipStyle", "pipSize", "pipSpacing", "pipColorMode", "pipTint" }
+local CLASS_RESOURCE_SHAPES_TAB_KEYS = Keys(SHAPES_TAB_KEYS, "variedLastPoints")
 
 -- The row of shapes, one per point or per stack: the glyph, its size and
 -- spacing, its color. "Shapes" on screen, since an icon in this editor is
@@ -1061,6 +1179,8 @@ function Tabs.BuildStacksShapesTab(tabBuilder, ctx)
     BuildShapesTab(tabBuilder, ctx, StackColorOptions, 0)
 end
 
+local BACKDROP_TAB_KEYS = { "pipBackdropTint", "pipBackdropOpacity" }
+
 function Tabs.BuildClassResourceBackdropTab(tabBuilder, ctx)
     tabBuilder:AddColorPicker({
         label = "Backdrop Color",
@@ -1086,6 +1206,8 @@ end
 -- Sizing and Visibility tabs
 --------------------------------------------------------------------------------
 
+local SIZING_TAB_KEYS = { "scale" }
+
 function Tabs.BuildSizingTab(tabBuilder, ctx)
     tabBuilder:AddSlider({
         label = "Scale",
@@ -1097,6 +1219,14 @@ function Tabs.BuildSizingTab(tabBuilder, ctx)
     })
 
     tabBuilder:Finalize()
+end
+
+-- Copy keys for the Visibility tab: the three state opacities, and the
+-- cooldown dim on the Spell Cooldown kind.
+local function VisibilityTabKeys(ctx)
+    local K = addon.Opacity.Keys.InCombat
+    return Keys(K.combat, K.target, K.ooc,
+        ctx.kind() == "cooldown" and { "cooldownOpacityMode", "opacityOnCooldown", "opacityOnCooldownText" } or nil)
 end
 
 function Tabs.BuildVisibilityTab(tabBuilder, ctx)
@@ -1170,6 +1300,8 @@ end
 -- Animations tab (missing-buff trackers)
 --------------------------------------------------------------------------------
 
+local MISSING_ANIMATIONS_TAB_KEYS = { "blinkWhenShown" }
+
 function Tabs.BuildAnimationsTab(tabBuilder, ctx)
     tabBuilder:AddToggle({
         label = "Make the tracker blink when present",
@@ -1184,6 +1316,8 @@ end
 --------------------------------------------------------------------------------
 -- Animations tab (buff and debuff icon trackers)
 --------------------------------------------------------------------------------
+
+local ICON_ANIMATIONS_TAB_KEYS = { "iconShowSwipe", "iconSwipeLineColor", "iconSwipeDarkness" }
 
 function Tabs.BuildIconAnimationsTab(tabBuilder, ctx)
     -- Icon swipe, the line on its edge, and the gray half's darkness
@@ -1227,6 +1361,8 @@ end
 -- Misc tab (buff and debuff icon trackers)
 --------------------------------------------------------------------------------
 
+local MISC_TAB_KEYS = { "pandemicBorder" }
+
 function Tabs.BuildMiscTab(tabBuilder, ctx)
     -- Pandemic border (styling.lua ApplyBorders, regions.lua PreCreatePandemic):
     -- the engine's own refresh window on a buff or debuff icon. No preview
@@ -1245,44 +1381,48 @@ end
 -- Tab assembly per shape
 --------------------------------------------------------------------------------
 
---- Returns tabs, buildContent for the editor's tabbed section.
+--- Returns tabs, buildContent and keySets for the editor's tabbed section:
+-- the tab list, each tab's content builder, and each tab's copy keys (a
+-- list, or a function of ctx; Tabs.TabKeys resolves either).
 function Tabs.BuildTabSet(ctx)
     local shape = ctx.shape()
     local kind = ctx.kind and ctx.kind() or "buff"
     local tabs = {}
     local buildContent = {}
+    local keySets = {}
 
-    local function add(key, label, buildFn)
+    local function add(key, label, buildFn, keys)
         table.insert(tabs, { key = key, label = label })
         buildContent[key] = function(tabContent, tabBuilder)
             buildFn(tabBuilder, ctx)
         end
+        keySets[key] = keys
     end
 
-    add("sizing", "Sizing", Tabs.BuildSizingTab)
+    add("sizing", "Sizing", Tabs.BuildSizingTab, SIZING_TAB_KEYS)
 
     if kind == "missingbuff" then
         -- A reminder has no duration or stacks. Icon and/or Aura Name follow
         -- the shape; Animations carries the blink.
         if shape ~= "text" then
-            add("icon", "Icon", Tabs.BuildIconTab)
+            add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
         end
         if shape ~= "icon" then
-            add("auraName", "Aura Name", Tabs.BuildAuraNameTab)
+            add("auraName", "Aura Name", Tabs.BuildAuraNameTab, AuraNameTabKeys)
         end
-        add("animations", "Animations", Tabs.BuildAnimationsTab)
-        return tabs, buildContent
+        add("animations", "Animations", Tabs.BuildAnimationsTab, MISSING_ANIMATIONS_TAB_KEYS)
+        return tabs, buildContent, keySets
     end
 
     if kind == "classpower" then
         -- No aura: the bar (Bar shape) and the number, then Visibility, since
         -- the frame is up whether or not anything is happening to it.
         if shape == "bar" then
-            add("bar", "Bar", Tabs.BuildClassPowerBarTab)
+            add("bar", "Bar", Tabs.BuildClassPowerBarTab, CLASS_POWER_BAR_TAB_KEYS)
         end
-        add("text", "Text", Tabs.BuildClassPowerTextTab)
-        add("visibility", "Visibility", Tabs.BuildVisibilityTab)
-        return tabs, buildContent
+        add("text", "Text", Tabs.BuildClassPowerTextTab, ClassPowerTextTabKeys)
+        add("visibility", "Visibility", Tabs.BuildVisibilityTab, VisibilityTabKeys)
+        return tabs, buildContent, keySets
     end
 
     if kind == "classresource" then
@@ -1290,14 +1430,14 @@ function Tabs.BuildTabSet(ctx)
         -- row over its backdrop; then Visibility, since the frame is up
         -- regardless.
         if shape == "icons" then
-            add("icons", "Shapes", Tabs.BuildClassResourceIconsTab)
-            add("backdrop", "Backdrop", Tabs.BuildClassResourceBackdropTab)
+            add("icons", "Shapes", Tabs.BuildClassResourceIconsTab, CLASS_RESOURCE_SHAPES_TAB_KEYS)
+            add("backdrop", "Backdrop", Tabs.BuildClassResourceBackdropTab, BACKDROP_TAB_KEYS)
         else
-            add("bar", "Bar", Tabs.BuildClassResourceBarTab)
-            add("ticks", "Ticks", Tabs.BuildClassResourceTicksTab)
+            add("bar", "Bar", Tabs.BuildClassResourceBarTab, PLAIN_BAR_TAB_KEYS)
+            add("ticks", "Ticks", Tabs.BuildClassResourceTicksTab, TICKS_TAB_KEYS)
         end
-        add("visibility", "Visibility", Tabs.BuildVisibilityTab)
-        return tabs, buildContent
+        add("visibility", "Visibility", Tabs.BuildVisibilityTab, VisibilityTabKeys)
+        return tabs, buildContent, keySets
     end
 
     if kind == "cooldown" then
@@ -1306,20 +1446,20 @@ function Tabs.BuildTabSet(ctx)
         -- frame is up whether or not the spell is cooling. The Stacks tab
         -- styles the charge count and the Aura Name tab the spell name.
         if addon.ScootAuras.IsBarShape(shape) then
-            add("bar", "Bar", Tabs.BuildCooldownBarTab)
-            add("icon", "Icon", Tabs.BuildIconTab)
+            add("bar", "Bar", Tabs.BuildCooldownBarTab, COOLDOWN_BAR_TAB_KEYS)
+            add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
             add("spellName", "Spell Name", function(b, c)
                 Tabs.BuildAuraNameTab(b, c, { noun = "Spell Name" })
-            end)
+            end, AuraNameTabKeys)
         else
-            add("icon", "Icon", Tabs.BuildIconTab)
+            add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
         end
-        add("duration", "Duration", Tabs.BuildDurationTab)
+        add("duration", "Duration", Tabs.BuildDurationTab, DURATION_TAB_KEYS)
         add("charges", "Charges", function(b, c)
             Tabs.BuildStacksTab(b, c, { noun = "Charges", singular = "charge" })
-        end)
-        add("visibility", "Visibility", Tabs.BuildVisibilityTab)
-        return tabs, buildContent
+        end, StacksTabKeys)
+        add("visibility", "Visibility", Tabs.BuildVisibilityTab, VisibilityTabKeys)
+        return tabs, buildContent, keySets
     end
 
     if addon.ScootAuras.KindTracksStacks(kind) then
@@ -1328,44 +1468,44 @@ function Tabs.BuildTabSet(ctx)
         -- No duration, swipe or pandemic; the Stacks tab styles the number on
         -- every shape.
         if shape == "bar" then
-            add("bar", "Bar", Tabs.BuildStacksBarTab)
-            add("ticks", "Ticks", Tabs.BuildClassResourceTicksTab)
-            add("icon", "Icon", Tabs.BuildIconTab)
-            add("auraName", "Aura Name", Tabs.BuildAuraNameTab)
+            add("bar", "Bar", Tabs.BuildStacksBarTab, PLAIN_BAR_TAB_KEYS)
+            add("ticks", "Ticks", Tabs.BuildClassResourceTicksTab, TICKS_TAB_KEYS)
+            add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
+            add("auraName", "Aura Name", Tabs.BuildAuraNameTab, AuraNameTabKeys)
         elseif shape == "icons" then
-            add("icons", "Shapes", Tabs.BuildStacksShapesTab)
-            add("backdrop", "Backdrop", Tabs.BuildClassResourceBackdropTab)
+            add("icons", "Shapes", Tabs.BuildStacksShapesTab, SHAPES_TAB_KEYS)
+            add("backdrop", "Backdrop", Tabs.BuildClassResourceBackdropTab, BACKDROP_TAB_KEYS)
         elseif shape == "text" then
-            add("stacks", "Stacks", Tabs.BuildStacksTab)
-            return tabs, buildContent
+            add("stacks", "Stacks", Tabs.BuildStacksTab, StacksTabKeys)
+            return tabs, buildContent, keySets
         else
-            add("icon", "Icon", Tabs.BuildIconTab)
+            add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
         end
-        add("stacks", "Stacks", Tabs.BuildStacksTab)
-        return tabs, buildContent
+        add("stacks", "Stacks", Tabs.BuildStacksTab, StacksTabKeys)
+        return tabs, buildContent, keySets
     end
 
     if addon.ScootAuras.IsBarShape(shape) then
-        add("bar", "Bar", Tabs.BuildBarTab)
-        add("icon", "Icon", Tabs.BuildIconTab)
-        add("auraName", "Aura Name", Tabs.BuildAuraNameTab)
+        add("bar", "Bar", Tabs.BuildBarTab, BAR_TAB_KEYS)
+        add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
+        add("auraName", "Aura Name", Tabs.BuildAuraNameTab, AuraNameTabKeys)
     elseif shape == "shape" then
-        add("shapeTab", "Shape", Tabs.BuildShapeTab)
+        add("shapeTab", "Shape", Tabs.BuildShapeTab, SHAPE_TAB_KEYS)
     else
-        add("icon", "Icon", Tabs.BuildIconTab)
+        add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
     end
 
-    add("duration", "Duration", Tabs.BuildDurationTab)
-    add("stacks", "Stacks", Tabs.BuildStacksTab)
+    add("duration", "Duration", Tabs.BuildDurationTab, DURATION_TAB_KEYS)
+    add("stacks", "Stacks", Tabs.BuildStacksTab, StacksTabKeys)
     if shape == "icon" then
-        add("animations", "Animations", Tabs.BuildIconAnimationsTab)
-        add("misc", "Misc", Tabs.BuildMiscTab)
+        add("animations", "Animations", Tabs.BuildIconAnimationsTab, ICON_ANIMATIONS_TAB_KEYS)
+        add("misc", "Misc", Tabs.BuildMiscTab, MISC_TAB_KEYS)
     end
     -- No Visibility tab for buff/debuff tracking: an aura is its own
     -- visibility condition. BuildVisibilityTab serves the kinds whose frame
     -- is always up (Class Power, Class Resource and Spell Cooldown above).
 
-    return tabs, buildContent
+    return tabs, buildContent, keySets
 end
 
 return Tabs

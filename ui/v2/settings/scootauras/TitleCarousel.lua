@@ -16,6 +16,10 @@
 -- instead of stepping it. Widths derive from one base measurement per name
 -- (16pt) scaled by size, never from per-frame GetStringWidth.
 --
+-- opts.box puts each name in a box of a chrome role's art, sized with the
+-- name's ring and drawn under its text, so the boxes slide and shrink with
+-- the names they hold.
+--
 -- Mouse: item buttons and the viewport both feed BeginPress; from then on the
 -- viewport's OnUpdate polls the cursor and the button state, so a drag keeps
 -- tracking wherever the cursor goes and release needs no OnMouseUp. Items have
@@ -42,6 +46,8 @@ local DRAG_THRESHOLD = 4     -- px; below it a press is a click
 local FLING = 0.15           -- seconds of release velocity projected into the snap target
 local EASE = 12              -- offset += (target - offset) * min(1, dt * EASE)
 local SETTLE_EPS = 0.002
+-- arrive: index units from the target at which onMotion reports arrival
+local GLIDE = { arrive = 0.25 }
 local OVERSHOOT = 0.3        -- index units allowed past the ends while dragging
 local WHEEL_DEBOUNCE = 0.12  -- seconds; fast notches coalesce into one selection
 local MIN_WIDTH = 600
@@ -115,17 +121,37 @@ local function ApplyHoverAlpha(it)
     it.btn:SetAlpha(a)
 end
 
+-- Sizes are reckoned at BASE_SIZE; opts.fontSize scales what is drawn, and
+-- opts.fontStyle is a FontStyles key for addon.ApplyFontStyle.
+local function SetFace(c, fs, size)
+    local px = size * c.fontScale
+    if c.opts.fontStyle then
+        addon.ApplyFontStyle(fs, c.opts.font, px, c.opts.fontStyle)
+    else
+        fs:SetFont(c.opts.font, px, "")
+    end
+end
+
 local function CreateItem(c)
     local btn = CreateFrame("Button", nil, c.viewport)
     btn:SetHeight(c.viewport:GetHeight())   -- full-height hit area
     btn:EnableMouse(true)
-    local fs = btn:CreateFontString(nil, "OVERLAY")
-    fs:SetFont(c.opts.font, BASE_SIZE, "")   -- SetText errors on a font-less string
+    -- A boxed name's text is the box frame's, so it draws over the art
+    local box
+    if c.box then
+        box = CreateFrame("Frame", nil, btn)
+        box:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        addon.UI.Chrome.Backdrop(c.box.role, box)
+    end
+    local fs = (box or btn):CreateFontString(nil, "OVERLAY")
+    SetFace(c, fs, BASE_SIZE)   -- SetText errors on a font-less string
     fs:SetPoint("CENTER", btn, "CENTER", 0, 0)
     fs:SetJustifyH("CENTER")
     fs:SetWordWrap(false)
     fs:SetTextColor(c.dim[1], c.dim[2], c.dim[3], 1)   -- ApplyItem tints from here
-    local it = { btn = btn, fs = fs, curSize = BASE_SIZE }
+    -- curSize starts unset so the first ApplyItem sizes the box and places
+    -- the text even when the name is placed at BASE_SIZE
+    local it = { btn = btn, fs = fs, box = box }
     btn:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then BeginPress(c, it.index) end
     end)
@@ -165,8 +191,8 @@ end
 -- Layout
 --------------------------------------------------------------------------------
 
-local function PadX(size)
-    return math.max(PAD_MIN, PAD_X * size / BASE_SIZE)
+local function PadX(c, size)
+    return math.max(PAD_MIN, c.padX * size / BASE_SIZE)
 end
 
 --- Font size, padded width, title-icon room, and ring distance of item i.
@@ -174,7 +200,8 @@ local function Metrics(c, i)
     local d = i - c.offset
     local ad = math.abs(d)
     local size = BASE_SIZE * Knot(SIZE_KNOTS, 3, ad)
-    local w = c.items[i].baseW * (size / BASE_SIZE) + 2 * PadX(size)
+    local w = c.items[i].baseW * (size / BASE_SIZE) + 2 * PadX(c, size)
+    if c.box and c.box.minWidth then w = math.max(w, c.box.minWidth * size / BASE_SIZE) end
     local room = c.selRoom * Clamp(1 - ad, 0, 1)
     return size, w, room, ad
 end
@@ -193,8 +220,13 @@ end
 local function ApplyItem(c, it, size, w, x, ad, half)
     local q = math.floor(size * 2 + 0.5) / 2
     if it.curSize ~= q then
-        it.fs:SetFont(c.opts.font, q, "")
+        SetFace(c, it.fs, q)
         it.curSize = q
+        if it.box then
+            local scale = q / BASE_SIZE
+            it.box:SetHeight(c.box.height * scale)
+            it.fs:SetPoint("CENTER", it.btn, "CENTER", 0, (c.box.lift or 0) * scale)
+        end
     end
     -- Accent at the center, gray by one ring out, quantized so a drag repaints
     -- the color at most 32 times per name. The squared falloff keeps the accent
@@ -207,6 +239,7 @@ local function ApplyItem(c, it, size, w, x, ad, half)
 
     w = math.max(w, 8)
     it.btn:SetWidth(w)
+    if it.box then it.box:SetWidth(w) end
     it.btn:SetPoint("CENTER", c.viewport, "CENTER", x, 0)
 
     local a = Knot(ALPHA_KNOTS, 4, ad)
@@ -415,11 +448,15 @@ OnUpdate = function(c, dt)
     end
     if c.target then
         c.offset = c.offset + (c.target - c.offset) * math.min(1, dt * EASE)
-        if math.abs(c.target - c.offset) < SETTLE_EPS then
+        local left = math.abs(c.target - c.offset)
+        if left < SETTLE_EPS then
             c.offset = c.target
             c.target = nil
         end
         Layout(c)
+        -- The ease's tail takes about half a second; the selected name is
+        -- the one at center well before that, so motion ends for the caller.
+        if left < GLIDE.arrive then NotifyMotion(c, false) end
     end
     if not c.target then Settle(c) end
 end
@@ -487,8 +524,10 @@ end
 function Proto:SetAccent(r, g, b)
     local sel = self.opts.color
     sel[1], sel[2], sel[3] = r, g, b
-    if self.prevBtn then self.prevBtn._glyph:SetTextColor(r, g, b, 1) end
-    if self.nextBtn then self.nextBtn._glyph:SetTextColor(r, g, b, 1) end
+    for _, btn in ipairs({ self.prevBtn, self.nextBtn }) do
+        local glyph = btn._glyph
+        if glyph.SetTextColor then glyph:SetTextColor(r, g, b, 1) else glyph:SetVertexColor(r, g, b, 1) end
+    end
     for _, it in ipairs(self.items) do
         TintItem(self, it, it.curTint or 0)
     end
@@ -522,25 +561,41 @@ local function PreWarm(c)
     if c.warmed then return end
     c.warmed = true
     for s = 6.5, BASE_SIZE, 0.5 do
-        c.measureFS:SetFont(c.opts.font, s, "")
+        SetFace(c, c.measureFS, s)
         c.measureFS:SetText("Ag")
     end
-    c.measureFS:SetFont(c.opts.font, BASE_SIZE, "")
+    SetFace(c, c.measureFS, BASE_SIZE)
 end
 
---- opts: width, font, arrowFont (chevron glyphs; defaults to font),
+--- opts: width, font, fontSize (the selected name's size; 16 by default),
+--- fontStyle (a FontStyles key), arrowFont (chevron glyphs; defaults to font),
+--- arrowAtlas = { prev = { atlas, size }, next = { atlas, size } } (chevrons
+--- as art; a missing atlas falls back to the glyph),
 --- color = { r, g, b } for the selected name, dimColor = { r, g, b } for the
 --- rest (defaults to DIM_COLOR), selectedRoom (px kept clear right of the
---- selected name's glyphs), onSelect(trackerId), onMotion(isMoving)
+--- selected name's glyphs), onSelect(trackerId), onMotion(isMoving; false
+--- once a glide is within GLIDE.arrive of its name, before it settles),
+--- y (the strip's center above the title bar's), box = { role, height, padX,
+--- lift, margin, minWidth } (each name in a box of that chrome role, height at full
+--- size, padX beside the name inside it, lift raising the name off the box's
+--- center, margin the art drawn past the box above and below, minWidth the
+--- narrowest box at full size)
 function Carousel.Create(titleBar, opts)
     local c = setmetatable({ titleBar = titleBar, opts = opts, items = {}, pool = addon.Pool.New(CreateItem, ResetItem), count = 0 }, Proto)
     c.dim = opts.dimColor or DIM_COLOR
     c.selRoom = math.max(0, (opts.selectedRoom or SELECTED_ROOM) - PAD_X)
     c.viewW = math.max(MIN_WIDTH, math.floor(opts.width))
+    c.box = opts.box
+    c.padX = (opts.box and opts.box.padX) or PAD_X
+    c.fontScale = (opts.fontSize or BASE_SIZE) / BASE_SIZE
 
+    -- A boxed strip is as tall as the selected box and the art's shadow
+    -- past it, which the viewport would clip otherwise
+    local vpH = titleBar:GetHeight()
+    if c.box then vpH = math.max(vpH, c.box.height + 2 * (c.box.margin or 0)) end
     local vp = CreateFrame("Frame", nil, titleBar)
-    vp:SetSize(c.viewW, titleBar:GetHeight())
-    vp:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
+    vp:SetSize(c.viewW, vpH)
+    vp:SetPoint("CENTER", titleBar, "CENTER", 0, opts.y or 0)
     vp:SetClipsChildren(true)
     vp:SetFrameLevel(titleBar:GetFrameLevel() + 2)
     vp:EnableMouse(true)
@@ -563,30 +618,48 @@ function Carousel.Create(titleBar, opts)
     vp:Hide()
     c.viewport = vp
 
-    local function Chevron(glyph, dir)
+    -- An arrowAtlas entry draws the chevron as art, desaturated and tinted
+    -- like the text glyph; a font without the arrow characters needs it.
+    local function Chevron(glyph, art, dir)
         local b = CreateFrame("Button", nil, vp)
         b:SetSize(CHEVRON_W, vp:GetHeight())
         b:SetFrameLevel(vp:GetFrameLevel() + 2)   -- above the item buttons
         b:RegisterForClicks("AnyUp")
-        local fs = b:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(opts.arrowFont or opts.font, CHEVRON_SIZE, "")
-        fs:SetPoint("CENTER", b, "CENTER", 0, 0)
-        fs:SetText(glyph)
-        fs:SetTextColor(opts.color[1], opts.color[2], opts.color[3], 1)
-        b._glyph = fs
+        local mark
+        if art then
+            mark = b:CreateTexture(nil, "OVERLAY")
+            if not (pcall(mark.SetAtlas, mark, art.atlas) and mark:GetAtlas()) then
+                mark:Hide()
+                mark = nil
+            end
+        end
+        if mark then
+            local s = art.size or CHEVRON_W
+            mark:SetSize(s, s)
+            mark:SetDesaturated(true)
+            mark:SetVertexColor(opts.color[1], opts.color[2], opts.color[3], 1)
+        else
+            mark = b:CreateFontString(nil, "OVERLAY")
+            mark:SetFont(opts.arrowFont or opts.font, CHEVRON_SIZE, "")
+            mark:SetText(glyph)
+            mark:SetTextColor(opts.color[1], opts.color[2], opts.color[3], 1)
+        end
+        mark:SetPoint("CENTER", b, "CENTER", 0, 0)
+        b._glyph = mark
         b:SetAlpha(0)   -- Layout sets it
         b:SetScript("OnClick", function() StepBy(c, dir) end)
         b:SetScript("OnEnter", function() b.hover = true; ApplyChevronAlpha(c) end)
         b:SetScript("OnLeave", function() b.hover = false; ApplyChevronAlpha(c) end)
         return b
     end
-    c.prevBtn = Chevron("\226\151\128", -1) -- ◀
-    c.nextBtn = Chevron("\226\150\182", 1)  -- ▶
+    local art = opts.arrowAtlas or {}
+    c.prevBtn = Chevron("\226\151\128", art.prev, -1) -- ◀
+    c.nextBtn = Chevron("\226\150\182", art.next, 1)  -- ▶
 
     -- Measurement string: shown at alpha 0 on the title bar (not inside the
     -- hidden viewport), so widths read true on the first open.
     c.measureFS = titleBar:CreateFontString(nil, "OVERLAY")
-    c.measureFS:SetFont(opts.font, BASE_SIZE, "")
+    SetFace(c, c.measureFS, BASE_SIZE)
     c.measureFS:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 0, 0)
     c.measureFS:SetAlpha(0)
     c.onUpdate = function(_, dt) OnUpdate(c, dt) end

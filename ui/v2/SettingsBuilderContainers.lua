@@ -145,6 +145,8 @@ end
 --                   Each function populates that tab's content
 --   onTabChange   : Optional callback when tab changes
 --   maxTabsPerRow : Optional per-row tab capacity (default 5)
+--   footer        : Optional { text, onClick(section, button) }: a button set
+--                   into the body's bottom edge, shown on every tab
 --------------------------------------------------------------------------------
 
 function Builder:AddTabbedSection(options)
@@ -196,6 +198,7 @@ function Builder:AddTabbedSection(options)
         sectionKey = options.sectionKey,
         defaultTab = options.defaultTab,
         maxTabsPerRow = options.maxTabsPerRow,
+        footer = options.footer,
         onTabChange = function(newTabKey, oldTabKey)
             -- Call user callback if provided
             if options.onTabChange then

@@ -58,6 +58,19 @@ function Controls:CreateTabbedSection(options)
     local name = options.name
     -- Per-section row capacity; every existing caller keeps the default
     local maxTabsPerRow = options.maxTabsPerRow or M().tab.maxPerRow
+    -- A button set into the body's bottom edge: footer = { text,
+    -- onClick(section, button) }. Its upper half takes room inside the body
+    -- and its lower half hangs below it; a sliced button role's clear margin
+    -- (the art drawn outside the button's rect) widens both.
+    local footer = options.footer
+    local footerIn, footerOut, footerEdge = 0, 0, {}
+    if footer then
+        local spec = addon.UI.Chrome.Spec("button")
+        if spec and spec.kind == "sliced" and spec.edge then footerEdge = spec.edge end
+        local h = M().tab.footerHeight
+        footerIn = h / 2 + (footerEdge.top or 0)
+        footerOut = h / 2 + (footerEdge.bottom or 0)
+    end
 
     -- Get initial selected tab from session storage
     local selectedTabKey = GetTabState(componentId, sectionKey, defaultTab)
@@ -293,6 +306,45 @@ function Controls:CreateTabbedSection(options)
 
     LayoutTabs()
 
+    -- The footer: a small button centered on the body's bottom line, the
+    -- line broken either side of it. The body's BOTTOM edge becomes the left
+    -- segment, and a second texture, stored on the border handle so it
+    -- repaints and hides with the other edges, the right one. A body drawn
+    -- with no border keeps the button over its edge and has nothing to break.
+    if footer then
+        local btn = Controls:CreateButton({
+            parent = contentContainer,
+            text = footer.text,
+            height = M().tab.footerHeight,
+            fontSize = M().tab.footerFontSize,
+            borderWidth = M().tab.borderWidth,
+            borderAlpha = M().tab.borderAlpha,
+            onClick = function(b)
+                if footer.onClick then footer.onClick(section, b) end
+            end,
+        })
+        if btn then
+            btn:SetPoint("CENTER", contentContainer, "BOTTOM", 0, 0)
+            -- Over the tab content frames and the rows inside them
+            btn:SetFrameLevel(contentContainer:GetFrameLevel() + 10)
+            section._footerBtn = btn
+            local border = section._bodyBackdrop and section._bodyBackdrop.border
+            local bottom = border and border.BOTTOM
+            if bottom then
+                local gap = M().tab.footerGap
+                bottom:ClearAllPoints()
+                bottom:SetPoint("BOTTOMLEFT", contentContainer, "BOTTOMLEFT", 0, 0)
+                bottom:SetPoint("BOTTOMRIGHT", btn, "LEFT", -(gap + (footerEdge.left or 0)), 0)
+                local right = contentContainer:CreateTexture(nil, "BORDER", nil, -1)
+                right:SetHeight(bottom:GetHeight())
+                right:SetPoint("BOTTOMLEFT", btn, "RIGHT", gap + (footerEdge.right or 0), 0)
+                right:SetPoint("BOTTOMRIGHT", contentContainer, "BOTTOMRIGHT", 0, 0)
+                border.BOTTOM2 = right
+                border:Refresh()
+            end
+        end
+    end
+
     -- Tab selection state update
     local function UpdateTabVisuals()
         for key, tabBtn in pairs(section._tabButtons) do
@@ -307,12 +359,18 @@ function Controls:CreateTabbedSection(options)
         end
     end
 
-    local function UpdateSectionHeight()
+    -- The body is the selected tab's content, its padding and border, and
+    -- the footer's upper half; the section adds the tab bar and the footer's
+    -- overhang below the body.
+    local function SectionHeights()
         local contentHeight = section._contentHeights[section._selectedTabKey] or 100
-        local totalContentHeight = contentHeight + (M().tab.contentPadding * 2) + M().tab.borderWidth
+        local bodyHeight = contentHeight + (M().tab.contentPadding * 2) + M().tab.borderWidth + footerIn
+        return bodyHeight, tabBarHeight + bodyHeight + footerOut
+    end
 
-        contentContainer:SetHeight(totalContentHeight)
-        local newHeight = tabBarHeight + totalContentHeight
+    local function UpdateSectionHeight()
+        local bodyHeight, newHeight = SectionHeights()
+        contentContainer:SetHeight(bodyHeight)
         section:SetHeight(newHeight)
 
         -- Notify parent of height change (for dynamic resizing of parent collapsible)
@@ -363,9 +421,8 @@ function Controls:CreateTabbedSection(options)
     end
 
     function section:GetHeight()
-        local contentHeight = self._contentHeights[self._selectedTabKey] or 100
-        local totalContentHeight = contentHeight + (M().tab.contentPadding * 2) + M().tab.borderWidth
-        return tabBarHeight + totalContentHeight
+        local _, sectionHeight = SectionHeights()
+        return sectionHeight
     end
 
     function section:GetTabBarHeight()
@@ -375,6 +432,11 @@ function Controls:CreateTabbedSection(options)
     function section:Cleanup()
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
+        end
+        -- The footer button holds a theme subscription (flat) or a backdrop
+        -- handle (sliced) that only its own Cleanup releases
+        if self._footerBtn and self._footerBtn.Cleanup then
+            self._footerBtn:Cleanup()
         end
         -- Clean up any inner builders stored on content frames
         for key, content in pairs(self._tabContents) do

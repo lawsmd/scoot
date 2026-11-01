@@ -34,10 +34,23 @@ local TITLE_ICON = 16      -- rename, duplicate, load on, delete
 -- Icon to icon, and the underline's break past each end of the row. Even, so
 -- the row's half width is a whole pixel.
 local TITLE_ICON_GAP = 8
+-- A template's name box: the button role's body around the name, its center
+-- y below the 20 px plate's center so its top stands just over the plate and
+-- its bottom edge, where the icons sit, hangs below it. padX is the room
+-- beside the name inside the box, lift raises the name off the box's center
+-- to clear the icons, renameW the box's width while the rename box is open.
+-- icon and iconGap size the row on the box's edge, smaller than the flat
+-- bar's, and the box is never narrower than the row plus padX each side.
+-- Kept off addon.UI.Controls.Metrics: the editor's only template-only geometry.
+-- lift -1 centers the capitals, since a line's descender room is below them;
+-- iconDrop lowers the icon row off the box's bottom edge to clear the name.
+local TITLE_BOX = { height = 32, y = -4, padX = 16, lift = -1, iconDrop = 3, renameW = 236, icon = 14, iconGap = 6, fontSize = 18, fontStyle = "SHADOWTHICKOUTLINESLUG" }
 -- Icon names: the flat glyphs the Aura List uses for the same actions. The
 -- delete art falls back to the gold X where the client has no lone trash can.
 local SPEC_ATLAS = "ui-questtrackerbutton-filter"
 local DELETE_ATLAS = { "common-icon-delete", "common-icon-yellowx" }
+-- The tab footer: one click writes the open tab onto the rest of the group.
+local COPY_FOOTER_TEXT = "Copy this tab's style to all Auras in the Group"
 
 local frame
 local session
@@ -431,9 +444,32 @@ local function InitializeFrame()
         SavePosition()
     end)
 
-    local titleText = titleBar:CreateFontString(nil, "OVERLAY")
-    titleText:SetFont(theme:GetFont("HEADER"), 16, "")
-    titleText:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
+    -- On a template whose button role is sliced art, the plain name and each
+    -- carousel name stand in a box of that art, and the title icons sit on
+    -- the selected box's bottom edge. The plain name's box is this one.
+    local Chrome = addon.UI.Chrome
+    local boxSpec = onTemplate and Chrome.Spec("button") or nil
+    local boxed = type(boxSpec) == "table" and boxSpec.kind == "sliced"
+    local titleBox
+    if boxed then
+        titleBox = CreateFrame("Frame", nil, titleBar)
+        titleBox:SetSize(TITLE_BOX.renameW, TITLE_BOX.height)
+        titleBox:SetPoint("CENTER", titleBar, "CENTER", 0, TITLE_BOX.y)
+        titleBox:SetFrameLevel(titleBar:GetFrameLevel() + 1)
+        Chrome.Backdrop("button", titleBox)
+    end
+
+    local titleText = (titleBox or titleBar):CreateFontString(nil, "OVERLAY")
+    if boxed then
+        addon.ApplyFontStyle(titleText, theme:GetFont("HEADER"), TITLE_BOX.fontSize, TITLE_BOX.fontStyle)
+    else
+        titleText:SetFont(theme:GetFont("HEADER"), 16, "")
+    end
+    if titleBox then
+        titleText:SetPoint("CENTER", titleBox, "CENTER", 0, TITLE_BOX.lift)
+    else
+        titleText:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
+    end
     titleText:SetTextColor(ar, ag, ab, 1)
     widgets.titleText = titleText
 
@@ -458,12 +494,36 @@ local function InitializeFrame()
     -- and its name buttons (+3).
     -- glyphScale draws the art larger than its button, for an atlas with
     -- more empty margin than its neighbors; the row spacing stays even.
+    -- A template's plate is dark metal, where the flat bar's dim rest alpha
+    -- reads as disabled, so the icons rest opaque there and hover to white.
+    -- The row's center sits on the underline. The name above it is centered
+    -- in the bar, plain or in the carousel, so the row needs no re-anchor
+    -- when the carousel settles. A boxed title puts the row's center on the
+    -- box's bottom edge and parents the icons to it, so the carousel hides
+    -- them while a name is moving into place. A template without the box has
+    -- the 20 px plate alone, too short to hold both, so the row stands on the
+    -- plate's bottom line the way the settings panel's toolbar does.
+    local iconRow = CreateFrame("Frame", nil, titleBar)
+    local iconSize = boxed and TITLE_BOX.icon or TITLE_ICON
+    local iconGap = boxed and TITLE_BOX.iconGap or TITLE_ICON_GAP
+    iconRow:SetSize(1, iconSize)
+    if boxed then
+        iconRow:SetPoint("CENTER", titleBar, "CENTER", 0, TITLE_BOX.y - TITLE_BOX.height / 2 - TITLE_BOX.iconDrop)
+        iconRow:SetFrameLevel(titleBar:GetFrameLevel() + 5)
+    elseif onTemplate then
+        iconRow:SetPoint("TOP", titleBar, "BOTTOM", 0, 0)
+    else
+        iconRow:SetPoint("CENTER", titleBar, "BOTTOM", 0, 2)
+    end
+    widgets.iconRow = iconRow
+
+    local restAlpha = onTemplate and 1 or 0.35
     local function TitleIcon(atlas, tooltip, glyphScale)
-        local btn = CreateFrame("Button", nil, titleBar)
-        btn:SetSize(TITLE_ICON, TITLE_ICON)
+        local btn = CreateFrame("Button", nil, boxed and iconRow or titleBar)
+        btn:SetSize(iconSize, iconSize)
         btn:SetFrameLevel(titleBar:GetFrameLevel() + 6)
         local tex = btn:CreateTexture(nil, "ARTWORK")
-        local glyph = TITLE_ICON * (glyphScale or 1)
+        local glyph = iconSize * (glyphScale or 1)
         tex:SetSize(glyph, glyph)
         tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
         for _, name in ipairs(type(atlas) == "table" and atlas or { atlas }) do
@@ -471,16 +531,38 @@ local function InitializeFrame()
         end
         tex:SetDesaturated(true)
         tex:SetVertexColor(ar, ag, ab)
-        tex:SetAlpha(0.35)
+        tex:SetAlpha(restAlpha)
         btn._tex = tex
+        -- On the box's rim each glyph wears a black outline: eight black
+        -- copies of its own atlas, a pixel out in each direction, behind it.
+        local used = boxed and tex:GetAtlas()
+        if used then
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    if dx ~= 0 or dy ~= 0 then
+                        local edge = btn:CreateTexture(nil, "ARTWORK", nil, -1)
+                        edge:SetAtlas(used)
+                        edge:SetSize(glyph, glyph)
+                        edge:SetPoint("CENTER", btn, "CENTER", dx, dy)
+                        edge:SetDesaturated(true)
+                        edge:SetVertexColor(0, 0, 0, 1)
+                    end
+                end
+            end
+        end
         btn:SetScript("OnEnter", function(self)
-            tex:SetAlpha(0.8)
+            if onTemplate then
+                tex:SetVertexColor(1, 1, 1)
+            else
+                tex:SetAlpha(0.8)
+            end
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
             GameTooltip:SetText(tooltip, 1, 1, 1)
             GameTooltip:Show()
         end)
         btn:SetScript("OnLeave", function()
-            tex:SetAlpha(0.35)
+            tex:SetVertexColor(ar, ag, ab)
+            tex:SetAlpha(restAlpha)
             GameTooltip:Hide()
         end)
         return btn
@@ -492,13 +574,6 @@ local function InitializeFrame()
     local deleteBtn = TitleIcon(DELETE_ATLAS, "Delete")
     local titleIcons = { renameBtn, duplicateBtn, specBtn, deleteBtn }
 
-    -- The row's center sits on the underline. The name above it is centered
-    -- in the bar, plain or in the carousel, so the row needs no re-anchor
-    -- when the carousel moves.
-    local iconRow = CreateFrame("Frame", nil, titleBar)
-    iconRow:SetSize(1, TITLE_ICON)
-    iconRow:SetPoint("CENTER", titleBar, "BOTTOM", 0, 2)
-
     -- Duplicating is a group action, so that icon also needs widgets.inGroup.
     -- The row packs whichever icons show, and the underline breaks around it.
     local function SetTitleIconsShown(shown)
@@ -508,12 +583,14 @@ local function InitializeFrame()
             btn:SetShown(not not on)
             if on then visible[#visible + 1] = btn end
         end
-        local rowW = #visible * (TITLE_ICON + TITLE_ICON_GAP) - TITLE_ICON_GAP
+        local rowW = #visible * (iconSize + iconGap) - iconGap
         for i, btn in ipairs(visible) do
             btn:ClearAllPoints()
-            btn:SetPoint("LEFT", iconRow, "CENTER", -rowW / 2 + (i - 1) * (TITLE_ICON + TITLE_ICON_GAP), 0)
+            btn:SetPoint("LEFT", iconRow, "CENTER", -rowW / 2 + (i - 1) * (iconSize + iconGap), 0)
         end
-        local half = #visible > 0 and (rowW / 2 + TITLE_ICON_GAP) or 0
+        widgets.iconRowW = math.max(0, rowW)
+        if widgets.FitTitleBox then widgets.FitTitleBox() end
+        local half = #visible > 0 and (rowW / 2 + iconGap) or 0
         sepTitleL:SetPoint("TOPRIGHT", frame, "TOP", -half, lineY)
         sepTitleR:SetPoint("TOPLEFT", frame, "TOP", half, lineY)
     end
@@ -548,9 +625,26 @@ local function InitializeFrame()
         addon.UI.Controls:ConfirmDialog(
             "Delete '" .. SAU().DisplayName(tracker) .. "'? Its styling and saved position are removed too.",
             function()
-                Editor.Close()
+                -- In a group the editor moves to the member on the left, or
+                -- on the right when the deleted one was first; Members is nil
+                -- for a group of one.
+                local members = tracker.groupId and addon.UI.ScootAuraTitleCarousel.Members(tracker.groupId)
+                local nextId
+                for i, m in ipairs(members or {}) do
+                    if m.id == id then
+                        local neighbor = members[i - 1] or members[i + 1]
+                        nextId = neighbor and neighbor.id
+                        break
+                    end
+                end
+                if not nextId then Editor.Close() end
                 SAU().DeleteTracker(id)
                 RefreshList()
+                if nextId and SAU().GetTracker(nextId) then
+                    Editor.Open(nextId)
+                elseif nextId then
+                    Editor.Close()
+                end
             end)
     end)
 
@@ -570,11 +664,25 @@ local function InitializeFrame()
     local carousel = addon.UI.ScootAuraTitleCarousel.Create(titleBar, {
         width = math.min(math.floor(WINDOW_W * 0.62), WINDOW_W - 120),
         font = theme:GetFont("HEADER"),
+        fontSize = boxed and TITLE_BOX.fontSize or nil,
+        fontStyle = boxed and TITLE_BOX.fontStyle or nil,
         arrowFont = theme:GetFont("BUTTON"),
+        -- The template's header font has no arrow characters, so the
+        -- chevrons take the stepper arrows' art
+        arrowAtlas = boxed and (Chrome.Spec("arrowButton") or {}).glyphs or nil,
         color = { ar, ag, ab },
         dimColor = { theme.TEXT_DIM.r, theme.TEXT_DIM.g, theme.TEXT_DIM.b },
         -- The icons sit under the name, so nothing is held clear beside it.
         selectedRoom = 0,
+        -- Each name in a box of its own, centered where the plain name's is
+        box = boxed and { role = "button", height = TITLE_BOX.height, padX = TITLE_BOX.padX,
+                          lift = TITLE_BOX.lift,
+                          -- A group shows all four icons on the selected box
+                          minWidth = 4 * (TITLE_BOX.icon + TITLE_BOX.iconGap) - TITLE_BOX.iconGap
+                              + 2 * TITLE_BOX.padX,
+                          margin = math.max((boxSpec.edge or {}).top or 0, (boxSpec.edge or {}).bottom or 0) } or nil,
+        y = boxed and TITLE_BOX.y or nil,
+        onMotion = boxed and function(moving) iconRow:SetShown(not moving) end or nil,
         onSelect = function(trackerId)
             C_Timer.After(0, function()
                 if session and session.trackerId ~= trackerId and SAU().GetTracker(trackerId) then
@@ -586,6 +694,27 @@ local function InitializeFrame()
     widgets.carousel = carousel
     widgets.carouselActive = false
 
+    local renameBox = CreateFrame("EditBox", nil, titleBar, "InputBoxTemplate")
+
+    -- The plain name's box shows with the plain name or the rename box, at
+    -- the name's width or the rename box's. Measured again a frame later, as
+    -- a string set this frame may not have its width yet.
+    local function FitTitleBox()
+        if not titleBox then return end
+        local renaming = renameBox:IsShown()
+        titleBox:SetShown(renaming or titleText:IsShown())
+        local w = TITLE_BOX.renameW
+        if not renaming then
+            w = math.max(math.ceil(titleText:GetUnboundedStringWidth() or 0), widgets.iconRowW or 0)
+                + 2 * TITLE_BOX.padX
+        end
+        titleBox:SetWidth(math.max(w, TITLE_BOX.height))
+    end
+    widgets.FitTitleBox = function()
+        FitTitleBox()
+        if titleBox then C_Timer.After(0, FitTitleBox) end
+    end
+
     -- Whichever title surface is live swaps out for the rename box
     local function SetTitleShown(shown)
         if widgets.carouselActive then
@@ -593,11 +722,15 @@ local function InitializeFrame()
         else
             titleText:SetShown(shown)
         end
+        FitTitleBox()
     end
 
-    local renameBox = CreateFrame("EditBox", nil, titleBar, "InputBoxTemplate")
     renameBox:SetSize(220, 20)
-    renameBox:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
+    renameBox:SetPoint("CENTER", titleBox or titleBar, "CENTER", 0, 0)
+    if titleBox then
+        renameBox:HookScript("OnShow", FitTitleBox)
+        renameBox:HookScript("OnHide", FitTitleBox)
+    end
     renameBox:SetJustifyH("CENTER")
     renameBox:SetAutoFocus(false)
     renameBox:SetMaxLetters(40)
@@ -1447,6 +1580,9 @@ local function RenderSelectors()
     selBuilder:Finalize()
 end
 
+-- Defined with the preview views below, whose member views it reads through
+local CopyTabToGroup
+
 local function RenderTabs()
     if tabsBuilder then tabsBuilder:Cleanup() end
     local SettingsBuilder = addon.UI.SettingsBuilder
@@ -1460,12 +1596,31 @@ local function RenderTabs()
 
     local Tabs = addon.UI.Settings.ScootAuraEditorTabs
     local tabs, buildContent = Tabs.BuildTabSet(ctx)
+    -- The copy-to-group footer, for a live tracker in a group of two or more
+    -- (the title carousel's rule): a draft or a standalone tracker has
+    -- nobody to copy to.
+    local live = CurrentTracker()
+    local members = live and live.groupId
+        and addon.UI.ScootAuraTitleCarousel.Members(live.groupId)
     tabsBuilder:AddTabbedSection({
         tabs = tabs,
         componentId = "scootAuraEditor",
         sectionKey = "editorTabs",
         maxTabsPerRow = 7,
         buildContent = buildContent,
+        footer = members and {
+            text = COPY_FOOTER_TEXT,
+            onClick = function(section, btn)
+                local n = CopyTabToGroup(section)
+                btn:SetText(n > 0 and ("Copied to " .. n .. (n == 1 and " Aura" or " Auras"))
+                    or "Nothing to copy")
+                -- The label returns unless a refresh rebuilt the section
+                -- meanwhile, or the editor closed
+                C_Timer.After(1.5, function()
+                    if btn:IsVisible() then btn:SetText(COPY_FOOTER_TEXT) end
+                end)
+            end,
+        } or nil,
     })
     tabsBuilder:Finalize()
     if widgets.tabsScroll.UpdateThumb then widgets.tabsScroll.UpdateThumb() end
@@ -1529,6 +1684,81 @@ local function SessionView()
         iconTexture = validated and validated.icon or nil,
         stackTracker = StackTrackerView(),
     }
+end
+
+-- A view as the ctx the tab assembly reads: a group member's shape, kind,
+-- settings and missing visual, for its tabs' copy keys.
+local function ViewCtx(view)
+    return {
+        shape = function() return view.shape end,
+        kind = function() return view.kind end,
+        get = view.get,
+        missingVisual = function() return view.missingVisual end,
+    }
+end
+
+-- Writes the open tab onto every other member of the open tracker's group
+-- whose same tab shows the key: the source's resolved values, so the member
+-- shows what the source shows, a missing one clearing the member's key.
+-- Hide toggles and Show Icon stay the member's own (Tabs.NEVER_COPY); a bar
+-- size crossing orientations swaps W and H so thickness stays thickness.
+-- Returns how many members were written.
+function CopyTabToGroup(section)
+    local tracker = CurrentTracker()
+    local gid = tracker and tracker.groupId
+    local group = gid and SAU().GetGroup(gid)
+    if not (group and section) then return 0 end
+    local Tabs = addon.UI.Settings.ScootAuraEditorTabs
+    local tabKey = section:GetSelectedTab()
+    local _, _, srcSets = Tabs.BuildTabSet(ctx)
+    local srcKeys = Tabs.TabKeys(srcSets, tabKey, ctx)
+    if #srcKeys == 0 then return 0 end
+    local family = Tabs.TabFamily(tabKey)
+    local srcShape = ctx.shape()
+    local count = 0
+    for _, id in ipairs(group.memberOrder or {}) do
+        local member = SAU().GetTracker(id)
+        if id ~= session.trackerId and member and member.groupId == gid then
+            SAU().RegisterTrackerComponent(id)
+            -- The member's record exists, so its view does
+            local vctx = ViewCtx(TrackerView(id))
+            local tabs, _, dstSets = Tabs.BuildTabSet(vctx)
+            local dstKey
+            for _, t in ipairs(tabs) do
+                if Tabs.TabFamily(t.key) == family then dstKey = t.key break end
+            end
+            local want = {}
+            if dstKey then
+                for _, k in ipairs(Tabs.TabKeys(dstSets, dstKey, vctx)) do want[k] = true end
+            end
+            local swap = family == "bar" and SAU().IsBarShape(srcShape)
+                and SAU().IsBarShape(member.shape) and srcShape ~= member.shape
+            local keys, values = {}, {}
+            for _, k in ipairs(srcKeys) do
+                if want[k] and not Tabs.NEVER_COPY[k] then
+                    local from = k
+                    if swap then
+                        from = (k == "barWidth" and "barHeight") or (k == "barHeight" and "barWidth") or k
+                    end
+                    local v = ctx.get(from)
+                    -- A default comes back by reference; each member gets its own table
+                    if type(v) == "table" then v = CopyTable(v) end
+                    keys[#keys + 1] = k
+                    values[k] = v
+                end
+            end
+            if #keys > 0 and SAU().WriteTrackerStyling(id, keys, values) then
+                count = count + 1
+            end
+        end
+    end
+    if count > 0 then
+        -- The strip's rebuild signature carries ids, flags and spells, not
+        -- styling, so the neighbours are rebuilt by hand
+        previewStrip:Reset()
+        Editor.DeferredPreviewRefresh()
+    end
+    return count
 end
 
 --------------------------------------------------------------------------------
@@ -2125,12 +2355,15 @@ local function UpdateTitle()
     if gid and widgets.carousel:SetContext(gid, session.trackerId) then
         widgets.carouselActive = true
         widgets.titleText:Hide()
+        widgets.FitTitleBox()
         widgets.carousel:Show()
         widgets.SetTitleIconsShown(true)
         return
     end
     widgets.carouselActive = false
     widgets.carousel:Hide()
+    -- A carousel hidden mid-glide never reports that it settled
+    widgets.iconRow:Show()
     widgets.titleText:Show()
     if tracker then
         widgets.titleText:SetText(CurrentName())
@@ -2139,6 +2372,7 @@ local function UpdateTitle()
         widgets.titleText:SetText("Creating a new Aura Tracker")
         widgets.SetTitleIconsShown(false)
     end
+    widgets.FitTitleBox()
 end
 
 -- The three content choices gate the other quadrants: an undecided draft

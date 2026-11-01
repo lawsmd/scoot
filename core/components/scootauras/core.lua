@@ -1961,6 +1961,25 @@ function SAU.SetTrackerStyling(trackerId, changes)
     return true
 end
 
+--- Writes every key in `keys` from `values` onto the tracker's component db,
+-- nil clearing the key, then restyles. The editor's copy-to-group button
+-- goes through here: a key the source has not set must read as the default
+-- on the target too, which SetTrackerStyling's pairs() walk cannot express.
+function SAU.WriteTrackerStyling(trackerId, keys, values)
+    local tracker = SAU.GetTracker(trackerId)
+    if not tracker then return nil, "no such tracker" end
+    local comp = SAU.RegisterTrackerComponent(trackerId)
+    if not comp then return nil, "no component" end
+    if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
+    if not comp.db then return nil, "no component db" end
+    values = values or {}
+    for _, key in ipairs(keys or {}) do
+        comp.db[key] = values[key]
+    end
+    if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
+    return true
+end
+
 function SAU.RenameTracker(trackerId, name)
     local tracker = SAU.GetTracker(trackerId)
     if not tracker or type(name) ~= "string" or name == "" then return nil, "bad rename" end
