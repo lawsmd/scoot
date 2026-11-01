@@ -26,6 +26,12 @@
 --                      selection box and its hit area cover the art, so a
 --                      border or shadow drawn larger than the frame sits
 --                      inside the box rather than under its edge
+--     dynamicViewOnly = boolean
+--                      optional; the box is for the Dynamic Layouts view alone:
+--                      it rests at alpha 0 with its mouse off, and the view
+--                      wakes it while its frame takes part and rests it again
+--                      on exit (the gamepad bar, whose regular handle is
+--                      Blizzard's box under it)
 --     brand          = table                 Brand:Register(frame, brand) options
 -- })
 -- Returns the LibEditMode selection frame, nil without the library. A repeat
@@ -488,6 +494,7 @@ function EM.RegisterPositionable(frame, opts)
         apply = opts.apply,
         restoreDefault = opts.restoreDefault and true or false,
         positionEditable = opts.positionEditable,
+        dynamicViewOnly = opts.dynamicViewOnly and true or false,
         brand = opts.brand,
     }
     -- Before AddFrame: the first AddFrame of a session creates the dialog and
@@ -499,6 +506,12 @@ function EM.RegisterPositionable(frame, opts)
     entry.selection = lib.frameSelections and lib.frameSelections[frame] or nil
     if entry.selection and type(opts.reach) == "table" then
         coverReach(entry.selection, frame, opts.reach)
+    end
+    -- At rest until the view wakes it (core/dynamiclayouts/view.lua). Alpha,
+    -- not Hide: the library re-shows every box whenever its dialog hides.
+    if entry.selection and entry.dynamicViewOnly then
+        entry.selection:SetAlpha(0)
+        entry.selection:EnableMouse(false)
     end
 
     -- The library's drag scripts live on the selection overlay; hooking the
@@ -620,6 +633,13 @@ function EM.ForEachPositionable(fn)
     end
 end
 
+--- Whether the frame's box was registered for the view alone
+--- (`dynamicViewOnly`): at rest at alpha 0 with its mouse off outside it.
+function EM.IsDynamicViewOnly(frame)
+    local entry = registry[frame]
+    return (entry and entry.dynamicViewOnly) and true or false
+end
+
 --- The dialog's "Match Regular Layout" in the dynamic view: the frame's
 --- record keeps its participation and loses every value, and the frame
 --- tweens home.
@@ -670,13 +690,14 @@ function EM.DumpPositionables()
             if key ~= nil and layoutName then
                 stored = entry.store.get(key, layoutName)
             end
-            rows[#rows + 1] = ("%s [%s] key=%s stored=%s default=%s%s live=%s"):format(
+            rows[#rows + 1] = ("%s [%s] key=%s stored=%s default=%s%s%s live=%s"):format(
                 name,
                 tostring(entry.brand and entry.brand.navKey),
                 tostring(key),
                 describePos(stored),
                 describePos(entry.default),
                 entry.restoreDefault and " (restoreDefault)" or "",
+                entry.dynamicViewOnly and " (dynamicViewOnly)" or "",
                 describeLive(frame))
         end
     end

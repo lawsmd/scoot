@@ -1,0 +1,592 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\FrameXML\UI.xsd">
+	<!--
+	forever/actionbars/gamepadframes.xml
+	The virtual templates of Camelot's gamepad bar replica (gamepad.lua), from
+	Blizzard_GamepadActionBars' templates under Camelot names. A slot is two
+	frames. The visual button is the art of Blizzard's gamepad button template
+	transcribed (ActionBarButton.xml) onto the plain ActionButtonTemplate, with
+	Blizzard's button mixins and the two Camelot mixins after them and no
+	secure template, so Blizzard's expand, collapse and press styles can move
+	and resize it in a fight; it takes no mouse. The click target is a secure
+	action button with nothing drawn, made at the bar's load under a click
+	layer beside the bar, laid over its visual out of combat. A bar is
+	GamepadActionBarTemplate transcribed (ActionBarTemplates.xml) with Camelot
+	buttons, without the frame strata and the Edit Mode focus frames only
+	Blizzard's Edit Mode sequences read. The page unit is
+	GamepadActionBarPageUnitTemplate's geometry: four anchors, each with an
+	action bar and a hidden mirror bar, the page tracker, the three
+	modifier icons, and the shoulder targeting art MainActionBarFrame.xml
+	adds to its instance; the targeting bars stand in the top anchor's
+	mirror, and the class action buttons are left out. The mixins are in
+	gamepadmixins.lua, which loads first. Every instance is made at build,
+	from gamepad.lua.
+	-->
+
+	<!-- One input icon: a Camelot stand-in for InputIconTextureFrameTemplate,
+	whose load registers with Blizzard's icon set manager. -->
+	<Frame name="CamelotGamepadInputIconTemplate" virtual="true" mixin="CamelotGamepadInputIconMixin">
+		<Size x="24" y="24"/>
+		<Layers>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon" setAllPoints="true"/>
+			</Layer>
+		</Layers>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+		</Scripts>
+	</Frame>
+
+	<!-- Two input icons with a plus between them: InputPromptTwoIconTemplate's
+	geometry (InputPrompts.xml), the LT+RT prompt under the bottom bar. The
+	divider is 16 wide with 4 on each side, as SetDividerType sizes it, so
+	the pair is 72 wide. -->
+	<Frame name="CamelotGamepadInputPairTemplate" virtual="true" mixin="CamelotGamepadInputPairMixin">
+		<Size x="72" y="24"/>
+		<Frames>
+			<Frame parentKey="First" inherits="CamelotGamepadInputIconTemplate">
+				<Anchors>
+					<Anchor point="TOPLEFT"/>
+				</Anchors>
+			</Frame>
+			<Frame parentKey="Divider" inherits="CamelotGamepadInputIconTemplate">
+				<KeyValues>
+					<KeyValue key="mappedButtonKey" value="GAMEPAD_PROMPT_DIVIDER_PLUS" type="global"/>
+				</KeyValues>
+				<Size x="16" y="16"/>
+				<Anchors>
+					<Anchor point="LEFT" relativeKey="$parent.First" relativePoint="RIGHT" x="4" y="0"/>
+				</Anchors>
+			</Frame>
+			<Frame parentKey="Second" inherits="CamelotGamepadInputIconTemplate">
+				<Anchors>
+					<Anchor point="LEFT" relativeKey="$parent.Divider" relativePoint="RIGHT" x="4" y="0"/>
+				</Anchors>
+			</Frame>
+		</Frames>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+		</Scripts>
+	</Frame>
+
+	<!-- The visual button: GamepadActionBarButtonTemplate's layers and
+	animations (ActionBarButton.xml:4-108) on ActionButtonTemplate and the
+	quick keybind template, the two templates Blizzard's ActionBarButtonTemplate
+	adds to its secure code template. The mixin stack is Blizzard's button's
+	without the secure mixin, the two Camelot mixins last. The four scripts
+	resolve to the Camelot mixins; the mouse scripts the base templates carry
+	never fire, since the button takes no mouse. -->
+	<CheckButton name="CamelotGamepadButtonTemplate" inherits="ActionButtonTemplate, QuickKeybindButtonTemplate" mixin="ActionBarActionButtonDerivedMixin, ActionBarButtonMixin, GamepadActionBarStandardButtonMixin, CamelotActionButtonMixin, CamelotGamepadButtonMixin" virtual="true">
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="SpecialActionIcon" file="Interface\Cursor\Interact" hidden="true" setAllPoints="true"/>
+			</Layer>
+			<Layer level="OVERLAY">
+				<Texture parentKey="PermaboundOverlay" atlas="gamepad-actionbar-circleslot-permabound" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT" x="3" y="-2"/>
+						<Anchor point="BOTTOMRIGHT" x="-2" y="3"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="BACKGROUND" textureSubLevel="-1">
+				<MaskTexture parentKey="CircleMask" atlas="CircleMask" vWrapMode="CLAMPTOBLACKADDITIVE" hWrapMode="CLAMPTOBLACKADDITIVE" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT" x="3" y="-3"/>
+						<Anchor point="BOTTOMRIGHT" x="-3" y="3"/>
+					</Anchors>
+					<MaskedTextures>
+						<MaskedTexture childKey="icon"/>
+						<MaskedTexture childKey="Flash"/>
+						<MaskedTexture childKey="SpecialActionIcon"/>
+					</MaskedTextures>
+				</MaskTexture>
+				<MaskTexture parentKey="SquareMask" atlas="SquareMask" hWrapMode="CLAMPTOBLACKADDITIVE" vWrapMode="CLAMPTOBLACKADDITIVE" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT" x="3" y="-3"/>
+						<Anchor point="BOTTOMRIGHT" x="-3" y="3"/>
+					</Anchors>
+					<MaskedTextures>
+						<MaskedTexture childKey="icon"/>
+						<MaskedTexture childKey="Flash"/>
+						<MaskedTexture childKey="SpecialActionIcon"/>
+					</MaskedTextures>
+				</MaskTexture>
+				<Texture parentKey="CircleShadow" atlas="gamepad-actionbar-circleslot-dropshadow" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT"/>
+						<Anchor point="BOTTOMRIGHT"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="CircleShadowFocus" atlas="gamepad-actionbar-focus-bg-circ" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT"/>
+						<Anchor point="BOTTOMRIGHT"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="SquareShadow" atlas="gamepad-actionbar-squareslot-dropshadow" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT"/>
+						<Anchor point="BOTTOMRIGHT"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="SquareShadowFocus" atlas="gamepad-actionbar-focus-bg-square" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT"/>
+						<Anchor point="BOTTOMRIGHT"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY" textureSubLevel="7">
+				<Texture parentKey="CircleGlowFocus" atlas="gamepad-actionbar-fx-circglw" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT" x="-4" y="4"/>
+						<Anchor point="BOTTOMRIGHT" x="4" y="-4"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="SquareGlowFocus" atlas="gamepad-actionbar-fx-squareglw" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT" x="-5" y="5"/>
+						<Anchor point="BOTTOMRIGHT" x="5" y="-5"/>
+					</Anchors>
+				</Texture>
+				<FontString parentKey="RangeIndicator" inherits="NumberFontNormalSmallGray" text="RANGE_INDICATOR" justifyH="CENTER" hidden="true">
+					<Size x="32" y="10"/>
+					<Anchors>
+						<Anchor point="CENTER" x="10" y="10"/>
+					</Anchors>
+				</FontString>
+			</Layer>
+		</Layers>
+		<Animations>
+			<AnimationGroup parentKey="EditModeSquareFocusStartAnim" setToFinalAlpha="true">
+				<Alpha childKey="SquareGlowFocus" duration="0.33" order="1" fromAlpha="1" toAlpha="0"/>
+				<Alpha childKey="SquareShadowFocus" duration="0.33" order="1" fromAlpha="1" toAlpha="0.6"/>
+			</AnimationGroup>
+			<AnimationGroup parentKey="GameplayModeSquareFocusStartAnim" setToFinalAlpha="true">
+				<Alpha childKey="SquareShadowFocus" duration="0.33" order="1" fromAlpha="1" toAlpha="0.4"/>
+			</AnimationGroup>
+			<AnimationGroup parentKey="EditModeCircleFocusStartAnim" setToFinalAlpha="true">
+				<Alpha childKey="CircleGlowFocus" duration="0.33" order="1" fromAlpha="1" toAlpha="0"/>
+				<Alpha childKey="CircleShadowFocus" duration="0.33" order="1" fromAlpha="1" toAlpha="0.6"/>
+			</AnimationGroup>
+			<AnimationGroup parentKey="GameplayModeCircleFocusStartAnim" setToFinalAlpha="true">
+				<Alpha childKey="CircleShadowFocus" duration="0.33" order="1" fromAlpha="1" toAlpha="0.4"/>
+			</AnimationGroup>
+		</Animations>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnEvent method="OnEvent"/>
+			<OnShow method="OnShow"/>
+			<OnHide method="OnHide"/>
+		</Scripts>
+	</CheckButton>
+
+	<!-- The click target: the secure action button of a slot, one per
+	bindable slot, under a click layer beside the bar. A CheckButton on
+	ActionButtonTemplate, the pair Blizzard's UpdateFlyout names ("a
+	barebones combo of ActionButtonTemplate + SecureActionButtonTemplate"),
+	held at alpha 0 so none of the template's art shows. OnLoad and
+	OnAttributeChanged stay the template's: Forever's SECURE_ACTIONS.action
+	reads the flyout popup off the button, and UpdateFlyout writes that
+	field and the popup direction from the attributes, securely, on every
+	attribute change. A Camelot call writing either would end every click
+	in a forbidden UseAction. The secure template listed last owns OnClick;
+	OnHide is the flyout template's, which closes an open popup. -->
+	<CheckButton name="CamelotGamepadClickTemplate" inherits="ActionButtonTemplate, SecureActionButtonTemplate" mixin="CamelotGamepadClickMixin" virtual="true">
+		<Scripts>
+			<OnEnter method="OnEnter"/>
+			<OnLeave method="OnLeave"/>
+			<OnMouseDown method="OnMouseDown"/>
+			<OnMouseUp method="OnMouseUp"/>
+			<OnDragStart method="OnDragStart"/>
+			<OnReceiveDrag method="OnReceiveDrag"/>
+			<PostClick method="PostClick"/>
+		</Scripts>
+	</CheckButton>
+
+	<!-- The bar: GamepadActionBarTemplate's Left and Right groups of four,
+	each button with its prompt child, and the five layer textures. The
+	KeyValues anchorKey, slotOffset and isMirror come from the page unit. -->
+	<Frame name="CamelotGamepadBarTemplate" virtual="true" mixin="GamepadActionBarMixin, CamelotGamepadBarMixin">
+		<Size x="300" y="200"/>
+		<Frames>
+			<Frame parentKey="Left">
+				<Size x="256" y="128"/>
+				<Anchors>
+					<Anchor point="LEFT"/>
+				</Anchors>
+				<Frames>
+					<CheckButton name="$parentActionButton1" parentKey="ActionButton1" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="LEFT" x="10" y="0"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_DPAD_LEFT" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="RIGHT" x="17" y="0"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+					<CheckButton name="$parentActionButton2" parentKey="ActionButton2" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="LEFT" x="57" y="39"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_DPAD_TOP" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="BOTTOM" x="0" y="-17"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+					<CheckButton name="$parentActionButton3" parentKey="ActionButton3" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="LEFT" x="104" y="0"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_DPAD_RIGHT" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="LEFT" x="-17" y="0"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+					<CheckButton name="$parentActionButton4" parentKey="ActionButton4" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="LEFT" x="57" y="-39"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_DPAD_BOTTOM" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="TOP" x="0" y="17"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+				</Frames>
+			</Frame>
+			<Frame parentKey="Right">
+				<Size x="256" y="128"/>
+				<Anchors>
+					<Anchor point="RIGHT"/>
+				</Anchors>
+				<Frames>
+					<CheckButton name="$parentActionButton5" parentKey="ActionButton1" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="RIGHT" x="-104" y="0"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_FACE_LEFT" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="RIGHT" x="17" y="0"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+					<CheckButton name="$parentActionButton6" parentKey="ActionButton2" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="RIGHT" x="-57" y="39"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_FACE_TOP" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="BOTTOM" x="0" y="-17"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+					<CheckButton name="$parentActionButton7" parentKey="ActionButton3" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="RIGHT" x="-10" y="-1"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_FACE_RIGHT" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="LEFT" x="-17" y="0"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+					<CheckButton name="$parentActionButton8" parentKey="ActionButton4" inherits="CamelotGamepadButtonTemplate">
+						<Anchors>
+							<Anchor point="RIGHT" x="-57" y="-39"/>
+						</Anchors>
+						<Frames>
+							<Frame parentKey="ButtonIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+								<KeyValues>
+									<KeyValue key="mappedButtonKey" value="GAMEPAD_FACE_BOTTOM" type="global"/>
+								</KeyValues>
+								<Size x="20" y="20"/>
+								<Anchors>
+									<Anchor point="TOP" x="0" y="17"/>
+								</Anchors>
+							</Frame>
+						</Frames>
+					</CheckButton>
+				</Frames>
+			</Frame>
+		</Frames>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="LeftButtonFrame" atlas="gamepad-actionbar-bg" useAtlasSize="false" hidden="true">
+					<Size x="153" y="156"/>
+					<Anchors>
+						<Anchor point="CENTER" x="-83" y="0"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="RightButtonFrame" atlas="gamepad-actionbar-bg" useAtlasSize="false" hidden="true">
+					<Size x="153" y="156"/>
+					<Anchors>
+						<Anchor point="CENTER" x="83" y="0"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="BackgroundFocus" alpha="0.375" atlas="gamepad-actionbar-focus-bg-section" useAtlasSize="false" hidden="true">
+					<Size x="512" y="160"/>
+					<Anchors>
+						<Anchor point="CENTER"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="IdentifierIcon">
+					<Size x="40" y="40"/>
+					<Anchors>
+						<Anchor point="CENTER"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="BackgroundWatermark" atlas="gamepad-actionbar-stance-backing" useAtlasSize="true" hidden="true">
+					<Color r="0.066" g="0.063" b="0.063" a="0.80"/>
+					<Anchors>
+						<Anchor point="CENTER"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnEvent method="OnEvent"/>
+		</Scripts>
+	</Frame>
+
+	<!-- The page unit: GamepadActionBarPageUnitTemplate's four anchors, each
+	with an action bar and a hidden mirror, the page tracker (its slots are
+	made at build), the three modifier icons, anchored under the side and
+	bottom bars as Blizzard's are, and the shoulder targeting art
+	MainActionBarFrame.xml adds to Blizzard's instance: a box above each
+	side of the top bar, its icon (the watcher copies Blizzard's atlas) and
+	its pressed art. The layers come after the frames: a layer anchors to
+	the top anchor, which has to exist first. -->
+	<Frame name="CamelotGamepadPageUnitTemplate" virtual="true" mixin="CamelotGamepadPageUnitMixin">
+		<Size x="656" y="202"/>
+		<Frames>
+			<Frame name="$parentTop" parentKey="TopAnchor">
+				<Size x="50" y="50"/>
+				<Anchors>
+					<Anchor point="CENTER" x="0" y="58"/>
+				</Anchors>
+				<Frames>
+					<Frame name="$parentBar" parentKey="Bar" inherits="CamelotGamepadBarTemplate">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="top" type="string"/>
+							<KeyValue key="slotOffset" value="0" type="number"/>
+						</KeyValues>
+					</Frame>
+					<Frame name="$parentMirror" parentKey="Mirror" inherits="CamelotGamepadBarTemplate" hidden="true">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="top" type="string"/>
+							<KeyValue key="slotOffset" value="0" type="number"/>
+							<KeyValue key="isMirror" value="true" type="boolean"/>
+						</KeyValues>
+					</Frame>
+				</Frames>
+			</Frame>
+			<Frame name="$parentLeft" parentKey="LeftAnchor">
+				<Size x="50" y="50"/>
+				<Anchors>
+					<Anchor point="CENTER" x="-195" y="0"/>
+				</Anchors>
+				<Frames>
+					<Frame name="$parentBar" parentKey="Bar" inherits="CamelotGamepadBarTemplate">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="left" type="string"/>
+							<KeyValue key="slotOffset" value="8" type="number"/>
+						</KeyValues>
+					</Frame>
+					<Frame name="$parentMirror" parentKey="Mirror" inherits="CamelotGamepadBarTemplate" hidden="true">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="left" type="string"/>
+							<KeyValue key="slotOffset" value="8" type="number"/>
+							<KeyValue key="isMirror" value="true" type="boolean"/>
+						</KeyValues>
+					</Frame>
+				</Frames>
+			</Frame>
+			<Frame name="$parentRight" parentKey="RightAnchor">
+				<Size x="50" y="50"/>
+				<Anchors>
+					<Anchor point="CENTER" x="195" y="0"/>
+				</Anchors>
+				<Frames>
+					<Frame name="$parentBar" parentKey="Bar" inherits="CamelotGamepadBarTemplate">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="right" type="string"/>
+							<KeyValue key="slotOffset" value="16" type="number"/>
+						</KeyValues>
+					</Frame>
+					<Frame name="$parentMirror" parentKey="Mirror" inherits="CamelotGamepadBarTemplate" hidden="true">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="right" type="string"/>
+							<KeyValue key="slotOffset" value="16" type="number"/>
+							<KeyValue key="isMirror" value="true" type="boolean"/>
+						</KeyValues>
+					</Frame>
+				</Frames>
+			</Frame>
+			<Frame name="$parentBottom" parentKey="BottomAnchor">
+				<Size x="50" y="50"/>
+				<Anchors>
+					<Anchor point="CENTER" x="0" y="-58"/>
+				</Anchors>
+				<Frames>
+					<Frame name="$parentBar" parentKey="Bar" inherits="CamelotGamepadBarTemplate">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="bottom" type="string"/>
+							<KeyValue key="slotOffset" value="24" type="number"/>
+						</KeyValues>
+					</Frame>
+					<Frame name="$parentMirror" parentKey="Mirror" inherits="CamelotGamepadBarTemplate" hidden="true">
+						<Anchors>
+							<Anchor point="CENTER"/>
+						</Anchors>
+						<KeyValues>
+							<KeyValue key="anchorKey" value="bottom" type="string"/>
+							<KeyValue key="slotOffset" value="24" type="number"/>
+							<KeyValue key="isMirror" value="true" type="boolean"/>
+						</KeyValues>
+					</Frame>
+				</Frames>
+			</Frame>
+			<Frame parentKey="PageTracker" hidden="true">
+				<Size x="98" y="40"/>
+				<Anchors>
+					<Anchor point="BOTTOM" relativeKey="$parent.TopAnchor" relativePoint="TOP" x="0" y="20"/>
+				</Anchors>
+			</Frame>
+			<Frame parentKey="LeftIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+				<KeyValues>
+					<KeyValue key="mappedButtonKey" value="GAMEPAD_TRIGGER_LEFT" type="global"/>
+				</KeyValues>
+				<Anchors>
+					<Anchor point="CENTER" relativeKey="$parent.LeftAnchor.Bar" x="0" y="-35"/>
+				</Anchors>
+			</Frame>
+			<Frame parentKey="RightIcon" inherits="CamelotGamepadInputIconTemplate" hidden="true">
+				<KeyValues>
+					<KeyValue key="mappedButtonKey" value="GAMEPAD_TRIGGER_RIGHT" type="global"/>
+				</KeyValues>
+				<Anchors>
+					<Anchor point="CENTER" relativeKey="$parent.RightAnchor.Bar" x="0" y="-35"/>
+				</Anchors>
+			</Frame>
+			<Frame parentKey="CenteredIcons" inherits="CamelotGamepadInputPairTemplate" hidden="true">
+				<KeyValues>
+					<KeyValue key="key1" value="GAMEPAD_TRIGGER_LEFT" type="global"/>
+					<KeyValue key="key2" value="GAMEPAD_TRIGGER_RIGHT" type="global"/>
+				</KeyValues>
+				<Anchors>
+					<Anchor point="CENTER" relativeKey="$parent.BottomAnchor.Bar" x="0" y="-35"/>
+				</Anchors>
+			</Frame>
+		</Frames>
+		<Layers>
+			<Layer level="BACKGROUND" textureSubLevel="-1">
+				<Texture parentKey="LeftShoulderBackground" atlas="gamepad-targeting-left-shoulder-bg" useAtlasSize="true">
+					<Anchors>
+						<Anchor point="BOTTOMRIGHT" relativeKey="$parent.TopAnchor" relativePoint="CENTER" x="-108" y="42"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="RightShoulderBackground" atlas="gamepad-targeting-right-shoulder-bg" useAtlasSize="true">
+					<Anchors>
+						<Anchor point="BOTTOMLEFT" relativeKey="$parent.TopAnchor" relativePoint="CENTER" x="108" y="42"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="LeftShoulderIcon">
+					<Anchors>
+						<Anchor point="CENTER" relativeKey="$parent.LeftShoulderBackground"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="RightShoulderIcon">
+					<Anchors>
+						<Anchor point="CENTER" relativeKey="$parent.RightShoulderBackground"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY">
+				<Texture parentKey="LeftShoulderHighlight" atlas="gamepad-targeting-left-shoulder-pressed" useAtlasSize="true" hidden="true">
+					<Anchors>
+						<Anchor point="CENTER" relativeKey="$parent.LeftShoulderBackground"/>
+					</Anchors>
+				</Texture>
+				<Texture parentKey="RightShoulderHighlight" atlas="gamepad-targeting-right-shoulder-pressed" useAtlasSize="true" hidden="true">
+					<Anchors>
+						<Anchor point="CENTER" relativeKey="$parent.RightShoulderBackground"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+		</Scripts>
+	</Frame>
+</Ui>

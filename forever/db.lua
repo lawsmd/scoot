@@ -31,7 +31,7 @@ addon.DB = DB
 -- Schema and migrations
 --------------------------------------------------------------------------------
 
-local SCHEMA_VERSION = 3
+local SCHEMA_VERSION = 4
 
 -- Migration 2's map from a Dynamic Layouts record to the participation key
 -- its frame now takes part under (forever/dynamiclayouts/host.lua). A key
@@ -117,6 +117,21 @@ local MIGRATIONS = {
             end
         end
     end,
+    -- A seeded profile records the value set its start was seeded from, so a
+    -- start whose set is remapped later (the gamepad preset: Modern's set
+    -- before this version, Classic's since) is re-seeded once at login
+    -- (forever/startingpoints.lua). The literal is the record of what
+    -- PresetSet wrote before this version: the preset named Gamepad read
+    -- Modern's set, and every other start read its own.
+    [4] = function(sv)
+        for _, profile in pairs(sv.profiles or {}) do
+            local start = type(profile) == "table" and profile.startingPoint
+            if type(start) == "string" and profile.startingPointSet == nil then
+                local lower = start:lower()
+                profile.startingPointSet = lower == "gamepad" and "modern" or lower
+            end
+        end
+    end,
 }
 
 local function runMigrations(sv)
@@ -168,12 +183,13 @@ end
 
 -- The preset sets. A profile starts from Camelot's defaults or from one of
 -- Blizzard's Edit Mode presets: "modern" is Forever as it ships, "classic"
--- Camelot's recreation of vanilla. A set holds only the paths where its value
--- differs from the registered default; a path with no entry draws the same
--- under every set. A value of false on a key whose default is a name says
--- "the font object's own", which nil cannot say over a default. Written by a
--- new profile's seeding (forever/startingpoints.lua) and by the Defaults
--- button (forever/defaults.lua).
+-- Camelot's recreation of vanilla. Forever's third preset, the gamepad one,
+-- has no set of its own and reads Classic's (PresetSet). A set holds only the
+-- paths where its value differs from the registered default; a path with no
+-- entry draws the same under every set. A value of false on a key whose
+-- default is a name says "the font object's own", which nil cannot say over a
+-- default. Written by a new profile's seeding (forever/startingpoints.lua) and
+-- by the Defaults button (forever/defaults.lua).
 DB.PRESETS = { "modern", "classic" }
 
 local presets = { modern = {}, classic = {} }
@@ -188,11 +204,18 @@ local function eachName(names, fn)
     end
 end
 
---- The set a preset's name reads: Forever's Gamepad preset takes Modern's.
+--- The set a preset's name reads: its own for Modern and Classic, and
+--- Classic's for the preset of the gamepad interface style, until a gamepad
+--- arrangement of its own exists. The gamepad preset is known by its style,
+--- never by its name; forever/gamepad.lua loads after this file and is read
+--- at call time. nil for a name that is no preset.
 function DB.PresetSet(name)
     name = type(name) == "string" and name:lower() or nil
-    if name == "gamepad" then return "modern" end
-    return presets[name] and name or nil
+    if not name then return nil end
+    if presets[name] then return name end
+    local gamepad = addon.Gamepad
+    if gamepad and gamepad.IsPresetGamepad(name) then return "classic" end
+    return nil
 end
 
 function DB.RegisterPreset(names, map)

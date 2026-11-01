@@ -18,7 +18,9 @@
 -- are regions of a child frame above the bars, in front of the buttons they
 -- reach over. Either way the container carries them through a drag, a
 -- dynamic scale and a fade. The settings are cluster 1's endCaps, endCapStyle and
--- endCapScale fields.
+-- endCapScale fields. Under a gamepad layout (addon.Gamepad.IsActive) the
+-- pair and both boxes are hidden whatever the fields say, as Forever's own
+-- gamepad preset hides its caps.
 --
 -- Each cap carries an Edit Mode box of its own that opens the end cap rows.
 -- The box cannot move the cap: its drag is unregistered, and any position
@@ -264,6 +266,18 @@ function EndCaps.Apply(cluster, container)
         Register(box)
     end
 
+    -- A gamepad layout hides the caps and their boxes whatever the fields
+    -- say, as Forever's gamepad preset hides its own. The box's selection is
+    -- its child, so it goes with it.
+    local gamepad = (addon.Gamepad and addon.Gamepad.IsActive()) and true or false
+    for _, side in ipairs(SIDES) do
+        boxes[side].frame:SetShown(not gamepad)
+    end
+    if gamepad then
+        EndCaps.Hide(container)
+        return "end caps hidden: gamepad layout"
+    end
+
     if not cluster.endCaps then
         EndCaps.Hide(container)
         return "end caps off"
@@ -283,3 +297,15 @@ addon.Events.On(ActionBars.OWNER, "NEUTRAL_FACTION_SELECT_RESULT", function()
         ActionBars.Clusters.Rebuild()
     end
 end)
+
+-- A gamepad transition inside a session re-lays the caps; the options switch
+-- reloads instead, and the rebuild at login reads the style. The layout
+-- switch that comes with a transition reaches the clusters through their own
+-- apply step.
+if addon.Gamepad and addon.Gamepad.OnChange then
+    addon.Gamepad.OnChange(ActionBars.OWNER, function()
+        if ActionBars.Clusters and ActionBars.Clusters.IsBuilt() then
+            ActionBars.Clusters.Rebuild()
+        end
+    end)
+end

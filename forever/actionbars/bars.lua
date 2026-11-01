@@ -11,7 +11,8 @@
 -- attribute. Keybinds stay native: the player's ACTIONBUTTONn and
 -- MULTIACTIONBARxBUTTONn keys fire Blizzard's own buttons, dimmed or parked,
 -- paged by Blizzard's controller, and the pushed state below mirrors the
--- press onto the Camelot button holding that command.
+-- press onto the Camelot button holding that command. The gamepad bar
+-- (gamepad.lua) keeps the controller's keys native the same way.
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -143,6 +144,7 @@ local function Build()
     ActionBars.Visibility.ApplyAll()
     ActionBars.MicroBags.Build()
     ActionBars.Stance.Build()
+    ActionBars.GamepadBar.Build()
     ActionBars.Suppression.Apply()
     HookPresses()
     built = true
@@ -175,12 +177,15 @@ addon.Events.OnWorldEntered(function()
             ActionBars.Visibility.OnEditMode(true)
             -- The stance bar shows every slot, so its box has a size.
             ActionBars.Stance.OnEditMode(true)
+            -- The gamepad bar re-asserts the dim on Blizzard's frame.
+            ActionBars.GamepadBar.OnEditMode(true)
         end,
         exit = function()
             ActionBars.Suppression.Reassert()
             ActionBars.Compact.OnEditMode(false)
             ActionBars.Visibility.OnEditMode(false)
             ActionBars.Stance.OnEditMode(false)
+            ActionBars.GamepadBar.OnEditMode(false)
             -- The member strips never outlive Edit Mode.
             if ActionBars.Overlays then ActionBars.Overlays.Detach() end
         end,
@@ -267,6 +272,8 @@ function ActionBars.Dump()
     ActionBars.MicroBags.Report(push)
     push("")
     ActionBars.Stance.Report(push)
+    push("")
+    ActionBars.GamepadBar.Report(push)
     push("")
 
     push("keybind text, button 1 of each bar:")

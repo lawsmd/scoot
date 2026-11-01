@@ -219,6 +219,24 @@ local function unfadeBox(selection)
     if selection.EnableMouse then selection:EnableMouse(kept.mouse) end
 end
 
+-- A box registered for the view alone rests at alpha 0 with its mouse off
+-- outside it (core/editmode/positionables.lua, dynamicViewOnly): woken
+-- while its frame takes part, after the unfade has put back the mouse state
+-- the fade recorded, and rested again on exit.
+local function viewOnly(frame)
+    return (EM.IsDynamicViewOnly and EM.IsDynamicViewOnly(frame)) and true or false
+end
+
+local function wakeBox(selection)
+    selection:SetAlpha(1)
+    if selection.EnableMouse then selection:EnableMouse(true) end
+end
+
+local function restBox(selection)
+    selection:SetAlpha(0)
+    if selection.EnableMouse then selection:EnableMouse(false) end
+end
+
 local function arrangeBoxes()
     if not EM.ForEachPositionable then return end
     EM.ForEachPositionable(function(frame, selection)
@@ -226,6 +244,7 @@ local function arrangeBoxes()
         local id = DL.IdForFrame(frame)
         if id and View.IsParticipating(id) then
             unfadeBox(selection)
+            if viewOnly(frame) then wakeBox(selection) end
             raiseBox(selection)
         else
             lowerBox(selection)
@@ -236,10 +255,11 @@ end
 
 local function restoreBoxes()
     if not EM.ForEachPositionable then return end
-    EM.ForEachPositionable(function(_, selection)
+    EM.ForEachPositionable(function(frame, selection)
         if not selection then return end
         lowerBox(selection)
         unfadeBox(selection)
+        if viewOnly(frame) then restBox(selection) end
     end)
 end
 
