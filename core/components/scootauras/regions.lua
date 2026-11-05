@@ -151,13 +151,12 @@ local MASK_FULL = "Interface\\BUTTONS\\WHITE8X8"
 -- animation is C-side, so it keeps ticking while the button subtree is denied
 -- in combat. The Edit Mode preview reuses the same recipe on its own frame.
 --
--- The icon swipe (styling.lua ApplyIconSwipe) grows the Cooldown past the
--- icon so its edge line reaches the icon's rim, and anchors the clip to the
--- icon to cut the overhang. A bound Cooldown cannot change parent, so the
--- clip exists from the start.
+-- The icon swipe (styling.lua ApplyIconSwipe) anchors the clip to the icon,
+-- inset to a Square border's inner edge. A bound Cooldown cannot change
+-- parent, so the clip exists from the start.
 --
 -- The icon swipe also adds three regions on the Cooldown. Regions on a
--- Cooldown draw under its swipe and hide when it hides, so the desaturated
+-- Cooldown in its BACKGROUND layer draw under its swipe and hide when it hides, so the desaturated
 -- backdrop and the black shade show only while a duration runs, and the
 -- mask, once added to the live icon, hides that icon only while a duration
 -- runs. All three must exist before the engine binds the Cooldown.
@@ -176,11 +175,13 @@ local function CreateDrainCooldown(parent)
     drain:SetReverse(true)
     drain:SetDrawSwipe(false)
 
-    local backdrop = drain:CreateTexture(nil, "ARTWORK")
+    -- BACKGROUND: on Forever an ARTWORK region on a Cooldown draws over its
+    -- swipe (the edge still draws above it).
+    local backdrop = drain:CreateTexture(nil, "BACKGROUND", nil, -8)
     backdrop:SetAllPoints(drain)
     backdrop:Hide()
 
-    local shade = drain:CreateTexture(nil, "ARTWORK", nil, 1)
+    local shade = drain:CreateTexture(nil, "BACKGROUND", nil, -7)
     shade:SetColorTexture(0, 0, 0, 1)
     shade:SetAllPoints(drain)
     shade:Hide()

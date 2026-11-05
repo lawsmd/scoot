@@ -658,6 +658,96 @@ local function SpecsDump()
     addon.DebugShowWindow(Title("Spec Gate"), lines)
 end
 
+-- The icon swipe's pieces on a live tracker: the drain Cooldown, its clip,
+-- the gray copy, the shade and the live icon. "plain" swaps the swipe for a
+-- flat red square and hides the copy, "tint" keeps the icon swipe tinted red
+-- with the copy hidden; the next restyle pass puts both back.
+local function DumpIconSwipe(trackerId, mode)
+    local SAU = addon.ScootAuras
+    local Engine = SAU.Engine
+    local S = Engine._SafeToString
+    local entry = Engine._byTracker[trackerId]
+    local tracker = SAU.GetTracker(trackerId)
+    local lines, push = addon.DebugLines("=== Icon swipe (t" .. trackerId .. ") ===", "")
+    if not (entry and entry.elements and tracker) then
+        push("No wired tracker t" .. trackerId .. ".")
+        addon.DebugShowWindow(Title("Icon Swipe"), lines)
+        return
+    end
+    local db = SAU.GetDB(trackerId)
+    local vis = db and SAU.ResolveVisibility(tracker, db)
+
+    local function Try(obj, method, ...)
+        if not (obj and obj[method]) then return "n/a" end
+        local r = { pcall(obj[method], obj, ...) }
+        if not r[1] then return "error: " .. S(r[2]) end
+        local out = {}
+        for i = 2, #r do out[#out + 1] = S(r[i]) end
+        return #out > 0 and table.concat(out, ", ") or "nil"
+    end
+    local function Region(label, obj)
+        if not obj then push(label .. ": none"); return end
+        push(label .. ": shown=" .. Try(obj, "IsShown") .. " visible=" .. Try(obj, "IsVisible")
+            .. " alpha=" .. Try(obj, "GetAlpha") .. " size=" .. Try(obj, "GetSize"))
+        if obj.GetDrawLayer then push("  layer=" .. Try(obj, "GetDrawLayer")) end
+        if obj.GetTexture then push("  texture=" .. Try(obj, "GetTexture")
+            .. " desat=" .. Try(obj, "IsDesaturated") .. " vertex=" .. Try(obj, "GetVertexColor")) end
+        if obj.GetNumMaskTextures then push("  masks=" .. Try(obj, "GetNumMaskTextures")) end
+        if obj.GetFrameLevel then push("  level=" .. Try(obj, "GetFrameLevel")
+            .. " strata=" .. Try(obj, "GetFrameStrata")) end
+    end
+
+    push("kind=" .. S(tracker.kind) .. " shape=" .. S(tracker.shape) .. " spell=" .. S(tracker.spellId)
+        .. " iconMode=" .. S(db and db.iconMode))
+    push("wants swipe=" .. S(SAU.WantsIconSwipe(tracker, db, vis))
+        .. " missing visual=" .. S(SAU.MissingVisualFor(tracker))
+        .. " result=" .. S(Engine._results["swipe.t" .. trackerId]))
+    push("spell icon=" .. S(SAU._SpellIcon(tracker.spellId)))
+    push("")
+
+    local iconTex, cdElem
+    for _, elem in ipairs(entry.elements) do
+        if elem.type == "texture" then iconTex = elem.widget end
+        if elem.type == "cooldown" then cdElem = elem end
+    end
+    Region("live icon", iconTex)
+    if iconTex and iconTex.GetParent then
+        Region("live icon parent", iconTex:GetParent())
+    end
+    if not cdElem then
+        push("No cooldown element.")
+        addon.DebugShowWindow(Title("Icon Swipe"), lines)
+        return
+    end
+    local cd = cdElem.widget
+    push("")
+    Region("clip", cdElem.clip)
+    push("  clips children=" .. Try(cdElem.clip, "DoesClipChildren"))
+    Region("cooldown", cd)
+    push("  drawSwipe=" .. Try(cd, "GetDrawSwipe") .. " drawEdge=" .. Try(cd, "GetDrawEdge")
+        .. " reverse=" .. Try(cd, "GetReverse") .. " auraTime=" .. Try(cd, "GetUseAuraDisplayTime"))
+    push("  times=" .. Try(cd, "GetCooldownTimes") .. " paused=" .. Try(cd, "IsPaused"))
+    push("  rotation=" .. Try(cd, "GetRotation") .. " edgeScale=" .. Try(cd, "GetEdgeScale"))
+    push("  points=" .. Try(cd, "GetNumPoints"))
+    Region("gray copy", cdElem.backdrop)
+    Region("shade", cdElem.shade)
+    push("masked icon=" .. S(cdElem.maskedIcon ~= nil))
+
+    if mode == "plain" or mode == "tint" then
+        if cdElem.backdrop then cdElem.backdrop:Hide() end
+        if cdElem.shade then cdElem.shade:Hide() end
+        if mode == "plain" then
+            pcall(cd.SetSwipeTexture, cd, "Interface\\BUTTONS\\WHITE8X8", 1, 0, 0, 1)
+            pcall(cd.SetTexCoordRange, cd, { x = 0, y = 0 }, { x = 1, y = 1 })
+        end
+        pcall(cd.SetSwipeColor, cd, 1, 0, 0, 1)
+        pcall(cd.SetDrawSwipe, cd, true)
+        push("")
+        push("Applied '" .. mode .. "': gray copy and shade hidden, swipe red.")
+    end
+    addon.DebugShowWindow(Title("Icon Swipe"), lines)
+end
+
 -- Binding-method inventory on a live tracker's engine button; gates the Shape
 -- drain-swipe design (SetDurationCooldown) without guesswork.
 local function DumpButtonMethods(trackerId)
@@ -1214,6 +1304,12 @@ addon:RegisterDebugCommand({
             local trackerId = tonumber(a1)
             if not trackerId then return Commands.USAGE end
             DumpButtonMethods(trackerId)
+        end },
+        { word = "swipe", usage = "swipe <id> [plain|tint]", help = "icon swipe pieces; plain or tint swaps in a red test swipe until the next restyle",
+          fn = function(a1, a2)
+            local trackerId = tonumber(a1)
+            if not trackerId then return Commands.USAGE end
+            DumpIconSwipe(trackerId, a2)
         end },
         { word = "spell", usage = "spell <N|spellId>", help = "include set, CDM entries, picker cell, live aura check; N from a tN row in list",
           fn = function(a1)
