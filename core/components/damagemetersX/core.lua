@@ -62,27 +62,8 @@ local function GetJiberishIcons()
     return JI
 end
 
-local function IsJiberishIconsAvailable()
-    local JI = GetJiberishIcons()
-    if not JI then return false end
-    if not JI.dataHelper or not JI.dataHelper.class then return false end
-    if not JI.mergedStylePacks or not JI.mergedStylePacks.class then return false end
-    return true
-end
-
-local function GetJiberishIconsStyles()
-    local JI = GetJiberishIcons()
-    if not JI or not JI.mergedStylePacks or not JI.mergedStylePacks.class then return {} end
-    local styles = {}
-    for key, data in pairs(JI.mergedStylePacks.class.styles or {}) do
-        styles[key] = data.name or key
-    end
-    return styles
-end
-
--- Export to addon namespace for UI access
-addon.IsJiberishIconsAvailable = IsJiberishIconsAvailable
-addon.GetJiberishIconsStyles = GetJiberishIconsStyles
+-- addon.IsJiberishIconsAvailable and addon.GetJiberishIconsStyles, which the
+-- settings pages read, are defined in core/components/damagemetersY/styling.lua.
 DMX._GetJiberishIcons = GetJiberishIcons
 
 --------------------------------------------------------------------------------
@@ -246,132 +227,8 @@ function DMX._SlashReset()
     end
 end
 
---------------------------------------------------------------------------------
--- Zone Snapshot (for export data)
---------------------------------------------------------------------------------
-
-local MYTHIC_KEYSTONE_DIFFICULTY = 8
-
-local function GetActiveKeystoneLevel()
-    if not (C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo) then return nil end
-    local ok, level = pcall(C_ChallengeMode.GetActiveKeystoneInfo)
-    if ok and type(level) == "number" and not issecretvalue(level) and level > 0 then
-        return level
-    end
-    return nil
-end
-
-local function GetCurrentZoneLabel()
-    local instName, instType, diffID, diffName = GetInstanceInfo()
-    if instName and instName ~= "" and instType ~= "none" then
-        if diffID == MYTHIC_KEYSTONE_DIFFICULTY then
-            local level = GetActiveKeystoneLevel()
-            if level then return instName .. " +" .. level end
-        end
-        return (diffName and diffName ~= "") and (instName .. " (" .. diffName .. ")") or instName
-    else
-        return (instName and instName ~= "") and instName or "Open World"
-    end
-end
-
-DMX._dmResetZoneSnapshot = nil
-
-local function SnapshotResetZone()
-    DMX._dmResetZoneSnapshot = GetCurrentZoneLabel()
-end
-
-DMX._GetCurrentZoneLabel = GetCurrentZoneLabel
-
--- Where the meter last received data, which is the location an export names.
--- Recorded in combat only: a meter fills from a fight, while the data events
--- also fire on a zone-in carrying nothing new, and one of those on arrival is
--- what relabelled a finished key with the city the player hearthed to.
--- Cleared on reset, and lost on reload (the export then falls back to the
--- current zone).
-local dataZoneLatest = nil
-local dataZoneBySession = {}
-
-local function RecordDataZone(sessionID)
-    local label = GetCurrentZoneLabel()
-    dataZoneLatest = label
-    if type(sessionID) == "number" and not issecretvalue(sessionID) then
-        dataZoneBySession[sessionID] = label
-    end
-end
-
-local function OnZoneEvent(event, _, sessionID)
-    if event == "DAMAGE_METER_RESET" then
-        dataZoneLatest = nil
-        wipe(dataZoneBySession)
-        return
-    end
-    if event == "PLAYER_REGEN_DISABLED" then
-        -- Combat start: the fight that is about to fill the meter happens here,
-        -- and this reading is the one a data event arriving late cannot move.
-        RecordDataZone(nil)
-        return
-    end
-    if InCombatLockdown() then
-        RecordDataZone(sessionID)
-    end
-end
-
-function DMX._GetDataZoneLabel(sessionID)
-    return (sessionID and dataZoneBySession[sessionID]) or dataZoneLatest or GetCurrentZoneLabel()
-end
-
--- Registered at file scope. GatherDamageMeterExportData serves both meters, so
--- the recording cannot sit inside the component initializer below, which
--- returns early whenever the X sub-toggle is off.
-if C_DamageMeter and C_DamageMeter.ResetAllCombatSessions then
-    hooksecurefunc(C_DamageMeter, "ResetAllCombatSessions", SnapshotResetZone)
-end
-
--- Deferred so GetInstanceInfo() has difficulty info by the time START is taken.
-addon.Events.OnWorldEntered(function()
-    SnapshotResetZone()
-end)
-
-for _, event in ipairs({
-    "DAMAGE_METER_COMBAT_SESSION_UPDATED",
-    "DAMAGE_METER_CURRENT_SESSION_UPDATED",
-    "DAMAGE_METER_RESET",
-    "PLAYER_REGEN_DISABLED",
-}) do
-    addon.Events.On("DamageMeterZone", event, OnZoneEvent)
-end
-
--- A key that starts after the reset moves START onto the key's own label, so a
--- run that auto-reset on entry does not read "(Mythic Keystone)" above "+16".
--- Skipped once data has arrived, because START marks where the data began. The
--- level is read a frame later, and a read that comes back empty keeps the
--- existing snapshot.
-addon.Events.On("DamageMeterZone", "CHALLENGE_MODE_START", function()
-    if dataZoneLatest then return end
-    C_Timer.After(0, function()
-        if dataZoneLatest then return end
-        if GetActiveKeystoneLevel() then SnapshotResetZone() end
-    end)
-end)
-
--- /scoot debug dm zone
-function DMX._DebugZoneLines()
-    local lines, push = addon.DebugLines("Damage Meter Export Location", "")
-    push("Current zone:       %s", GetCurrentZoneLabel())
-    push("Export location:    %s", DMX._GetDataZoneLabel(nil))
-    push("  recorded:         %s", dataZoneLatest or "nothing yet this session")
-    push("START snapshot:     %s", DMX._dmResetZoneSnapshot or "none")
-    push("In combat:          %s", tostring(InCombatLockdown()))
-    push("")
-    push("Per segment:")
-    local any = false
-    for sessionID, label in pairs(dataZoneBySession) do
-        push("  #%d  %s", sessionID, label)
-        any = true
-    end
-    if not any then push("  (none)") end
-    return lines
-end
+-- The zone an export names is recorded in
+-- core/components/damagemetersY/export.lua, beside the gatherer both meters use.
 
 --------------------------------------------------------------------------------
 -- Session Window Discovery
@@ -996,7 +853,7 @@ addon:RegisterDebugCommand({
             if addon.DebugExportDamageMeters then addon.DebugExportDamageMeters(session) else Commands.NotAvailable("Damage Meter export") end
         end },
         { word = "zone", help = "export location snapshots", fn = function()
-            addon.DebugShowWindow("DM Export Location", DMX._DebugZoneLines())
+            addon.DebugShowWindow("DM Export Location", addon.DamageMetersY._DebugZoneLines())
         end },
         { word = "frames", help = "window and overlay frames", fn = function()
             if addon.DebugDMFrames then addon.DebugDMFrames() else Commands.NotAvailable("Damage Meter") end

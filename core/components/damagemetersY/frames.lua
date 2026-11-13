@@ -10,10 +10,29 @@ local activeDMYMenu = nil -- tracks any open DMY flyout (gear, segment, column)
 
 local HEADER_HEIGHT = 24
 local ICON_SIZE = 22
+local ICON_INSET = 2       -- the icon's gap from the row's left edge
+-- A row's bar starts BAR_ICON_GAP right of the icon and ends BAR_RIGHT_INSET
+-- short of the window's right edge, under the rank, the name and the columns.
+local BAR_ICON_GAP = 8
+local BAR_RIGHT_INSET = 14
+-- The column area ends COLUMN_RIGHT_INSET short of the window's right edge,
+-- past the bar's end. The bar's padding is the bar's alone: a wide value
+-- centered in the last column runs past the bar's end, which was preferred
+-- to squeezing the row's text.
+local COLUMN_RIGHT_INSET = 6
+-- The rank number starts BAR_TEXT_PAD inside the bar's left end, and the name
+-- starts after the rank's slot. Both offsets are from the icon's right edge.
+local BAR_TEXT_PAD = 2
+local RANK_SLOT = 15
+local RANK_LEFT = BAR_ICON_GAP + BAR_TEXT_PAD
+local NAME_LEFT = RANK_LEFT + RANK_SLOT
+-- The rank number's color. Opaque, since the number sits on the bar's fill.
+local RANK_COLOR = { 0.85, 0.85, 0.85, 1 }
 local NAME_WIDTH = 113
 local PINNED_SEPARATOR_HEIGHT = 1
 -- Where the column area begins: icon + gap + name area + gap. Now only the
--- starting width for a name column that has never been dragged.
+-- starting width for a name column that has never been dragged. The name is
+-- from the time the bar started there; the bar starts at the icon now.
 local BAR_LEFT_OFFSET = ICON_SIZE + 6 + NAME_WIDTH + 8
 
 -- The name column is draggable like every other column: its left edge is
@@ -26,7 +45,7 @@ local MIN_COL_WIDTH = 24   -- px floor for each value column
 
 local function GetDefaultFont()
     if addon.ResolveFontFace then
-        return addon.ResolveFontFace("ROBOTO_SEMICOND_BOLD")
+        return addon.ResolveFontFace(DMY.FallbackFont())
     end
     return "Fonts\\FRIZQT__.TTF"
 end
@@ -493,8 +512,9 @@ function DMY._CreateFlyoutMenu(menuWidth)
         end
 
         -- Icon chain mirrors the bar-row default: spec icon → class atlas → "?"
-        if spec.specIconID and spec.specIconID ~= 0 then
-            btn._icon:SetTexture(spec.specIconID)
+        local specIcon = DMY._PlainNumber(spec.specIconID)
+        if specIcon and specIcon ~= 0 then
+            btn._icon:SetTexture(specIcon)
             btn._icon:SetTexCoord(0, 1, 0, 1)
         elseif spec.classFilename and spec.classFilename ~= ""
             and GetClassAtlas and GetClassAtlas(spec.classFilename) then
@@ -588,9 +608,10 @@ local COLUMN_FORMAT_GROUPS = {
 --------------------------------------------------------------------------------
 -- Bar Row Creation
 --
--- Each bar row has: Icon, NameText, a single full-width StatusBar (representing
--- the primary column's data), and up to MAX_COLUMNS value text FontStrings
--- positioned at their column offsets on top of the bar.
+-- Each bar row has: Icon, a rank number, NameText, a single StatusBar from the
+-- icon to the row's right edge (representing the primary column's data), and
+-- up to MAX_COLUMNS value text FontStrings at their column offsets. Every
+-- string draws on top of the bar.
 --------------------------------------------------------------------------------
 
 function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
@@ -608,19 +629,19 @@ function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
     -- Icon
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON_SIZE, ICON_SIZE)
-    icon:SetPoint("LEFT", row, "LEFT", 2, 0)
+    icon:SetPoint("LEFT", row, "LEFT", ICON_INSET, 0)
     row.icon = icon
 
-    -- Starting bar offset; _LayoutBarRows moves it to the window's dragged
-    -- name boundary (win._colEdges[0]) on every geometry pass.
-    local barAreaLeft = BAR_LEFT_OFFSET
+    -- The bar's starting offset; _LayoutBarRows sets it again from the icon's
+    -- size on every geometry pass.
+    local barAreaLeft = ICON_INSET + ICON_SIZE + BAR_ICON_GAP
 
     -- Name clip region — rank sits to the left, name fills the rest
-    -- Reserve 15px on the left for rank numbers
+    -- Reserve RANK_SLOT on the left for rank numbers
     -- Two-point anchor, not SetWidth: _LayoutBarRows moves the right edge to
     -- the window's dragged name boundary on every geometry pass.
     local nameClip = CreateFrame("Frame", nil, row)
-    nameClip:SetPoint("LEFT", icon, "RIGHT", 19, 0)
+    nameClip:SetPoint("LEFT", icon, "RIGHT", NAME_LEFT, 0)
     nameClip:SetPoint("RIGHT", row, "LEFT", BAR_LEFT_OFFSET - NAME_GUTTER, 0)
     nameClip:SetPoint("TOP", row, "TOP")
     nameClip:SetPoint("BOTTOM", row, "BOTTOM")
@@ -628,7 +649,8 @@ function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
     nameClip:SetFrameLevel(row:GetFrameLevel() + 1)
     row.nameClip = nameClip
 
-    -- Inner frame holds the FontString (ClipsChildren clips child frames)
+    -- Inner frame holds the FontString (ClipsChildren clips child frames). It
+    -- sits at row + 2, above the StatusBar that runs under the name.
     local nameInner = CreateFrame("Frame", nil, nameClip)
     nameInner:SetAllPoints()
 
@@ -640,19 +662,19 @@ function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
     nameText:SetTextColor(1, 1, 1, 1)
     row.nameText = nameText
 
-    -- Bar background (full width, behind the StatusBar)
+    -- Bar background (the bar's span, behind the StatusBar)
     local barBg = row:CreateTexture(nil, "BACKGROUND")
     barBg:SetPoint("LEFT", row, "LEFT", barAreaLeft, 0)
-    barBg:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    barBg:SetPoint("RIGHT", row, "RIGHT", -BAR_RIGHT_INSET, 0)
     barBg:SetPoint("TOP", row, "TOP", 0, 0)
     barBg:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
     barBg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
     row.barBg = barBg
 
-    -- Single full-width StatusBar (primary column data)
+    -- Single StatusBar from right of the icon to short of the row's right edge (primary column data)
     local bar = CreateFrame("StatusBar", nil, row)
     bar:SetPoint("LEFT", row, "LEFT", barAreaLeft, 0)
-    bar:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    bar:SetPoint("RIGHT", row, "RIGHT", -BAR_RIGHT_INSET, 0)
     bar:SetPoint("TOP", row, "TOP", 0, 0)
     bar:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
     bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
@@ -660,13 +682,17 @@ function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
     bar:SetValue(0)
     row.bar = bar
 
-    -- Rank number text (e.g., "1.", "2.") — positioned dynamically in layout
-    -- Use a higher sublevel so it renders on top of the name clip area
-    local rankText = row:CreateFontString(nil, "OVERLAY", nil, 7)
+    -- Rank number text ("1.", "2."), positioned in layout. The bar runs under
+    -- it, so it is created on a frame of its own above the StatusBar (row + 1),
+    -- at the level the name's inner frame has. The frame takes no mouse input.
+    local rankLayer = CreateFrame("Frame", nil, row)
+    rankLayer:SetAllPoints()
+    rankLayer:SetFrameLevel(row:GetFrameLevel() + 2)
+    local rankText = rankLayer:CreateFontString(nil, "OVERLAY")
     rankText:SetFont(GetDefaultFont(), 11, "OUTLINE")
     rankText:SetJustifyH("LEFT")
     rankText:SetWordWrap(false)
-    rankText:SetTextColor(0.6, 0.6, 0.6, 0.7)
+    rankText:SetTextColor(RANK_COLOR[1], RANK_COLOR[2], RANK_COLOR[3], RANK_COLOR[4])
     row.rankText = rankText
 
     -- Column value texts (up to MAX_COLUMNS), each inside a hard-clipping
@@ -738,7 +764,7 @@ function DMY._CreateWindow(windowIndex, comp)
     local fh = tonumber(db.frameHeight) or 250
 
     -- Main container
-    local frame = CreateFrame("Frame", "ScootDMYWindow" .. windowIndex, UIParent)
+    local frame = CreateFrame("Frame", addon.Brand .. "DMYWindow" .. windowIndex, UIParent)
     frame.dmyWindowIndex = windowIndex
     frame:SetSize(fw, fh)
     frame:SetPoint("CENTER", UIParent, "CENTER", -200 + (windowIndex - 1) * 100, 0)
@@ -761,7 +787,7 @@ function DMY._CreateWindow(windowIndex, comp)
 
     local headerBg = header:CreateTexture(nil, "BACKGROUND", nil, -6)
     headerBg:SetAllPoints()
-    headerBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    headerBg:SetColorTexture(DMY.TITLE_BAR_COLOR[1], DMY.TITLE_BAR_COLOR[2], DMY.TITLE_BAR_COLOR[3], 0.9)
     header._bg = headerBg
 
     -- Gear button (left side of header, opens flyout menu)
@@ -891,18 +917,18 @@ function DMY._CreateWindow(windowIndex, comp)
         if not cfg then return end
 
         -- Overall
-        local isOverall = cfg.sessionType == 0 and not cfg.sessionID
+        local isOverall = cfg.sessionType == DMY.ST.Overall and not cfg.sessionID
         segmentMenu:AddRow("Overall", { 1, 1, 1, 0.9 }, function()
-            cfg.sessionType = 0
+            cfg.sessionType = DMY.ST.Overall
             cfg.sessionID = nil
             cfg._sessionName = nil
             ApplySegmentChange(cfg)
         end, isOverall)
 
         -- Current
-        local isCurrent = cfg.sessionType == 1 and not cfg.sessionID
+        local isCurrent = cfg.sessionType == DMY.ST.Current and not cfg.sessionID
         segmentMenu:AddRow("Current", { 1, 1, 1, 0.9 }, function()
-            cfg.sessionType = 1
+            cfg.sessionType = DMY.ST.Current
             cfg.sessionID = nil
             cfg._sessionName = nil
             ApplySegmentChange(cfg)
@@ -1244,6 +1270,7 @@ function DMY._CreateWindow(windowIndex, comp)
         frame = frame,
         background = background,
         header = header,
+        headerDiv = headerDiv,
         gearBtn = gearBtn,
         titleText = titleText,
         timerText = timerText,
@@ -1270,6 +1297,13 @@ end
 
 DMY.HEADER_HEIGHT = HEADER_HEIGHT
 DMY.ICON_SIZE = ICON_SIZE
+DMY.ICON_INSET = ICON_INSET
+DMY.BAR_ICON_GAP = BAR_ICON_GAP
+DMY.BAR_RIGHT_INSET = BAR_RIGHT_INSET
+DMY.COLUMN_RIGHT_INSET = COLUMN_RIGHT_INSET
+DMY.RANK_LEFT = RANK_LEFT
+DMY.NAME_LEFT = NAME_LEFT
+DMY.RANK_COLOR = RANK_COLOR
 DMY.NAME_WIDTH = NAME_WIDTH
 DMY.BAR_LEFT_OFFSET = BAR_LEFT_OFFSET
 DMY.NAME_AREA_LEFT = NAME_AREA_LEFT

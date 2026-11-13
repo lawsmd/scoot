@@ -193,17 +193,29 @@ local function HarvestInspectData(guid, unit)
     local entry = cache[guid] or {}
     local captured = false
 
-    local ilvlOk, ilvl = pcall(C_PaperDollInfo.GetInspectItemLevel, unit)
+    -- Each getter is tested bare first: a client that lacks one leaves that
+    -- field out of the entry.
+    local getItemLevel = C_PaperDollInfo and C_PaperDollInfo.GetInspectItemLevel
+    local ilvlOk, ilvl = false, nil
+    if getItemLevel then ilvlOk, ilvl = pcall(getItemLevel, unit) end
     if ilvlOk and type(ilvl) == "number" and ilvl > 0 then
         entry.itemLevel = math.floor(ilvl)
         captured = true
     end
 
-    local specOk, specID = pcall(GetInspectSpecialization, unit)
+    local specOk, specID = false, nil
+    if GetInspectSpecialization then specOk, specID = pcall(GetInspectSpecialization, unit) end
     if specOk and type(specID) == "number" and specID > 0 then
         entry.specID = specID
         -- Static spec data (never secret): id, name, description, icon, role, classFile
-        local infoOk, _, specName, _, specIcon, role, classFile = pcall(GetSpecializationInfoByID, specID)
+        -- The 12.x namespace first: the bare global is a deprecation alias some
+        -- clients do not load.
+        local getSpecInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfoByID)
+            or GetSpecializationInfoByID
+        local infoOk, _, specName, _, specIcon, role, classFile = false, nil, nil, nil, nil, nil, nil
+        if getSpecInfo then
+            infoOk, _, specName, _, specIcon, role, classFile = pcall(getSpecInfo, specID)
+        end
         if infoOk and specName then
             entry.specName = specName
             entry.specIcon = specIcon
@@ -223,7 +235,10 @@ local function HarvestInspectData(guid, unit)
 
     entry.time = GetTime()
     cache[guid] = entry
-    addon:SendMessage("SCOOT_INSPECT_UPDATED", guid, entry)
+    -- A host with the message mixin tells its listeners; one without has none.
+    if addon.SendMessage then
+        addon:SendMessage("SCOOT_INSPECT_UPDATED", guid, entry)
+    end
     return true
 end
 
@@ -387,6 +402,8 @@ end
 -- irreversible, so it must only ever install here.
 function Inspect:EnsureStarted()
     if started then return end
+    -- A client with no inspect request has nothing for the service to do.
+    if type(NotifyInspect) ~= "function" then return end
     started = true
 
     hooksecurefunc("NotifyInspect", OnNotifyInspectHook)

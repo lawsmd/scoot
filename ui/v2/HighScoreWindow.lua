@@ -223,11 +223,15 @@ local function CreateHighScoreFrame()
     -- ESC-close
     tinsert(UISpecialFrames, BRAND .. "HighScoreFrame")
 
-    -- Banner (ScootBanner.png, top centre)
+    -- Banner, top centre. The meter's host names its own art and the box it
+    -- is drawn in (addon.MetersHost.banner, bannerSize); with none it is the
+    -- banner file under the media root.
+    local host = addon.MetersHost
+    local bannerSize = host and host.bannerSize
     local banner = frame:CreateTexture(nil, "ARTWORK")
-    banner:SetSize(400, BANNER_HEIGHT)
+    banner:SetSize(bannerSize and bannerSize[1] or 400, bannerSize and bannerSize[2] or BANNER_HEIGHT)
     banner:SetPoint("TOP", frame, "TOP", 0, 30)
-    banner:SetTexture(ROOT .. "media\\ScootBanner.png")
+    banner:SetTexture((host and host.banner) or (ROOT .. "media\\ScootBanner.png"))
     frame._banner = banner
 
     -- "HIGH SCORES" title

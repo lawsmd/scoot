@@ -28,20 +28,41 @@ DMY._SnapToPixels = SnapToPixels
 -- divider lines. nil = equal split, so existing profiles need no migration.
 --
 -- The name column is stored separately as cfg.nameWidthFraction, a fraction of
--- the whole width pool (frameWidth - NAME_AREA_LEFT), because it sits left of
--- the column area those per-column fractions divide up. nil falls back to the
--- old fixed 113px name block at any frame width, so an undragged window keeps
--- the exact layout it had before the name column became draggable.
+-- the whole width pool (from NAME_AREA_LEFT to the column area's right edge,
+-- COLUMN_RIGHT_INSET short of frameWidth), because it sits left of
+-- the column area those per-column fractions divide up.
+--
+-- With nil stored, a window that has never been dragged (or was reset) takes
+-- one of two starting layouts by its record:
+--   cfg.columnShare set   each value column takes that share of the window's
+--                         width, the columns together at most
+--                         MAX_COLUMN_AREA_SHARE of it, and the name column
+--                         takes the rest. Records made today carry 0.2.
+--   cfg.columnShare nil   the old fixed 113px name block at any frame width,
+--                         so a record made before columnShare keeps the exact
+--                         layout it had.
+
+-- The most of a window's width its undragged value columns take together.
+local MAX_COLUMN_AREA_SHARE = 0.6
 
 -- legacyPx: the name column width to fall back to, in the caller's pixel space
--- (the settings preview runs the same math at its own scale).
-function DMY._GetNameFraction(cfg, pool, legacyPx)
+-- (the settings preview runs the same math at its own scale). numColumns and
+-- fullWidth, the window's whole width in the same pixel space, feed the
+-- columnShare layout; a caller that passes neither gets the legacy block.
+function DMY._GetNameFraction(cfg, pool, legacyPx, numColumns, fullWidth)
     pool = tonumber(pool)
     if not pool or pool <= 0 then return 0 end
     local f = cfg and tonumber(cfg.nameWidthFraction)
     if not f or f <= 0 or f >= 1 then
-        legacyPx = tonumber(legacyPx) or (DMY.BAR_LEFT_OFFSET - DMY.NAME_AREA_LEFT)
-        f = legacyPx / pool
+        local share = cfg and tonumber(cfg.columnShare)
+        fullWidth = tonumber(fullWidth)
+        if share and share > 0 and fullWidth and fullWidth > 0 then
+            local area = math.min(share * (tonumber(numColumns) or 1), MAX_COLUMN_AREA_SHARE)
+            f = (pool - area * fullWidth) / pool
+        else
+            legacyPx = tonumber(legacyPx) or (DMY.BAR_LEFT_OFFSET - DMY.NAME_AREA_LEFT)
+            f = legacyPx / pool
+        end
     end
     return math.max(0, math.min(1, f))
 end
@@ -102,26 +123,29 @@ function DMY._CalculateColumnWidths(windowIndex, comp)
     local fw = tonumber(cfg.frameWidth or db.frameWidth) or 350
     local numColumns = math.min(#cfg.columns, DMY.MAX_COLUMNS)
     if numColumns == 0 then numColumns = 1 end
-    if cfg.sessionType ~= 0 then numColumns = 1 end  -- Current/Expired: single column only
+    if cfg.sessionType ~= DMY.ST.Overall then numColumns = 1 end  -- Current/Expired: single column only
 
-    -- Column area: everything right of the name column. The name column's own
-    -- width is a fraction of the pool too, so its right edge (edge 0) is
-    -- dragged exactly like the interior boundaries.
+    -- Column area: everything right of the name column, ending
+    -- COLUMN_RIGHT_INSET short of the window's right edge. The name column's
+    -- own width is a fraction of the pool too, so its right edge (edge 0) is
+    -- dragged exactly like the interior boundaries. A column's starting share
+    -- is still of the whole window width.
     local nameLeft = DMY.NAME_AREA_LEFT
-    local pool = math.max(fw - nameLeft, 1)
+    local right = fw - SnapToPixels(DMY.COLUMN_RIGHT_INSET, win.frame)
+    local pool = math.max(right - nameLeft, 1)
     local left = win._dragNameEdge
     if not left then
-        left = nameLeft + pool * DMY._GetNameFraction(cfg, pool)
+        left = nameLeft + pool * DMY._GetNameFraction(cfg, pool, nil, numColumns, fw)
     end
-    local maxLeft = fw - numColumns * DMY.MIN_COL_WIDTH
+    local maxLeft = right - numColumns * DMY.MIN_COL_WIDTH
     local minLeft = nameLeft + DMY.MIN_NAME_WIDTH
     if maxLeft < minLeft then maxLeft = minLeft end
     left = SnapToPixels(math.max(minLeft, math.min(maxLeft, left)), win.frame)
-    local available = math.max(fw - left, 1)
+    local available = math.max(right - left, 1)
 
     -- Cumulative pixel edges from the stored fractions (equal split when
     -- unset). A live divider drag overrides via win._dragFractions. The last
-    -- column absorbs the rounding leftovers so the edges always tile [left, fw].
+    -- column absorbs the rounding leftovers so the edges always tile [left, right].
     local fractions = win._dragFractions or DMY._GetColumnFractions(cfg, numColumns)
     local edges = { [0] = left }
     local acc = 0
@@ -129,7 +153,7 @@ function DMY._CalculateColumnWidths(windowIndex, comp)
         acc = acc + (fractions[c] or (1 / numColumns))
         edges[c] = SnapToPixels(left + available * acc, win.frame)
     end
-    edges[numColumns] = fw
+    edges[numColumns] = right
 
     win._colEdges = edges
     win._numColumns = numColumns
@@ -228,32 +252,35 @@ end
 
 local THIN_BAR_HEIGHT = 4
 
-function DMY._ApplyBarMode(row, barMode, barAreaLeft)
+-- barLeft is the bar's left offset in the row, right of the icon, and
+-- rightInset its gap from the row's right edge. The bar runs under the rank,
+-- the name and the columns, and ends short of the column area's right edge.
+function DMY._ApplyBarMode(row, barMode, barLeft, rightInset)
     local bar = row.bar
     local barBg = row.barBg
     if not bar or not barBg then return end
 
     if barMode == "thin" then
         bar:ClearAllPoints()
-        bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", barAreaLeft, 0)
-        bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+        bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", barLeft, 0)
+        bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -rightInset, 0)
         bar:SetHeight(THIN_BAR_HEIGHT)
 
         barBg:ClearAllPoints()
-        barBg:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", barAreaLeft, 0)
-        barBg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+        barBg:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", barLeft, 0)
+        barBg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -rightInset, 0)
         barBg:SetHeight(THIN_BAR_HEIGHT)
     else
         -- Default and Hollow: full-height bar
         bar:ClearAllPoints()
-        bar:SetPoint("LEFT", row, "LEFT", barAreaLeft, 0)
-        bar:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        bar:SetPoint("LEFT", row, "LEFT", barLeft, 0)
+        bar:SetPoint("RIGHT", row, "RIGHT", -rightInset, 0)
         bar:SetPoint("TOP", row, "TOP", 0, 0)
         bar:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
 
         barBg:ClearAllPoints()
-        barBg:SetPoint("LEFT", row, "LEFT", barAreaLeft, 0)
-        barBg:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        barBg:SetPoint("LEFT", row, "LEFT", barLeft, 0)
+        barBg:SetPoint("RIGHT", row, "RIGHT", -rightInset, 0)
         barBg:SetPoint("TOP", row, "TOP", 0, 0)
         barBg:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
     end
@@ -277,9 +304,18 @@ function DMY._LayoutBarRows(windowIndex, comp)
     local numColumns = win._numColumns or 1
 
     -- Per-column pixel edges computed by _CalculateColumnWidths. Edge 0 is the
-    -- dragged name/column boundary, so the bars start there.
-    local edges = win._colEdges or { [0] = DMY.BAR_LEFT_OFFSET, [numColumns] = fw }
-    local barLeftOffset = edges[0] or DMY.BAR_LEFT_OFFSET
+    -- dragged name/column boundary: the name clip ends there and column 1
+    -- starts there.
+    local edges = win._colEdges
+        or { [0] = DMY.BAR_LEFT_OFFSET, [numColumns] = fw - SnapToPixels(DMY.COLUMN_RIGHT_INSET, win.frame) }
+    local columnLeft = edges[0] or DMY.BAR_LEFT_OFFSET
+
+    -- The bar starts right of the icon and ends short of the row's right
+    -- edge. The icon shrinks with a bar height below its own size, and the
+    -- bar's start follows it.
+    local rightInset = SnapToPixels(DMY.BAR_RIGHT_INSET, win.frame)
+    local iconSz = math.min(barHeight, DMY.ICON_SIZE)
+    local barLeft = SnapToPixels(DMY.ICON_INSET + iconSz + DMY.BAR_ICON_GAP, win.frame)
 
     -- Value texts sit inside hard-clipping column cells: single CENTER anchor,
     -- no width — over-long strings clip at both cell edges instead of
@@ -307,10 +343,10 @@ function DMY._LayoutBarRows(windowIndex, comp)
     -- less the gutter that separates it from column 1.
     local function LayoutNameClip(row)
         if not row.nameClip then return end
-        row.nameClip:SetPoint("RIGHT", row, "LEFT", barLeftOffset - DMY.NAME_GUTTER, 0)
+        row.nameClip:SetPoint("RIGHT", row, "LEFT", columnLeft - DMY.NAME_GUTTER, 0)
     end
 
-    local barMode = db.barMode or "default"
+    local barMode = db.barMode or "thin"
 
     -- Position per-column click overlays (multi-column drill-down dispatch).
     -- Hidden for single-column windows; row's OnMouseUp handles those.
@@ -341,11 +377,10 @@ function DMY._LayoutBarRows(windowIndex, comp)
         row:SetPoint("RIGHT", win.scrollContent, "RIGHT", 0, 0)
 
         -- Icon size matches bar height
-        local iconSz = math.min(barHeight, DMY.ICON_SIZE)
         row.icon:SetSize(iconSz, iconSz)
 
         -- Reposition bar/barBg based on bar mode
-        DMY._ApplyBarMode(row, barMode, barLeftOffset)
+        DMY._ApplyBarMode(row, barMode, barLeft, rightInset)
 
         -- Position the name clip and the value texts at column offsets
         LayoutNameClip(row)
@@ -356,9 +391,8 @@ function DMY._LayoutBarRows(windowIndex, comp)
     -- Layout pinned row
     local pinnedRow = win.pinnedRow
     pinnedRow:SetHeight(snappedBarHeight)
-    local iconSz = math.min(barHeight, DMY.ICON_SIZE)
     pinnedRow.icon:SetSize(iconSz, iconSz)
-    DMY._ApplyBarMode(pinnedRow, barMode, barLeftOffset)
+    DMY._ApplyBarMode(pinnedRow, barMode, barLeft, rightInset)
     LayoutNameClip(pinnedRow)
     LayoutRowValueTexts(pinnedRow)
     LayoutColClickRegions(pinnedRow)
@@ -526,7 +560,7 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
     -- Show/hide bar fill and background. Value texts live in per-column clip
     -- cells at a fixed frame level above the StatusBar, so no mode-aware
     -- reparenting is needed to keep text drawing over the bar fill.
-    local barMode = db and db.barMode or "default"
+    local barMode = db and db.barMode or "thin"
     local showBars = barMode ~= "hidden"
     local barTex = row.bar:GetStatusBarTexture()
 
@@ -553,12 +587,12 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
         else
             row.rankText:SetText(player.rank and (player.rank .. ".") or "")
             row.rankText:ClearAllPoints()
-            row.rankText:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
+            row.rankText:SetPoint("LEFT", row.icon, "RIGHT", DMY.RANK_LEFT, 0)
             row.rankText:Show()
         end
     end
 
-    -- Single full-width bar: represents primary column data.
+    -- Single bar across the row: represents primary column data.
     local primaryDef = cfg.columns[1] and DMY.COLUMN_FORMATS[cfg.columns[1].format]
     if primaryDef and showBars then
         local meterType = primaryDef.primary or primaryDef.meterType
@@ -609,10 +643,12 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
                     local mt = def.primary or def.meterType
                     local primaryType = primaryDef and (primaryDef.primary or primaryDef.meterType)
                     local val, blocked
-                    if c == 1 or mt == primaryType then
-                        -- The row already carries the primary session's record for
-                        -- this meter type, so no secondary query was issued for it.
-                        val = player.values[mt]
+                    if c == 1 or DMY._SameMeterFamily(mt, primaryType) then
+                        -- The row carries the primary session's record, and that
+                        -- record holds the total and the rate of its whole family
+                        -- (damage with DPS, healing with HPS), so a column in the
+                        -- family reads it and no identity match is involved.
+                        val = player.values[mt] or player.values[primaryType]
                     else
                         local ikey = player.identityKey
                         if ikey and merged.identityCollisions and merged.identityCollisions[ikey] then

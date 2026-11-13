@@ -73,65 +73,8 @@ function SlashCmdList.SCOOTCDM(msg, editBox)
     addon:OpenCooldownManagerSettings()
 end
 
--- /dmshow (toggle damage meter visibility, gated by per-version QoL setting)
-SLASH_SCOOTDMSHOW1 = "/dmshow"
-function SlashCmdList.SCOOTDMSHOW(msg, editBox)
-    if not (addon and addon.IsModuleEnabled) then return end
-
-    if not addon:IsModuleEnabled("damageMeter") then
-        addon:Print("Damage Meter module is disabled.")
-        return
-    end
-
-    local isY = addon:IsModuleEnabled("damageMeter", "damageMeterV2")
-    local compId = isY and "damageMeterV2" or "damageMeter"
-    local comp = addon.Components and addon.Components[compId]
-    local enabled = comp and comp.db and comp.db.enableSlashDM
-    if not enabled then
-        addon:Print("Enable /dm commands in Scoot \226\134\146 Damage Meter \226\134\146 Quality of Life.")
-        return
-    end
-
-    if isY then
-        if addon.DamageMetersY and addon.DamageMetersY._SlashToggleShow then
-            addon.DamageMetersY._SlashToggleShow()
-        end
-    else
-        if addon.DamageMetersX and addon.DamageMetersX._SlashToggleShow then
-            addon.DamageMetersX._SlashToggleShow()
-        end
-    end
-end
-
--- /dmreset (reset all damage meter data, gated by per-version QoL setting)
-SLASH_SCOOTDMRESET1 = "/dmreset"
-function SlashCmdList.SCOOTDMRESET(msg, editBox)
-    if not (addon and addon.IsModuleEnabled) then return end
-
-    if not addon:IsModuleEnabled("damageMeter") then
-        addon:Print("Damage Meter module is disabled.")
-        return
-    end
-
-    local isY = addon:IsModuleEnabled("damageMeter", "damageMeterV2")
-    local compId = isY and "damageMeterV2" or "damageMeter"
-    local comp = addon.Components and addon.Components[compId]
-    local enabled = comp and comp.db and comp.db.enableSlashDM
-    if not enabled then
-        addon:Print("Enable /dm commands in Scoot \226\134\146 Damage Meter \226\134\146 Quality of Life.")
-        return
-    end
-
-    if isY then
-        if addon.DamageMetersY and addon.DamageMetersY._SlashReset then
-            addon.DamageMetersY._SlashReset()
-        end
-    else
-        if addon.DamageMetersX and addon.DamageMetersX._SlashReset then
-            addon.DamageMetersX._SlashReset()
-        end
-    end
-end
+-- /dmshow and /dmreset are installed by the damage meter's own initializer
+-- (core/components/damagemetersY/styling.lua, DMY._InstallSlashWords).
 
 
 -- PLAYER_TARGET_CHANGED is handled in core/init.lua — do not duplicate here.

@@ -201,7 +201,11 @@ function DMY._UpdateTimerText(windowIndex)
     else
         -- Overall / Current: session-driven API, non-secret during combat.
         -- Survives player death/resurrect because it tracks the session, not the player.
-        local ok, dur = pcall(C_DamageMeter.GetSessionDurationSeconds, cfg.sessionType)
+        local getDuration = C_DamageMeter and C_DamageMeter.GetSessionDurationSeconds
+        local ok, dur = false, nil
+        if getDuration then
+            ok, dur = pcall(getDuration, cfg.sessionType)
+        end
         if ok and type(dur) == "number" then
             duration = dur
         elseif not DMY._inCombat then
@@ -209,7 +213,7 @@ function DMY._UpdateTimerText(windowIndex)
         else
             local elapsed = GetTime() - (DMY._combatStartTime or GetTime())
             local preCombat = win._preCombatDuration or 0
-            duration = (cfg.sessionType == 0) and (preCombat + elapsed) or elapsed
+            duration = (cfg.sessionType == DMY.ST.Overall) and (preCombat + elapsed) or elapsed
         end
     end
 

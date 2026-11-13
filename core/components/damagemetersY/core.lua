@@ -12,6 +12,39 @@ DMY.MAX_WINDOWS = 5
 DMY.MAX_COLUMNS = 5
 DMY.MAX_POOL = 25
 
+--------------------------------------------------------------------------------
+-- Meter types and session types
+--------------------------------------------------------------------------------
+
+-- Read off the client's enums by name, never as a literal. The 12.x numbers
+-- stand in only where an enum table is absent altogether. A name the client's
+-- enum lacks stays nil here: a column format that needs it is not built
+-- (columns.lua) and a comparison against it is false.
+local function enumByName(enum, numbers)
+    if type(enum) ~= "table" then return numbers end
+    local out = {}
+    for name in pairs(numbers) do
+        out[name] = enum[name]
+    end
+    return out
+end
+
+DMY.MT = enumByName(Enum and Enum.DamageMeterType, {
+    DamageDone = 0, Dps = 1, HealingDone = 2, Hps = 3, Absorbs = 4, Interrupts = 5,
+    Dispels = 6, DamageTaken = 7, AvoidableDamageTaken = 8, Deaths = 9, EnemyDamageTaken = 10,
+})
+DMY.ST = enumByName(Enum and Enum.DamageMeterSessionType, { Overall = 0, Current = 1, Expired = 2 })
+
+-- A set of meter types from their names, skipping any the client lacks.
+function DMY.MeterTypeSet(...)
+    local set = {}
+    for i = 1, select("#", ...) do
+        local mt = DMY.MT[(select(i, ...))]
+        if mt ~= nil then set[mt] = true end
+    end
+    return set
+end
+
 -- Runtime state (not persisted)
 DMY._windows = {}       -- [1..5] = { frame, barRows, localPlayerRow, ... }
 DMY._comp = nil          -- Component reference (set during registration)
@@ -20,9 +53,43 @@ DMY._inCombat = false
 DMY._combatStartTime = 0
 DMY._preCombatDuration = 0 -- duration before current combat started
 
+--------------------------------------------------------------------------------
+-- Host
+--------------------------------------------------------------------------------
+
+-- Two addons list these files. What differs between them is one optional
+-- table, addon.MetersHost, read at the moment of use: where the per-window
+-- config and the positions are stored, what the meter is called, and how
+-- Blizzard's meter comes back when this one is switched off. With no table
+-- set every reader falls back to the profile keys and the plain words below.
+local function Host()
+    local host = addon.MetersHost
+    if type(host) == "table" then return host end
+    return nil
+end
+DMY._Host = Host
+
+-- The meter's name in a line a player reads.
+function DMY.DisplayName()
+    local host = Host()
+    return (host and host.name) or "Damage Meter"
+end
+
+-- One window's name in Edit Mode.
+function DMY.WindowLabel(windowIndex)
+    local host = Host()
+    return ((host and host.windowLabel) or "Damage Meter") .. " " .. windowIndex
+end
+
+-- The face a text setting falls to when it stores none.
+function DMY.FallbackFont()
+    local host = Host()
+    return (host and host.fallbackFont) or "ROBOTO_SEMICOND_BOLD"
+end
+
 -- Debug trace buffer
 DMY._traceLog = {}
-DMY._traceEnabled = false -- enable with /scoot debug dmY trace on
+DMY._traceEnabled = false -- enable with the debug command: dmY trace on
 
 function DMY._Trace(msg)
     if not DMY._traceEnabled then return end
@@ -46,22 +113,49 @@ end
 -- Per-Window DB
 --------------------------------------------------------------------------------
 
+-- What a window record is created with. columnShare is the part of the
+-- window's width one undragged value column takes (layout.lua,
+-- DMY._GetNameFraction); the name column gets what the columns leave.
 local WINDOW_DEFAULTS = {
-    [1] = { enabled = true,  sessionType = 0, columns = { { format = "dps" } }, frameWidth = 350, frameHeight = 250, windowScale = 1.0 },
-    [2] = { enabled = false, sessionType = 1, columns = { { format = "dps" } }, frameWidth = 350, frameHeight = 250, windowScale = 1.0 },
-    [3] = { enabled = false, sessionType = 1, columns = { { format = "dps" } }, frameWidth = 350, frameHeight = 250, windowScale = 1.0 },
-    [4] = { enabled = false, sessionType = 1, columns = { { format = "dps" } }, frameWidth = 350, frameHeight = 250, windowScale = 1.0 },
-    [5] = { enabled = false, sessionType = 1, columns = { { format = "dps" } }, frameWidth = 350, frameHeight = 250, windowScale = 1.0 },
+    [1] = { enabled = true,  sessionType = DMY.ST.Current, columns = { { format = "dps" } }, frameWidth = 250, frameHeight = 250, windowScale = 1.0, columnShare = 0.2 },
+    [2] = { enabled = false, sessionType = DMY.ST.Current, columns = { { format = "dps" } }, frameWidth = 250, frameHeight = 250, windowScale = 1.0, columnShare = 0.2 },
+    [3] = { enabled = false, sessionType = DMY.ST.Current, columns = { { format = "dps" } }, frameWidth = 250, frameHeight = 250, windowScale = 1.0, columnShare = 0.2 },
+    [4] = { enabled = false, sessionType = DMY.ST.Current, columns = { { format = "dps" } }, frameWidth = 250, frameHeight = 250, windowScale = 1.0, columnShare = 0.2 },
+    [5] = { enabled = false, sessionType = DMY.ST.Current, columns = { { format = "dps" } }, frameWidth = 250, frameHeight = 250, windowScale = 1.0, columnShare = 0.2 },
 }
 table.freeze(WINDOW_DEFAULTS)
 
-function DMY._EnsureWindowsDB()
+-- The sizes a record stored before it carried its own takes: the values every
+-- window had then. A record made today is written whole from WINDOW_DEFAULTS.
+local LEGACY_SIZING = { frameWidth = 350, frameHeight = 250, windowScale = 1.0 }
+
+-- What a reader gets while this meter's gate is closed: defaults that are
+-- never stored. The settings search draws every page to index it, this
+-- meter's included, and a page drawn with the meter off must leave no window
+-- configs behind in the profile.
+local scratchWindows = {}
+
+-- The five window configs: the host's table when a host answers, else the
+-- profile's. Either is edited in place by every caller of _GetWindowConfig.
+local function WindowsTable()
+    if not addon:IsModuleEnabled("damageMeter", "damageMeterV2") then
+        return scratchWindows
+    end
+    local host = Host()
+    if host and host.GetWindows then
+        return host.GetWindows()
+    end
     local profile = addon.db and addon.db.profile
     if not profile then return nil end
     if not profile.damageMeterV2Windows then
         profile.damageMeterV2Windows = {}
     end
-    local wins = profile.damageMeterV2Windows
+    return profile.damageMeterV2Windows
+end
+
+function DMY._EnsureWindowsDB()
+    local wins = WindowsTable()
+    if type(wins) ~= "table" then return nil end
     for i = 1, DMY.MAX_WINDOWS do
         if not wins[i] then
             local def = WINDOW_DEFAULTS[i]
@@ -69,6 +163,10 @@ function DMY._EnsureWindowsDB()
                 enabled = def.enabled,
                 sessionType = def.sessionType,
                 columns = {},
+                frameWidth = def.frameWidth,
+                frameHeight = def.frameHeight,
+                windowScale = def.windowScale,
+                columnShare = def.columnShare,
             }
             for j, col in ipairs(def.columns) do
                 wins[i].columns[j] = { format = col.format }
@@ -77,10 +175,10 @@ function DMY._EnsureWindowsDB()
         if not wins[i].columns or #wins[i].columns == 0 then
             wins[i].columns = { { format = "dps" } }
         end
-        -- Ensure per-window sizing fields exist
-        if not wins[i].frameWidth then wins[i].frameWidth = WINDOW_DEFAULTS[i].frameWidth end
-        if not wins[i].frameHeight then wins[i].frameHeight = WINDOW_DEFAULTS[i].frameHeight end
-        if not wins[i].windowScale then wins[i].windowScale = WINDOW_DEFAULTS[i].windowScale end
+        -- An older record without its own sizing keeps the size it drew at.
+        if not wins[i].frameWidth then wins[i].frameWidth = LEGACY_SIZING.frameWidth end
+        if not wins[i].frameHeight then wins[i].frameHeight = LEGACY_SIZING.frameHeight end
+        if not wins[i].windowScale then wins[i].windowScale = LEGACY_SIZING.windowScale end
     end
     return wins
 end
@@ -90,11 +188,32 @@ function DMY._GetWindowConfig(windowIndex)
     return wins and wins[windowIndex]
 end
 
+-- Writes the five window records again from WINDOW_DEFAULTS. The table is
+-- emptied in place, since a host may store it by reference. Window positions
+-- are stored elsewhere and stay. False while the meter's gate is closed.
+function DMY.RecreateWindowRecords()
+    if not addon:IsModuleEnabled("damageMeter", "damageMeterV2") then return false end
+    local wins = WindowsTable()
+    if type(wins) ~= "table" then return false end
+    for i = 1, DMY.MAX_WINDOWS do
+        wins[i] = nil
+    end
+    DMY._EnsureWindowsDB()
+    if DMY._comp then DMY._ApplyStyling(DMY._comp) end
+    return true
+end
+
 --------------------------------------------------------------------------------
 -- Component Registration
 --------------------------------------------------------------------------------
 
 addon:RegisterComponentInitializer(function(self)
+    -- The initializer runs whenever the damage meter module is on, whichever
+    -- meter is the active one, so the slash words and the export's zone
+    -- record start here, ahead of this meter's own gate.
+    DMY._InstallSlashWords()
+    DMY._StartZoneRecord()
+
     -- Gate: only register if Y sub-toggle is enabled (DB key: "damageMeterV2")
     if not self:IsModuleEnabled("damageMeter", "damageMeterV2") then return end
 
@@ -105,21 +224,22 @@ addon:RegisterComponentInitializer(function(self)
         self:SetModuleEnabled("damageMeter", "damageMeter", false)
     end
 
-    -- Pre-materialize component DB so the proxy system doesn't skip ApplyStyling.
-    if self.db and self.db.profile then
-        if not self.db.profile.components then
-            self.db.profile.components = {}
-        end
-        if not self.db.profile.components["damageMeterV2"] then
-            self.db.profile.components["damageMeterV2"] = {}
+    -- Pre-materialize the component's table so the zero-touch proxy never
+    -- stands in for it and ApplyStyling is not skipped. A host store
+    -- (addon.ComponentStore) installs no proxy and takes no table here.
+    if not addon.ComponentStore then
+        local components = addon.ComponentsUtil.GetContainerFor(nil, true)
+        if type(components) == "table" and type(rawget(components, "damageMeterV2")) ~= "table" then
+            components["damageMeterV2"] = {}
         end
     end
 
     local Component = addon.ComponentPrototype
+    local host = Host()
 
     local comp = Component:New({
         id = "damageMeterV2",
-        name = "Damage Meters Y",
+        name = (host and host.name) or "Damage Meters Y",
         settings = {
             -- Layout
             windowScale     = { type = "addon", default = 1.0 },
@@ -139,7 +259,9 @@ addon:RegisterComponentInitializer(function(self)
             barBorderThickness      = { type = "addon", default = 1 },
             barBorderInsetH         = { type = "addon", default = 0 },
             barBorderInsetV         = { type = "addon", default = 0 },
-            barMode                 = { type = "addon", default = "default" },
+            -- "default" is the full-height bar. Thin is the start: the bar runs
+            -- under the name, and names and bars are both class color.
+            barMode                 = { type = "addon", default = "thin" },
             hideRankNumbers         = { type = "addon", default = false },
             barBgTexture            = { type = "addon", default = "default" },
             barBgColorMode          = { type = "addon", default = "default" },
@@ -186,6 +308,7 @@ addon:RegisterComponentInitializer(function(self)
             showBackdrop            = { type = "addon", default = true },
             windowBackdropColor     = { type = "addon", default = { 0.06, 0.06, 0.08, 0.95 } },
             windowBackdropOpacity   = { type = "addon", default = 95 },
+            -- "solid" (windowBackdropColor) or a "window" key of DMY.PanelArt (art.lua)
             windowBackdropTexture   = { type = "addon", default = "solid" },
             windowBorderStyle       = { type = "addon", default = "none" },
             windowBorderColor       = { type = "addon", default = { 0, 0, 0, 1 } },
@@ -212,6 +335,9 @@ addon:RegisterComponentInitializer(function(self)
             titleMode           = { type = "addon", default = "auto" },
             customTitle         = { type = "addon", default = "" },
             showTitleBarBackdrop = { type = "addon", default = true },
+            -- "solid" (DMY.TITLE_BAR_COLOR) or a "title" key of DMY.PanelArt (art.lua)
+            titleBarBackdropTexture = { type = "addon", default = "solid" },
+            titleBarBackdropOpacity = { type = "addon", default = 90 },
         },
 
         ApplyStyling = function(self)
@@ -244,6 +370,47 @@ addon:RegisterComponentInitializer(function(self)
 end, "damageMeter")
 
 --------------------------------------------------------------------------------
+-- Blizzard's meter
+--------------------------------------------------------------------------------
+
+-- While this meter is on, every styling pass turns Blizzard's off by CVar. One
+-- host puts the CVar back through its profile reconciler. A host with none
+-- hands over two accessors: the write that takes Blizzard's meter from on to
+-- off is recorded, and at world entry with this meter's gate closed the record
+-- is honoured and cleared. A meter the player already had off stays off.
+local function BlizzardMeterRecord()
+    local host = Host()
+    if host and host.GetHidBlizzardMeter and host.SetHidBlizzardMeter then
+        return host
+    end
+    return nil
+end
+
+local function NoteBlizzardMeterHidden()
+    local host = BlizzardMeterRecord()
+    if not host or host.GetHidBlizzardMeter() then return end
+    if not (C_CVar and C_CVar.GetCVar) then return end
+    local ok, value = pcall(C_CVar.GetCVar, "damageMeterEnabled")
+    if ok and value == "1" then
+        host.SetHidBlizzardMeter(true)
+    end
+end
+
+local function RestoreBlizzardMeter()
+    local host = BlizzardMeterRecord()
+    if not host or not host.GetHidBlizzardMeter() then return end
+    if addon:IsModuleEnabled("damageMeter", "damageMeterV2") then return end
+    if not (C_CVar and C_CVar.SetCVar) then return end
+    addon.Events.RunOutOfCombat(function()
+        -- Kept off addon.ApplyDamageMeterEnabled: the restore for a host with no profile CVar reconciler.
+        pcall(C_CVar.SetCVar, "damageMeterEnabled", "1")
+        host.SetHidBlizzardMeter(false)
+    end, "DamageMetersY:restoreBlizzardMeter")
+end
+
+addon.Events.OnWorldEntered(RestoreBlizzardMeter)
+
+--------------------------------------------------------------------------------
 -- ApplyStyling / RefreshOpacity
 --------------------------------------------------------------------------------
 
@@ -269,6 +436,7 @@ function DMY._ApplyStyling(comp)
     -- Disable Blizzard meter via CVar when Y is active.
     -- Kept off addon.ApplyDamageMeterEnabled: styling-pass re-assert while the Y meter owns the frame; not a profile toggle.
     if C_CVar and C_CVar.SetCVar and not InCombatLockdown() then
+        NoteBlizzardMeterHidden()
         pcall(C_CVar.SetCVar, "damageMeterEnabled", "0")
     end
 
@@ -295,19 +463,28 @@ end
 -- (50-100) in combat, the addon slider (0-100) out of it.
 local OPACITY_OPTS = { combatMin = 50 }
 
+-- Nothing tells a FontString that an ancestor's alpha moved, so the Deep
+-- Shadow copies re-read it after every write (core/fontpair.lua copyAlphaFor).
+local function WriteWindowAlpha(win, alpha)
+    win.frame:SetAlpha(alpha)
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
+end
+
+-- Through the state fade (core/opacity.lua): where the transition engine is
+-- loaded a combat edge fades, each tick through the window's own writer, and
+-- elsewhere the call answers the resolved alpha and this is the plain write.
 function DMY._RefreshOpacity(comp)
     if not DMY._initialized then return end
-    local alpha = addon.Opacity.Resolve(comp.db, addon.Opacity.Keys.CombatOnly, OPACITY_OPTS)
+    local alpha, state = addon.Opacity.Resolve(comp.db, addon.Opacity.Keys.CombatOnly, OPACITY_OPTS)
     for i = 1, DMY.MAX_WINDOWS do
         local win = DMY._windows[i]
         if win and win.frame:IsShown() then
-            win.frame:SetAlpha(alpha)
+            if not win.opacityTick then
+                win.opacityTick = function(value) WriteWindowAlpha(win, value) end
+            end
+            WriteWindowAlpha(win, addon.Opacity.Fade(win.frame, alpha, state, win.opacityTick))
         end
     end
-
-    -- Nothing tells a FontString that an ancestor's alpha moved, so the Deep
-    -- Shadow copies re-read it here (core/fontpair.lua copyAlphaFor).
-    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
 
     -- Update visibility for combat-based modes
     for i = 1, DMY.MAX_WINDOWS do
@@ -339,7 +516,7 @@ function DMY._Initialize(comp)
     end
 
     -- Build the abbreviation config eagerly so DMY._abbrevError is
-    -- inspectable right after login (/scoot debug dmY abbrev)
+    -- inspectable right after login (the debug command: dmY abbrev)
     DMY._RebuildAbbrevConfig()
 
     -- Initialize event handling
@@ -353,10 +530,9 @@ end
 -- Session Labels
 --------------------------------------------------------------------------------
 
-local SESSION_LABELS = {
-    [0] = "Overall",
-    [1] = "Current",
-}
+local SESSION_LABELS = {}
+if DMY.ST.Overall ~= nil then SESSION_LABELS[DMY.ST.Overall] = "Overall" end
+if DMY.ST.Current ~= nil then SESSION_LABELS[DMY.ST.Current] = "Current" end
 table.freeze(SESSION_LABELS)
 
 function DMY._GetSessionLabel(sessionType, sessionID, sessionName)
@@ -390,6 +566,7 @@ function DMY.CopyWindowSettings(sourceIdx, destIdx)
 
     dst.columns     = deepcopy(src.columns)
     dst.nameWidthFraction = src.nameWidthFraction
+    dst.columnShare = src.columnShare
     dst.frameWidth  = src.frameWidth
     dst.frameHeight = src.frameHeight
     dst.windowScale = src.windowScale

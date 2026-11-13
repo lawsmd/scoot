@@ -15,8 +15,15 @@ local function GetTheme() return addon.UI and addon.UI.Theme end
 local function GetControls() return addon.UI and addon.UI.Controls end
 
 local function ResolveFont(key)
-    if addon.ResolveFontFace then return addon.ResolveFontFace(key or "ROBOTO_SEMICOND_BOLD") end
+    if addon.ResolveFontFace then return addon.ResolveFontFace(key or DMY.FallbackFont()) end
     return "Fonts\\FRIZQT__.TTF"
+end
+
+-- The first sample player on the preview. A host names one
+-- (addon.MetersHost.previewName); with none it is the brand with "er" on it.
+local function PreviewName()
+    local host = addon.MetersHost
+    return (host and host.previewName) or (addon.Brand .. "er")
 end
 
 --------------------------------------------------------------------------------
@@ -24,7 +31,8 @@ end
 --------------------------------------------------------------------------------
 
 local PREVIEW_PLAYERS = {
-    { name = "Scooter",    classFilename = "MAGE",    dps = 48200, damage = 1580000, deaths = 0 },
+    -- The first row carries no name: it is the host's sample player (PreviewName).
+    { classFilename = "MAGE",    dps = 48200, damage = 1580000, deaths = 0 },
     { name = "Theodesius", classFilename = "WARRIOR",  dps = 45100, damage = 1478000, deaths = 0 },
     { name = "Sniggles",   classFilename = "WARLOCK",  dps = 38900, damage = 1274000, deaths = 1 },
     { name = "Aetheris",   classFilename = "PALADIN",  dps = 31800, damage = 1042000, deaths = 0 },
@@ -35,7 +43,7 @@ local PREVIEW_HEADER_HEIGHT = 28
 local PREVIEW_BAR_HEIGHT = 20
 local PREVIEW_BAR_SPACING = 2
 local PREVIEW_ICON_SIZE = 18
-local PREVIEW_NAME_WIDTH = 80
+local PREVIEW_NAME_WIDTH = 102
 local PREVIEW_PADDING = 6
 local PREVIEW_THIN_BAR_HEIGHT = 4
 
@@ -103,7 +111,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     local cfg = DMY and DMY._GetWindowConfig and DMY._GetWindowConfig(windowIndex)
     local columns = cfg and cfg.columns or { { format = "dps" } }
     local numColumns = math.min(#columns, 5)
-    if cfg and cfg.sessionType ~= 0 then numColumns = 1 end  -- Current/Expired: show only primary
+    if cfg and cfg.sessionType ~= DMY.ST.Overall then numColumns = 1 end  -- Current/Expired: show only primary
     local Controls = GetControls()
 
     -- Resolved the same way the live window resolves them, so a partially
@@ -120,11 +128,8 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     local container = CreateFrame("Frame", nil, parentFrame)
     container:SetHeight(totalHeight)
 
-    local bgc = db.windowBackdropColor or { 0.06, 0.06, 0.08, 0.95 }
-    local bgAlpha = db.windowBackdropOpacity and (db.windowBackdropOpacity / 100) or bgc[4] or 0.95
     local bg = container:CreateTexture(nil, "BACKGROUND", nil, -8)
     bg:SetAllPoints()
-    bg:SetColorTexture(bgc[1] or 0.06, bgc[2] or 0.06, bgc[3] or 0.08, bgAlpha)
 
     -- Window border preview (same code path as the real windows)
     if DMY and DMY._ApplyWindowBorder then
@@ -142,7 +147,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     local poolRight = containerWidth - PREVIEW_PADDING
     local previewPool = math.max(poolRight - nameAreaLeft, 1)
     local nameFraction = (DMY and DMY._GetNameFraction)
-        and DMY._GetNameFraction(cfg, previewPool, PREVIEW_NAME_WIDTH + 2)
+        and DMY._GetNameFraction(cfg, previewPool, PREVIEW_NAME_WIDTH + 2, numColumns, containerWidth)
         or ((PREVIEW_NAME_WIDTH + 2) / previewPool)
     local barAreaLeft = nameAreaLeft + math.floor(previewPool * nameFraction)
     -- The preview is narrower than the real window, so keep the value columns
@@ -165,19 +170,22 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
         previewEdges[numColumns] = poolRight
     end
 
-    -- Header bg
-    local headerBg = container:CreateTexture(nil, "BACKGROUND", nil, -6)
-    headerBg:SetPoint("TOPLEFT"); headerBg:SetPoint("TOPRIGHT")
-    headerBg:SetHeight(PREVIEW_HEADER_HEIGHT)
-    headerBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    -- Header: a frame of its own, as the live window's is, since the title
+    -- bar's art is kept on a frame. The dropdowns are its children and draw
+    -- over that art.
+    local header = CreateFrame("Frame", nil, container)
+    header:SetPoint("TOPLEFT"); header:SetPoint("TOPRIGHT")
+    header:SetHeight(PREVIEW_HEADER_HEIGHT)
+    local headerBg = header:CreateTexture(nil, "BACKGROUND", nil, -6)
+    headerBg:SetAllPoints()
 
     -- Session dropdown (Overall / Current only)
     if Controls and Controls.CreateDropdown then
         local sessionDropdown = Controls:CreateDropdown({
-            parent = container,
-            values = { [0] = "Overall", [1] = "Current" },
-            order = { 0, 1 },
-            get = function() return cfg and cfg.sessionType or 0 end,
+            parent = header,
+            values = { [DMY.ST.Overall] = "Overall", [DMY.ST.Current] = "Current" },
+            order = { DMY.ST.Overall, DMY.ST.Current },
+            get = function() return cfg and cfg.sessionType or DMY.ST.Overall end,
             set = function(val)
                 if cfg then cfg.sessionType = val end
                 if builder then builder:DeferredRefreshAll() end
@@ -214,7 +222,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
             local dropWidth = math.max(60, (previewEdges[c] - previewEdges[c - 1]) - 4)
 
             local colDropdown = Controls:CreateDropdown({
-                parent = container,
+                parent = header,
                 values = dropValues,
                 order = dropOrder,
                 get = function() return colDef.format end,
@@ -243,15 +251,30 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     div:SetPoint("TOPRIGHT", 0, -PREVIEW_HEADER_HEIGHT)
     div:SetColorTexture(0.3, 0.3, 0.35, 0.5)
 
+    -- Backdrops (same code path as the real windows)
+    if DMY and DMY._ApplyBackdrops then
+        DMY._ApplyBackdrops(db, container, bg, header, headerBg, div)
+    end
+
     -- Bar styling
-    local barTexPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(db.barTexture or "default") or nil
     local barBgColor = db.barBackgroundColor or { 0.1, 0.1, 0.1, 0.8 }
     local primaryFormatKey = columns[1] and columns[1].format or "dps"
     local maxPrimaryVal = GetPlayerValue(PREVIEW_PLAYERS[1], primaryFormatKey)
     if maxPrimaryVal <= 0 then maxPrimaryVal = 1 end
 
-    local barMode = db.barMode or "default"
+    local barMode = db.barMode or "thin"
     local showBars = barMode ~= "hidden"
+
+    -- The bar starts right of the icon, runs under the rank, the name and the
+    -- columns, and ends short of the column area's right edge, as a live
+    -- row's does. The rank and the name are created on a frame above the bars.
+    local barLeft = PREVIEW_PADDING + PREVIEW_ICON_SIZE + DMY.BAR_ICON_GAP
+    local barRight = -(PREVIEW_PADDING + DMY.BAR_RIGHT_INSET - DMY.COLUMN_RIGHT_INSET)
+    local textLayer = CreateFrame("Frame", nil, container)
+    textLayer:SetAllPoints()
+    textLayer:SetFrameLevel(container:GetFrameLevel() + 2)
+    local rankColor = DMY and DMY.RANK_COLOR
+    local showRank = rankColor and not db.hideRankNumbers
 
     -- Bar rows
     for rowIdx, player in ipairs(PREVIEW_PLAYERS) do
@@ -275,16 +298,26 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
         if atlas then icon:SetAtlas(atlas)
         else icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark") end
 
-        -- Name
-        local nameText = container:CreateFontString(nil, "OVERLAY")
-        -- Via ApplyFontStyle, not SetFont: the SHADOW*/HEAVY* styles are Scoot
-        -- compounds, and SetFont only substring-matches OUTLINE/THICKOUTLINE out
+        -- Rank number, in the names' face one point smaller
+        if showRank then
+            local rankText = textLayer:CreateFontString(nil, "OVERLAY")
+            addon.ApplyFontStyle(rankText, nameFontPath, math.max(6, (fontNames.fontSize or 12) - 1), fontNames.fontStyle or "OUTLINE")
+            rankText:SetPoint("LEFT", icon, "RIGHT", DMY.RANK_LEFT, 0)
+            rankText:SetJustifyH("LEFT"); rankText:SetWordWrap(false)
+            rankText:SetText(rowIdx .. ".")
+            rankText:SetTextColor(rankColor[1], rankColor[2], rankColor[3], rankColor[4])
+        end
+
+        -- Name, right of the rank's slot as in a live row
+        local nameText = textLayer:CreateFontString(nil, "OVERLAY")
+        -- Via ApplyFontStyle, not SetFont: the SHADOW*/HEAVY* styles are the
+        -- addon's own compounds, and SetFont only substring-matches OUTLINE/THICKOUTLINE out
         -- of them -- the shadow half would silently vanish from the preview.
         addon.ApplyFontStyle(nameText, nameFontPath, fontNames.fontSize or 12, fontNames.fontStyle or "OUTLINE")
-        nameText:SetPoint("LEFT", icon, "RIGHT", 3, 0)
-        nameText:SetWidth(math.max(20, barAreaLeft - nameAreaLeft - 2))
+        nameText:SetPoint("LEFT", icon, "RIGHT", DMY.NAME_LEFT, 0)
+        nameText:SetWidth(math.max(20, barAreaLeft - nameAreaLeft + 1 - DMY.NAME_LEFT))
         nameText:SetJustifyH("LEFT"); nameText:SetWordWrap(false)
-        nameText:SetText(player.name)
+        nameText:SetText(player.name or PreviewName())
 
         -- Name color: respect colorMode setting
         local nameColorMode = fontNames.colorMode or "default"
@@ -302,31 +335,32 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
             nameText:SetTextColor(1, 1, 1, 1)
         end
 
-        -- Bar background (full width of bar area)
+        -- Bar background (the bar's span)
         local barBg = container:CreateTexture(nil, "BACKGROUND", nil, -4)
         if barMode == "thin" then
-            barBg:SetPoint("TOPLEFT", container, "TOPLEFT", barAreaLeft, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
-            barBg:SetPoint("TOPRIGHT", container, "TOPRIGHT", -PREVIEW_PADDING, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
+            barBg:SetPoint("TOPLEFT", container, "TOPLEFT", barLeft, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
+            barBg:SetPoint("TOPRIGHT", container, "TOPRIGHT", barRight, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
             barBg:SetHeight(PREVIEW_THIN_BAR_HEIGHT)
         else
-            barBg:SetPoint("TOPLEFT", container, "TOPLEFT", barAreaLeft, yTop)
-            barBg:SetPoint("TOPRIGHT", container, "TOPRIGHT", -PREVIEW_PADDING, yTop)
+            barBg:SetPoint("TOPLEFT", container, "TOPLEFT", barLeft, yTop)
+            barBg:SetPoint("TOPRIGHT", container, "TOPRIGHT", barRight, yTop)
             barBg:SetHeight(PREVIEW_BAR_HEIGHT)
         end
         barBg:SetColorTexture(barBgColor[1] or 0.1, barBgColor[2] or 0.1, barBgColor[3] or 0.1, barBgColor[4] or 0.8)
 
-        -- Single full-width StatusBar (primary column data)
+        -- Single StatusBar from the icon to the right edge (primary column data)
         local bar = CreateFrame("StatusBar", nil, container)
         if barMode == "thin" then
-            bar:SetPoint("TOPLEFT", container, "TOPLEFT", barAreaLeft, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
-            bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -PREVIEW_PADDING, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
+            bar:SetPoint("TOPLEFT", container, "TOPLEFT", barLeft, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
+            bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", barRight, yTop - PREVIEW_BAR_HEIGHT + PREVIEW_THIN_BAR_HEIGHT)
             bar:SetHeight(PREVIEW_THIN_BAR_HEIGHT)
         else
-            bar:SetPoint("TOPLEFT", container, "TOPLEFT", barAreaLeft, yTop)
-            bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -PREVIEW_PADDING, yTop)
+            bar:SetPoint("TOPLEFT", container, "TOPLEFT", barLeft, yTop)
+            bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", barRight, yTop)
             bar:SetHeight(PREVIEW_BAR_HEIGHT)
         end
-        bar:SetStatusBarTexture(barTexPath or "Interface\\Buttons\\WHITE8x8")
+        -- The fill through the painter the real windows use
+        addon.Media.ApplyBarFill(bar, db.barTexture or "default")
         bar:SetStatusBarColor(cr, cg, cb)
         local primaryVal = GetPlayerValue(player, primaryFormatKey)
         bar:SetMinMaxValues(0, maxPrimaryVal)
@@ -540,7 +574,7 @@ local function CreateWindowSelector(parentFrame, builder)
 
     -- [+ Column] button (only enabled for Overall windows)
     local columns = cfg and cfg.columns or {}
-    local isOverall = cfg and cfg.sessionType == 0
+    local isOverall = cfg and cfg.sessionType == DMY.ST.Overall
     if #columns < 5 and Controls and Controls.CreateButton then
         local addColBtn = Controls:CreateButton({
             parent = row, text = "+ Column", fontSize = 10, height = 22,
@@ -668,7 +702,7 @@ function DMYSettings.Render(panel, scrollContent)
                 values = { default = "Default", thin = "Thin", hollow = "Hollow", hidden = "Hide Bars" },
                 order = { "default", "thin", "hollow", "hidden" },
                 emphasized = true,
-                get = function() return getSetting("barMode") or "default" end,
+                get = function() return getSetting("barMode") or "thin" end,
                 set = function(v) setAndRefresh("barMode", v) end,
             })
             inner:AddTabbedSection({
@@ -697,6 +731,7 @@ function DMYSettings.Render(panel, scrollContent)
                             get = styleGet, set = styleSet,
                             apply = function() Helpers.applyStyles(); builder:DeferredRefreshAll() end,
                             spacer = false,
+                            atlases = true,
                             foreground = {
                                 values = addon.Catalogs.ColorMode.ClassCustom.values, order = addon.Catalogs.ColorMode.ClassCustom.order,
                                 infoIcons = false, colorModeDefault = "class", colorDefault = { 0.8, 0.7, 0.2, 1 }, hasAlpha = false,
@@ -782,10 +817,54 @@ function DMYSettings.Render(panel, scrollContent)
         end
         builder:DeferredRefreshAll()
     end
-    -- All meter text is Scoot-drawn, so the paired Deep Shadow styles are
+    -- All meter text is drawn by the addon, so the paired Deep Shadow styles are
     -- offered on every tab. The sub-tables store style/size under
     -- fontStyle/fontSize; the accessors translate the composite's field names.
     local FIELD_KEYS = { style = "fontStyle", size = "fontSize" }
+    -- A Backdrop Texture row for one slot of the art catalog
+    -- (damagemetersY/art.lua), drawn only where this client offers art besides
+    -- the flat color. Returns a reader of the key in effect: a stored key the
+    -- client does not offer paints flat, so it reads as "solid".
+    local function AddPanelArtSelector(target, slot, settingKey, isDisabled)
+        local order, values = { "solid" }, { solid = "Solid" }
+        if DMY and DMY.PanelArtKeys then order, values = DMY.PanelArtKeys(slot) end
+        local function current()
+            local key = getSetting(settingKey)
+            return values[key] and key or "solid"
+        end
+        if #order > 1 then
+            target:AddSelector({ label = "Backdrop Texture", values = values, order = order,
+                get = current,
+                set = function(v) setAndRefresh(settingKey, v) end,
+                isDisabled = isDisabled })
+        end
+        return current
+    end
+
+    -- The Border Style keys: the drawn styles, then the art lines this client
+    -- offers. An art line draws untinted at the title bar's backdrop opacity,
+    -- so Border Color and Border Thickness belong to the drawn styles. A
+    -- stored key the client does not offer draws nothing and reads as "none".
+    local borderOrder = { "none", "square", "rounded" }
+    local borderValues = { none = "None", square = "Square", rounded = "Rounded" }
+    local artBorders = {}
+    if DMY and DMY.PanelArtEntries then
+        local order, values = DMY.PanelArtEntries("border")
+        for _, key in ipairs(order) do
+            borderOrder[#borderOrder + 1] = key
+            borderValues[key] = values[key]
+            artBorders[key] = true
+        end
+    end
+    local function borderStyle()
+        local key = getSetting("windowBorderStyle") or "none"
+        return borderValues[key] and key or "none"
+    end
+    local function borderIsDrawn()
+        local key = borderStyle()
+        return key ~= "none" and not artBorders[key]
+    end
+
     local function AddTextControls(tabInner, tableKey, defaultSize)
         tabInner:AddTextStyleBlock({
             get = function(field)
@@ -854,6 +933,12 @@ function DMYSettings.Render(panel, scrollContent)
                         tabInner:AddToggle({ label = "Show Title Bar Backdrop",
                             get = function() return getSetting("showTitleBarBackdrop") ~= false end,
                             set = function(v) setAndRefresh("showTitleBarBackdrop", v) end })
+                        local titleHidden = function() return getSetting("showTitleBarBackdrop") == false end
+                        AddPanelArtSelector(tabInner, "title", "titleBarBackdropTexture", titleHidden)
+                        tabInner:AddSlider({ label = "Backdrop Opacity", min = 1, max = 100, step = 1,
+                            get = function() return getSetting("titleBarBackdropOpacity") or 90 end,
+                            set = function(v) setAndRefresh("titleBarBackdropOpacity", v) end,
+                            isDisabled = function() return titleHidden() and not artBorders[borderStyle()] end })
                         tabInner:AddSelector({ label = "Title Mode",
                             values = { auto = "Auto (Session Name)", custom = "Custom" }, order = { "auto", "custom" },
                             get = function() return getSetting("titleMode") or "auto" end,
@@ -906,18 +991,17 @@ function DMYSettings.Render(panel, scrollContent)
     builder:AddCollapsibleSection({ title = "Window Border", componentId = "damageMeterV2", sectionKey = "windowBorder", defaultExpanded = false,
         buildContent = function(_, inner)
             inner:AddSelector({ label = "Border Style",
-                values = { none = "None", square = "Square", rounded = "Rounded" },
-                order = { "none", "square", "rounded" },
-                get = function() return getSetting("windowBorderStyle") or "none" end,
+                values = borderValues, order = borderOrder,
+                get = borderStyle,
                 set = function(v) setAndRefresh("windowBorderStyle", v) end })
             inner:AddColorPicker({ label = "Border Color", hasAlpha = true,
                 get = function() local c = getSetting("windowBorderColor") or {0,0,0,1}; return c[1],c[2],c[3],c[4] end,
                 set = function(r,g,b,a) setAndRefresh("windowBorderColor", {r,g,b,a}) end,
-                isDisabled = function() return (getSetting("windowBorderStyle") or "none") == "none" end })
+                isDisabled = function() return not borderIsDrawn() end })
             inner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
                 get = function() return getSetting("windowBorderThickness") or 1 end,
                 set = function(v) setAndRefresh("windowBorderThickness", v) end,
-                isDisabled = function() return (getSetting("windowBorderStyle") or "none") == "none" end })
+                isDisabled = function() return not borderIsDrawn() end })
             inner:Finalize()
         end })
 
@@ -926,10 +1010,13 @@ function DMYSettings.Render(panel, scrollContent)
             inner:AddToggle({ label = "Show Window Backdrop",
                 get = function() return getSetting("showBackdrop") ~= false end,
                 set = function(v) setAndRefresh("showBackdrop", v) end })
+            local backdropHidden = function() return getSetting("showBackdrop") == false end
+            local windowArt = AddPanelArtSelector(inner, "window", "windowBackdropTexture", backdropHidden)
+            -- Art draws untinted, so the color belongs to the flat backdrop
             inner:AddColorPicker({ label = "Backdrop Color",
                 get = function() local c = getSetting("windowBackdropColor") or {0.06,0.06,0.08,0.95}; return c[1],c[2],c[3],c[4] end,
                 set = function(r,g,b,a) setAndRefresh("windowBackdropColor", {r,g,b,a}) end,
-                isDisabled = function() return getSetting("showBackdrop") == false end })
+                isDisabled = function() return backdropHidden() or windowArt() ~= "solid" end })
             inner:AddSlider({ label = "Backdrop Opacity", min = 1, max = 100, step = 1,
                 get = function()
                     local v = getSetting("windowBackdropOpacity")

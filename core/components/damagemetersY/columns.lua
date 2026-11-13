@@ -6,35 +6,81 @@ local DMY = addon.DamageMetersY
 -- Column Format Definitions
 --------------------------------------------------------------------------------
 
--- Each format maps to one or two Enum.DamageMeterType values and display metadata.
+-- Each format maps to one or two Enum.DamageMeterType values (DMY.MT, read by
+-- name in core.lua) and display metadata.
 -- For combo formats, 'primary' is the main value and 'secondary' is in parentheses.
 
 -- headerAbbrev: the Abbreviated column-header mode's label.
 -- iconKind: the metric KIND for the Icons header mode — every format of one
 -- kind (e.g. all four damage formats) shares a single DMY.HEADER_ICONS entry.
-DMY.COLUMN_FORMATS = {
+local MT = DMY.MT
+
+local FORMATS = {
     -- Damage
-    damage   = { meterType = 0,  valueField = "totalAmount",     headerText = "Damage", headerAbbrev = "Dmg", iconKind = "damage" },
-    dps      = { meterType = 1,  valueField = "amountPerSecond",  headerText = "DPS", headerAbbrev = "DPS", iconKind = "damage" },
-    dmg_dps  = { primary = 0, secondary = 1, primaryField = "totalAmount", secondaryField = "amountPerSecond", headerText = "Damage (DPS)", headerAbbrev = "Dmg(DPS)", iconKind = "damage" },
-    dps_dmg  = { primary = 1, secondary = 0, primaryField = "amountPerSecond", secondaryField = "totalAmount", headerText = "DPS (Damage)", headerAbbrev = "DPS(Dmg)", iconKind = "damage" },
+    damage   = { meterType = MT.DamageDone,  valueField = "totalAmount",     headerText = "Damage", headerAbbrev = "Dmg", iconKind = "damage" },
+    dps      = { meterType = MT.Dps,  valueField = "amountPerSecond",  headerText = "DPS", headerAbbrev = "DPS", iconKind = "damage" },
+    dmg_dps  = { primary = MT.DamageDone, secondary = MT.Dps, primaryField = "totalAmount", secondaryField = "amountPerSecond", headerText = "Damage (DPS)", headerAbbrev = "Dmg(DPS)", iconKind = "damage" },
+    dps_dmg  = { primary = MT.Dps, secondary = MT.DamageDone, primaryField = "amountPerSecond", secondaryField = "totalAmount", headerText = "DPS (Damage)", headerAbbrev = "DPS(Dmg)", iconKind = "damage" },
 
     -- Healing
-    healing  = { meterType = 2,  valueField = "totalAmount",     headerText = "Healing", headerAbbrev = "Heal", iconKind = "healing" },
-    hps      = { meterType = 3,  valueField = "amountPerSecond",  headerText = "HPS", headerAbbrev = "HPS", iconKind = "healing" },
-    heal_hps = { primary = 2, secondary = 3, primaryField = "totalAmount", secondaryField = "amountPerSecond", headerText = "Healing (HPS)", headerAbbrev = "Heal(HPS)", iconKind = "healing" },
-    hps_heal = { primary = 3, secondary = 2, primaryField = "amountPerSecond", secondaryField = "totalAmount", headerText = "HPS (Healing)", headerAbbrev = "HPS(Heal)", iconKind = "healing" },
+    healing  = { meterType = MT.HealingDone,  valueField = "totalAmount",     headerText = "Healing", headerAbbrev = "Heal", iconKind = "healing" },
+    hps      = { meterType = MT.Hps,  valueField = "amountPerSecond",  headerText = "HPS", headerAbbrev = "HPS", iconKind = "healing" },
+    heal_hps = { primary = MT.HealingDone, secondary = MT.Hps, primaryField = "totalAmount", secondaryField = "amountPerSecond", headerText = "Healing (HPS)", headerAbbrev = "Heal(HPS)", iconKind = "healing" },
+    hps_heal = { primary = MT.Hps, secondary = MT.HealingDone, primaryField = "amountPerSecond", secondaryField = "totalAmount", headerText = "HPS (Healing)", headerAbbrev = "HPS(Heal)", iconKind = "healing" },
 
     -- Other
-    absorbs   = { meterType = 4,  valueField = "totalAmount",  headerText = "Absorbs", headerAbbrev = "Absrb", iconKind = "absorbs" },
-    interrupts = { meterType = 5, valueField = "totalAmount",  headerText = "Interrupts", headerAbbrev = "Intrpts", iconKind = "interrupts" },
-    dispels   = { meterType = 6,  valueField = "totalAmount",  headerText = "Dispels", headerAbbrev = "Dspls", iconKind = "dispels" },
-    dmgTaken  = { meterType = 7,  valueField = "totalAmount",  headerText = "Dmg Taken", headerAbbrev = "DmgTkn", iconKind = "dmgTaken" },
-    avoidable = { meterType = 8,  valueField = "totalAmount",  headerText = "Avoidable", headerAbbrev = "Avdble", iconKind = "avoidable" },
-    deaths    = { meterType = 9,  valueField = "totalAmount",  headerText = "Deaths",  isDeaths = true, headerAbbrev = "Dead", iconKind = "deaths" },
-    enemyDmg  = { meterType = 10, valueField = "totalAmount",  headerText = "Enemy Dmg", headerAbbrev = "EnmyDmg", iconKind = "enemyDmg" },
+    absorbs   = { meterType = MT.Absorbs,  valueField = "totalAmount",  headerText = "Absorbs", headerAbbrev = "Absrb", iconKind = "absorbs" },
+    interrupts = { meterType = MT.Interrupts, valueField = "totalAmount",  headerText = "Interrupts", headerAbbrev = "Intrpts", iconKind = "interrupts" },
+    dispels   = { meterType = MT.Dispels,  valueField = "totalAmount",  headerText = "Dispels", headerAbbrev = "Dspls", iconKind = "dispels" },
+    dmgTaken  = { meterType = MT.DamageTaken,  valueField = "totalAmount",  headerText = "Dmg Taken", headerAbbrev = "DmgTkn", iconKind = "dmgTaken" },
+    avoidable = { meterType = MT.AvoidableDamageTaken,  valueField = "totalAmount",  headerText = "Avoidable", headerAbbrev = "Avdble", iconKind = "avoidable" },
+    deaths    = { meterType = MT.Deaths,  valueField = "totalAmount",  headerText = "Deaths",  isDeaths = true, headerAbbrev = "Dead", iconKind = "deaths" },
+    enemyDmg  = { meterType = MT.EnemyDamageTaken, valueField = "totalAmount",  headerText = "Enemy Dmg", headerAbbrev = "EnmyDmg", iconKind = "enemyDmg" },
 }
+
+-- A format whose meter type the client's enum does not name is not offered:
+-- the menus and the settings page list what is left in the table.
+for key, def in pairs(FORMATS) do
+    local missing
+    if def.primaryField then
+        missing = def.primary == nil or def.secondary == nil
+    else
+        missing = def.meterType == nil
+    end
+    if missing then FORMATS[key] = nil end
+end
+
+DMY.COLUMN_FORMATS = FORMATS
 table.freeze(DMY.COLUMN_FORMATS)
+
+--------------------------------------------------------------------------------
+-- Meter families
+--------------------------------------------------------------------------------
+
+-- Two meter types are one family when a source record of either carries both
+-- of their values: a DamageDone or a Dps record holds the damage total and the
+-- damage rate, and a HealingDone or an Hps record the same for healing. A
+-- column in the primary column's family therefore reads the row's own record
+-- in combat and needs no identity match to find its player (layout.lua).
+DMY.METER_FAMILY = {}
+for family, names in pairs({
+    damage = { "DamageDone", "Dps" },
+    healing = { "HealingDone", "Hps" },
+}) do
+    for _, name in ipairs(names) do
+        local mt = MT[name]
+        if mt ~= nil then DMY.METER_FAMILY[mt] = family end
+    end
+end
+table.freeze(DMY.METER_FAMILY)
+
+--- True when two meter types are the same, or share a family.
+function DMY._SameMeterFamily(a, b)
+    if a == nil or b == nil then return false end
+    if a == b then return true end
+    local family = DMY.METER_FAMILY[a]
+    return family ~= nil and family == DMY.METER_FAMILY[b]
+end
 
 --------------------------------------------------------------------------------
 -- Header Icons (Icons column-header mode)
@@ -44,7 +90,7 @@ table.freeze(DMY.COLUMN_FORMATS)
 -- markup cannot desaturate), tinted by the resolved Header Row color.
 -- `scale` and `yOffset` are per-icon normalization tweaks so visually
 -- different sources read as one matched set; tune them with the in-game
--- gallery: /scoot debug dmY headericons  (edit here, /reload, re-check).
+-- gallery, the debug command dmY headericons (edit here, /reload, re-check).
 --
 -- The damage/healing/dmgTaken trio comes from one Blizzard atlas family
 -- (tiny role icons: sword / plus / shield); deaths is the raid-marker skull
@@ -76,11 +122,11 @@ table.freeze(DMY.HEADER_ICONS)
 --- Returns the primary Enum.DamageMeterType for a window's first column.
 function DMY._GetPrimaryMeterType(windowConfig)
     if not windowConfig or not windowConfig.columns or #windowConfig.columns == 0 then
-        return 1 -- DPS fallback
+        return MT.Dps -- DPS fallback
     end
     local fmt = windowConfig.columns[1].format
     local def = DMY.COLUMN_FORMATS[fmt]
-    if not def then return 1 end
+    if not def then return MT.Dps end
     return def.primary or def.meterType
 end
 

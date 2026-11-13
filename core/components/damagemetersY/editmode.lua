@@ -15,7 +15,15 @@ local function EnsurePositionsDB()
     return profile.damageMeterV2Positions
 end
 
+-- A host stores the positions where its own database keeps a frame's place
+-- (addon.MetersHost.GetPosition, SetPosition); with none they are the
+-- profile's damageMeterV2Positions[layoutName][windowIndex].
 function DMY._SavePosition(windowIndex, layoutName, point, x, y)
+    local host = DMY._Host()
+    if host and host.SetPosition then
+        host.SetPosition(windowIndex, layoutName, point, x, y)
+        return
+    end
     local positions = EnsurePositionsDB()
     if not positions then return end
     if not positions[layoutName] then
@@ -29,9 +37,14 @@ function DMY._SavePosition(windowIndex, layoutName, point, x, y)
 end
 
 local function GetWindowPosition(windowIndex, layoutName)
+    local host = DMY._Host()
+    if host and host.GetPosition then
+        return host.GetPosition(windowIndex, layoutName)
+    end
     local positions = EnsurePositionsDB()
     return positions and positions[layoutName] and positions[layoutName][windowIndex] or nil
 end
+DMY._GetPosition = GetWindowPosition
 
 local function ApplyWindowPosition(frame, point, x, y)
     frame:ClearAllPoints()
@@ -111,14 +124,14 @@ end
 -- LibEditMode Registration
 --------------------------------------------------------------------------------
 
--- One positionable per window (core/editmode/positionables.lua). Storage stays
--- damageMeterV2Positions[layoutName][i]; a window with nothing stored keeps the
--- _CreateWindow parking spot rather than jumping to the Edit Mode default.
+-- One positionable per window (core/editmode/positionables.lua). Storage is
+-- the pair above; a window with nothing stored keeps the _CreateWindow parking
+-- spot rather than jumping to the Edit Mode default.
 function DMY._InitializeEditMode()
     for i = 1, DMY.MAX_WINDOWS do
         local win = DMY._windows[i]
         if win and win.frame then
-            win.frame.editModeName = "Damage Meter " .. i
+            win.frame.editModeName = DMY.WindowLabel(i)
 
             -- No per-window settings section exists; the window selector's
             -- state carries the target instead.

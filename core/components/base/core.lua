@@ -258,6 +258,18 @@ function addon:InitializeComponents()
     end
 end
 
+--- Runs one category's initializers outside the full pass, for a host whose
+--- gate for that category opens after the first pass: a profile the engine
+--- lands on once the world loads. The components they register join
+--- addon.Components; the caller links them to the database.
+function addon:InitializeComponentCategory(category)
+    for _, entry in ipairs(self.ComponentInitializers) do
+        if type(entry) == "table" and entry.category == category then
+            pcall(entry.fn, self)
+        end
+    end
+end
+
 function addon:LinkComponentsToDB()
     -- Zero-Touch: only assign pre-existing persisted tables. Under a host
     -- store the profile holds no component tables, so the only containers to

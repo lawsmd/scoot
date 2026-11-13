@@ -6,7 +6,7 @@ local DMY = addon.DamageMetersY
 DMY._slashHidden = false
 
 --------------------------------------------------------------------------------
--- JiberishIcons helpers (reuse X's addon-level exports)
+-- JiberishIcons helpers
 --------------------------------------------------------------------------------
 
 local function GetJiberishIcons()
@@ -17,6 +17,22 @@ local function GetJiberishIcons()
     if not JI.dataHelper or not JI.dataHelper.class then return nil end
     if not JI.mergedStylePacks or not JI.mergedStylePacks.class then return nil end
     return JI
+end
+
+-- What the settings pages read to offer the class icon styles: whether the
+-- icon pack is loaded with its class data, and its styles as key -> name.
+function addon.IsJiberishIconsAvailable()
+    return GetJiberishIcons() ~= nil
+end
+
+function addon.GetJiberishIconsStyles()
+    local JI = GetJiberishIcons()
+    if not JI then return {} end
+    local styles = {}
+    for key, data in pairs(JI.mergedStylePacks.class.styles or {}) do
+        styles[key] = data.name or key
+    end
+    return styles
 end
 
 --------------------------------------------------------------------------------
@@ -52,9 +68,11 @@ local function ApplyIcon(row, player, db)
         end
     end
 
-    -- Default: spec icon if available
-    if player.specIconID and player.specIconID ~= 0 then
-        icon:SetTexture(player.specIconID)
+    -- Default: the spec icon where it is a plain file id. A secret one cannot
+    -- be tested for zero, and the class atlas below draws in its place.
+    local specIcon = DMY._PlainNumber(player.specIconID)
+    if specIcon and specIcon ~= 0 then
+        icon:SetTexture(specIcon)
         icon:SetTexCoord(0, 1, 0, 1)
         return
     end
@@ -323,7 +341,7 @@ end
 -- Rounded style uses the high-res rounded-corner edge file directly. It is
 -- deliberately NOT registered in BarBorders: bar-scale geometry there derives
 -- edgeSize from frameHeight/18, which is wrong for a full-size window.
-local WINDOW_ROUNDED_EDGE_FILE = "Interface\\AddOns\\Scoot\\media\\barborder\\roundcorners.tga"
+local WINDOW_ROUNDED_EDGE_FILE = addon.MediaPath .. "media\\barborder\\roundcorners.tga"
 -- edgeSize per point of Border Thickness (1-8). Source tiles are 64px, so the
 -- art only ever downscales. In-game tuning knob.
 local WINDOW_EDGE_SIZE_PER_THICKNESS = 4
@@ -401,6 +419,14 @@ function DMY._ApplyWindowBorder(frame, db)
     if not frame then return end
     local styleKey = db.windowBorderStyle or "none"
 
+    -- An art line (art.lua) draws untinted at the title bar's opacity, so the
+    -- window's line and the line under the title bar read as one frame.
+    local artAlpha = (tonumber(db.titleBarBackdropOpacity) or 90) / 100
+    if DMY.ApplyPanelArt(frame, "border", styleKey, artAlpha) then
+        if frame._winBorder then frame._winBorder.frame:Hide() end
+        return
+    end
+
     if styleKey == "none" then
         if frame._winBorder then frame._winBorder.frame:Hide() end
         return
@@ -431,6 +457,52 @@ function DMY._ApplyWindowBorder(frame, db)
 end
 
 --------------------------------------------------------------------------------
+-- Backdrops
+--------------------------------------------------------------------------------
+
+-- The window's backdrop and the title bar's, each as art from the catalog
+-- (art.lua) or as its flat color. Cross-file: also used by the settings
+-- preview pane, which passes its own regions.
+--   frame       the window; its art is kept on it
+--   background  the flat backdrop texture
+--   header      the title bar's frame; its art is kept on it
+--   headerBg    the title bar's flat texture
+--   headerDiv   the line under the title bar, hidden while the title bar's
+--               art draws its own edge
+function DMY._ApplyBackdrops(db, frame, background, header, headerBg, headerDiv)
+    local backdropShown = db.showBackdrop ~= false
+    local titleShown = db.showTitleBarBackdrop ~= false
+
+    local bc = db.windowBackdropColor or { 0.06, 0.06, 0.08, 0.95 }
+    -- Opacity slider wins; unset falls back to the color's stored alpha
+    local alpha = db.windowBackdropOpacity and (db.windowBackdropOpacity / 100) or bc[4] or 0.95
+    -- Art starts under a title bar that has a backdrop of its own, so the
+    -- title bar keeps its own opacity. The flat color fills the whole window,
+    -- as it always has.
+    local windowArt = DMY.ApplyPanelArt(frame, "window", backdropShown and db.windowBackdropTexture or nil,
+        alpha, titleShown and header or nil)
+    if backdropShown and not windowArt then
+        background:SetColorTexture(bc[1] or 0.06, bc[2] or 0.06, bc[3] or 0.08, alpha)
+    else
+        background:SetColorTexture(0, 0, 0, 0)
+    end
+
+    if not (header and headerBg) then return end
+    local titleAlpha = (tonumber(db.titleBarBackdropOpacity) or 90) / 100
+    -- Under a window border that is an art line the title bar's art keeps its
+    -- bottom line only (_ApplyWindowBorder runs first).
+    local titleArt = DMY.ApplyPanelArt(header, "title", titleShown and db.titleBarBackdropTexture or nil,
+        titleAlpha, nil, DMY.PanelArtShown(frame, "border"))
+    if titleShown and not titleArt then
+        local tc = DMY.TITLE_BAR_COLOR
+        headerBg:SetColorTexture(tc[1], tc[2], tc[3], titleAlpha)
+    else
+        headerBg:SetColorTexture(0, 0, 0, 0)
+    end
+    if headerDiv then headerDiv:SetShown(not titleArt) end
+end
+
+--------------------------------------------------------------------------------
 -- Full styling pass for a window
 --------------------------------------------------------------------------------
 
@@ -451,16 +523,6 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     local db = comp.db
     local textNames, textValues, textTitle, textTimer, textHeaders = ResolveTextSettings(comp)
 
-    -- Window backdrop
-    if db.showBackdrop == false then
-        win.background:SetColorTexture(0, 0, 0, 0)
-    else
-        local bc = db.windowBackdropColor or { 0.06, 0.06, 0.08, 0.95 }
-        -- Opacity slider wins; unset falls back to the color's stored alpha
-        local alpha = db.windowBackdropOpacity and (db.windowBackdropOpacity / 100) or bc[4] or 0.95
-        win.background:SetColorTexture(bc[1] or 0.06, bc[2] or 0.06, bc[3] or 0.08, alpha)
-    end
-
     -- Frame size and scale (per-window, falls back to shared)
     local cfg = DMY._GetWindowConfig(windowIndex)
     local fw = tonumber(cfg and cfg.frameWidth or db.frameWidth) or 350
@@ -473,14 +535,9 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     -- Window border (after SetScale/SetSize: pixel snap reads effective scale)
     DMY._ApplyWindowBorder(win.frame, db)
 
-    -- Title bar backdrop
-    if win.header and win.header._bg then
-        if db.showTitleBarBackdrop == false then
-            win.header._bg:SetColorTexture(0, 0, 0, 0)
-        else
-            win.header._bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
-        end
-    end
+    -- Window and title bar backdrops (after SetScale/SetSize: the title bar's
+    -- art is laid out against the bar's size and snapped to pixels)
+    DMY._ApplyBackdrops(db, win.frame, win.background, win.header, win.header and win.header._bg, win.headerDiv)
 
     -- Title and timer text styling (separate settings)
     if win.titleText then ApplyTextStyle(win.titleText, textTitle) end
@@ -514,11 +571,15 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     end
 
     -- Apply text styling to all bar rows in the pool
-    local barTexPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(db.barTexture or "default") or nil
-    local barMode = db.barMode or "default"
+    -- The fill goes through the shared painter, which takes a file key, an
+    -- atlas key, and the stock key as plain white
+    local applyBarFill = addon.Media and addon.Media.ApplyBarFill
+    local barTexKey = db.barTexture or "default"
+    local barMode = db.barMode or "thin"
     local fillAlpha = (barMode == "hollow") and 0 or 1
     -- Rank numbers follow the Names font (one point smaller) but keep their
-    -- muted color, so ApplyFontStyle directly instead of ApplyTextStyle
+    -- own color (DMY.RANK_COLOR), so ApplyFontStyle directly instead of
+    -- ApplyTextStyle
     local nameFace = addon.ResolveFontFace(textNames.fontFace)
     local nameStyle = textNames.fontStyle or "OUTLINE"
     local rankSize = math.max(6, (textNames.fontSize or 12) - 1)
@@ -542,8 +603,8 @@ function DMY._ApplyFullStyling(windowIndex, comp)
         ApplyTextStyle(row.nameText, textNames)
         if row.rankText then addon.ApplyFontStyle(row.rankText, nameFace, rankSize, nameStyle) end
         -- Single full-width bar texture
-        if row.bar and barTexPath then
-            pcall(row.bar.SetStatusBarTexture, row.bar, barTexPath)
+        if row.bar and applyBarFill then
+            pcall(applyBarFill, row.bar, barTexKey)
         end
         -- Reset fill alpha for mode switching
         local barTex = row.bar and row.bar:GetStatusBarTexture()
@@ -559,8 +620,8 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     local pinnedRow = win.pinnedRow
     ApplyTextStyle(pinnedRow.nameText, textNames)
     if pinnedRow.rankText then addon.ApplyFontStyle(pinnedRow.rankText, nameFace, rankSize, nameStyle) end
-    if pinnedRow.bar and barTexPath then
-        pcall(pinnedRow.bar.SetStatusBarTexture, pinnedRow.bar, barTexPath)
+    if pinnedRow.bar and applyBarFill then
+        pcall(applyBarFill, pinnedRow.bar, barTexKey)
     end
     local pinnedBarTex = pinnedRow.bar and pinnedRow.bar:GetStatusBarTexture()
     if pinnedBarTex then pinnedBarTex:SetAlpha(fillAlpha) end
@@ -625,7 +686,7 @@ function DMY._StyleBarRow(row, player, db)
     DMY._ApplyBarBorder(row, player, db)
 
     -- Hollow outline: show when hollow mode active
-    local barMode = db.barMode or "default"
+    local barMode = db.barMode or "thin"
     if barMode == "hollow" then
         local cr, cg, cb = DMY._GetBarColor(player, db)
         ShowHollowOutline(row, cr, cg, cb)
@@ -697,7 +758,7 @@ function DMY._SlashToggleShow()
             end
         end
     end
-    addon:Print(DMY._slashHidden and "Damage Meter hidden." or "Damage Meter shown.")
+    addon:Print(DMY.DisplayName() .. (DMY._slashHidden and " hidden." or " shown."))
 end
 
 function DMY._SlashReset()
@@ -705,7 +766,40 @@ function DMY._SlashReset()
         C_DamageMeter.ResetAllCombatSessions()
     end
     DMY._HandleReset()
-    addon:Print("Damage Meter data reset.")
+    addon:Print(DMY.DisplayName() .. " data reset.")
+end
+
+-- One pair of words serves whichever meter is active: this one, or the
+-- native meter where an addon carries it (addon.DamageMetersX). Each reads the
+-- active meter's own Quality of Life toggle before it acts.
+local function slashMeter()
+    if not addon:IsModuleEnabled("damageMeter") then
+        addon:Print(DMY.DisplayName() .. " module is disabled.")
+        return nil
+    end
+
+    local isY = addon:IsModuleEnabled("damageMeter", "damageMeterV2")
+    local comp = addon.Components and addon.Components[isY and "damageMeterV2" or "damageMeter"]
+    if not (comp and comp.db and comp.db.enableSlashDM) then
+        addon:Print("Enable /dm commands in " .. addon.Brand .. " \226\134\146 " .. DMY.DisplayName() .. " \226\134\146 Quality of Life.")
+        return nil
+    end
+
+    return isY and DMY or addon.DamageMetersX
+end
+
+-- Installed from the component initializer (core.lua), so the words exist
+-- only while the damage meter module is on. Installing again repoints them.
+function DMY._InstallSlashWords()
+    if not (addon.Commands and addon.Commands.InstallWord) then return end
+    addon.Commands.InstallWord("DMSHOW", "/dmshow", function()
+        local meter = slashMeter()
+        if meter and meter._SlashToggleShow then meter._SlashToggleShow() end
+    end)
+    addon.Commands.InstallWord("DMRESET", "/dmreset", function()
+        local meter = slashMeter()
+        if meter and meter._SlashReset then meter._SlashReset() end
+    end)
 end
 
 --------------------------------------------------------------------------------

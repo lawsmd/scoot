@@ -14,13 +14,13 @@ local POPUP_WIDTH = 280
 
 -- Meter types where combatSpellDetails is populated with attacker info.
 -- Measured: only DamageTaken (7) and AvoidableDamageTaken (8).
-local DAMAGE_TAKEN_FAMILY = { [7] = true, [8] = true }
+local DAMAGE_TAKEN_FAMILY = DMY.MeterTypeSet("DamageTaken", "AvoidableDamageTaken")
 
 -- HealingDone (2) and Hps (3) return per-target rows with empty unitName.
 -- Renderer must aggregate by spellID to avoid duplicate-looking rows.
-local HEAL_FAMILY_AGGREGATE = { [2] = true, [3] = true }
+local HEAL_FAMILY_AGGREGATE = DMY.MeterTypeSet("HealingDone", "Hps")
 
-local DEATHS_METER_TYPE = 9
+local DEATHS_METER_TYPE = DMY.MT.Deaths
 
 -- Classification colors for mob attackers (unitClassFilename is always "WARRIOR" for mobs).
 local CLASSIFICATION_COLORS = {
@@ -616,7 +616,7 @@ end
 
 -- Query → build → populate the death log (shared by click-open, the regen
 -- refresh, and the live throttle refresh). Failure dispositions feed the
--- dlog* counters in /scoot debug dmY drillstate.
+-- dlog* counters in the debug command dmY drillstate.
 function DMY._OpenDeathLog(menu)
     local dd = DMY._activeDrilldown
     if not dd then return end
@@ -701,23 +701,28 @@ end
 -- Populate the popup with header + spell rows (or placeholder).
 --------------------------------------------------------------------------------
 
+-- Meter type → the label in the popup's title, for the types the client names.
+local METRIC_LABELS = {}
+for name, label in pairs({
+    DamageDone = "Damage",
+    Dps = "DPS",
+    HealingDone = "Healing",
+    Hps = "HPS",
+    Absorbs = "Absorbs",
+    Interrupts = "Interrupts",
+    Dispels = "Dispels",
+    DamageTaken = "Damage Taken",
+    AvoidableDamageTaken = "Avoidable Damage",
+    Deaths = "Deaths",
+    EnemyDamageTaken = "Enemy Damage",
+}) do
+    local mt = DMY.MT[name]
+    if mt ~= nil then METRIC_LABELS[mt] = label end
+end
+
 local function GetMetricLabel(meterType)
-    -- Use the COLUMN_FORMATS header text for the matching format key
-    -- Map meterType → user-facing label
-    local LABELS = {
-        [0]  = "Damage",
-        [1]  = "DPS",
-        [2]  = "Healing",
-        [3]  = "HPS",
-        [4]  = "Absorbs",
-        [5]  = "Interrupts",
-        [6]  = "Dispels",
-        [7]  = "Damage Taken",
-        [8]  = "Avoidable Damage",
-        [9]  = "Deaths",
-        [10] = "Enemy Damage",
-    }
-    return LABELS[meterType] or "?"
+    if meterType == nil then return "?" end
+    return METRIC_LABELS[meterType] or "?"
 end
 
 function DMY._PopulateDrilldownPopup(menu, spellData)
@@ -896,7 +901,7 @@ function DMY._ShowPendingState(menu)
     local dd = DMY._activeDrilldown
     if not dd then return end
     menu:Clear()
-    local title = (dd.sourceName or "Loading…") .. "  —  " .. GetMetricLabel(dd.meterType or 1)
+    local title = (dd.sourceName or "Loading…") .. "  —  " .. GetMetricLabel(dd.meterType or DMY.MT.Dps)
     local classColor = nil
     if dd.classFilename then
         local cc = addon.GetClassColorObj(dd.classFilename)
@@ -942,8 +947,8 @@ function DMY._OpenDrilldown(row, columnIndex)
 
     local meterType = colDef.primary or colDef.meterType
 
-    -- EnemyDamageTaken (10): source has no GUID — skip drill-down
-    if meterType == 10 then return end
+    -- EnemyDamageTaken: source has no GUID — skip drill-down
+    if meterType == DMY.MT.EnemyDamageTaken then return end
 
     local sourceGUID = row._sourceGUID -- nil in combat
     local identityKey = row._identityKey
@@ -974,7 +979,7 @@ function DMY._OpenDrilldown(row, columnIndex)
     if meterType == DEATHS_METER_TYPE then
         local dd = DMY._activeDrilldown
         dd.deathsView = "log"
-        dd.logScope = (cfg.sessionType == 0 and not cfg.sessionID) and "player" or "segment"
+        dd.logScope = (cfg.sessionType == DMY.ST.Overall and not cfg.sessionID) and "player" or "segment"
         dd.logOffset = 0
         dd.sessionLabel = DMY._GetSessionLabel(cfg.sessionType, cfg.sessionID, cfg._sessionName)
         DMY._OpenDeathLog(menu)

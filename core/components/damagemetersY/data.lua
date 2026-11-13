@@ -91,8 +91,12 @@ end
 DMY._guidCache = {}       -- { [guid] = { classFilename, specIconID, isLocalPlayer } }
 DMY._identityToGUID = {}  -- { [identityKey] = guid or false (false = collision) }
 
+-- The spec icon joins the key only when it is plain. One client documents
+-- specIconID as SecretValue, and a key concatenated from a secret is a secret
+-- string, which no table takes as an index. There the key is the class and the
+-- local flag.
 local function BuildIdentityKey(classFilename, specIconID, isLocalPlayer)
-    return (classFilename or "UNKNOWN") .. "_" .. tostring(specIconID or 0) .. "_" .. tostring(isLocalPlayer)
+    return (classFilename or "UNKNOWN") .. "_" .. tostring(DMY._PlainNumber(specIconID) or 0) .. "_" .. tostring(isLocalPlayer)
 end
 DMY._BuildIdentityKey = BuildIdentityKey
 
@@ -186,7 +190,7 @@ function DMY._RebuildRecapSegmentIndex()
         for _, seg in ipairs(segments) do
             local sid = DMY._PlainNumber(seg.sessionID)
             if sid then
-                local ok, session = pcall(C_DamageMeter.GetCombatSessionFromID, sid, 9)
+                local ok, session = pcall(C_DamageMeter.GetCombatSessionFromID, sid, DMY.MT.Deaths)
                 if ok then
                     local name = DMY._PlainValue(seg.name)
                     if not name or name == "" then name = "Combat #" .. tostring(sid) end
@@ -201,7 +205,7 @@ function DMY._RebuildRecapSegmentIndex()
     end
     local okCur, currentSession = false, nil
     if C_DamageMeter.GetCombatSessionFromType then
-        okCur, currentSession = pcall(C_DamageMeter.GetCombatSessionFromType, 1, 9)
+        okCur, currentSession = pcall(C_DamageMeter.GetCombatSessionFromType, DMY.ST.Current, DMY.MT.Deaths)
     end
 
     -- Death times are positions on the OVERALL window's clock (its top-left
@@ -251,7 +255,7 @@ end
 -- sources exist: the local player's own GUID (UnitGUID("player") is never
 -- secret) and the OOC-rebuilt identity cache, guarded by the CURRENT session's
 -- collision map so a duplicate class+spec in this pull can never open another
--- player's breakdown. Counters feed /scoot debug dmY drillstate.
+-- player's breakdown. Counters feed the debug command dmY drillstate.
 --------------------------------------------------------------------------------
 
 DMY._drillCounts = { tierLocal = 0, tierCache = 0, unresolved = 0,
@@ -621,7 +625,7 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
     if not inCombat and next(DMY._petOwners) then
         local replacements
         for meterType, session in pairs(sessions) do
-            if meterType ~= 9 and session.combatSources then
+            if meterType ~= DMY.MT.Deaths and session.combatSources then
                 local replacement = FoldPetSources(session, sessions)
                 if replacement then
                     replacements = replacements or {}
@@ -644,8 +648,8 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
 
     -- Deaths pre-count (only needed if Deaths column is present and OOC)
     local deathCounts
-    if not inCombat and sessions[9] then -- 9 = Deaths
-        deathCounts = CountDeathsPerGUID(sessions[9])
+    if not inCombat and sessions[DMY.MT.Deaths] then
+        deathCounts = CountDeathsPerGUID(sessions[DMY.MT.Deaths])
     end
 
     -- Build GUID-keyed lookups for secondary types (OOC only)
@@ -713,7 +717,7 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
                                 secondaryByIdentity[ikey] = bucket
                                 secondaryPresence[ikey] = {}
                             end
-                            if mt == 9 then
+                            if mt == DMY.MT.Deaths then
                                 -- Deaths session = one entry per death EVENT; repeats
                                 -- of an ikey are the same player dying again, so count
                                 -- them (plain integer). Genuine two-player ambiguity is
@@ -791,7 +795,7 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
             local player = {
                 name = source.name,                   -- secret in combat
                 classFilename = source.classFilename, -- NeverSecret
-                specIconID = source.specIconID,        -- NeverSecret (may be nil)
+                specIconID = source.specIconID,        -- may be nil, or secret on one client; read through DMY._PlainNumber
                 isLocalPlayer = source.isLocalPlayer,  -- NeverSecret
                 identityKey = identityKey,             -- for combat secondary lookup
                 rank = rank,
@@ -821,7 +825,7 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
                     if meterType ~= primaryType and not player.values[meterType] then
                         local s = lookup[guid]
                         if s then
-                            if meterType == 9 and deathCounts then -- Deaths
+                            if meterType == DMY.MT.Deaths and deathCounts then
                                 player.values[meterType] = {
                                     totalAmount = deathCounts[guid] or 0,
                                     amountPerSecond = 0,
@@ -845,7 +849,7 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
         end
     end
 
-    -- Deaths values are Scoot-computed per-player counts, but the engine's
+    -- Deaths values are addon-computed per-player counts, but the engine's
     -- session ordering and maxAmount are per-EVENT (most recent death first).
     -- OOC: re-sort a deaths-primary window by count (recency as tiebreak) and
     -- normalize death bars against the highest count. Combat path untouched.
@@ -867,7 +871,7 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
         for _, c in pairs(deathCounts) do
             if c > maxCount then maxCount = c end
         end
-        merged.maxAmounts[9] = maxCount
+        merged.maxAmounts[DMY.MT.Deaths] = maxCount
     end
 
     return merged
@@ -881,7 +885,7 @@ end
 -- validation retry are documented there). DMY's containment for the bp=10
 -- degraded shape: values below 10 pass through raw but sit inside the fixed
 -- value-text widths (layout.lua). Creation errors are kept in
--- DMY._abbrevError for inspection via /scoot debug dmY abbrev.
+-- DMY._abbrevError for inspection via the debug command dmY abbrev.
 --------------------------------------------------------------------------------
 
 DMY._BuildBreakpointTable = addon.GetDefaultAbbrevBreakpoints   -- used by the debug battery

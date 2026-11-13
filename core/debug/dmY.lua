@@ -1,8 +1,8 @@
--- dmY.lua - /scoot debug dmY: Modern damage meter probes for CVars, GUIDs, and source APIs
+-- dmY.lua - the debug command dmY: Modern damage meter probes for CVars, GUIDs, and source APIs
 local addonName, addon = ...
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY cvar — Test 1: CVar data collection
+-- debug dmY cvar — Test 1: CVar data collection
 --------------------------------------------------------------------------------
 
 local function DebugDMYCVar()
@@ -25,7 +25,7 @@ local function DebugDMYCVar()
         addon:Print("DMY CVar Test: Set damageMeterEnabled = 0")
         addon:Print("  Blizzard meter is now hidden.")
         addon:Print("  1) Enter combat (dungeon trash or target dummy)")
-        addon:Print("  2) After combat ends, run: /scoot debug dmY cvar")
+        addon:Print("  2) After combat ends, run: /" .. addon.SlashToken .. " debug dmY cvar")
         return
     end
 
@@ -79,7 +79,7 @@ local function DebugDMYCVar()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY api — Tests 2-4: sourceGUID secrecy, SetText, SetValue
+-- debug dmY api — Tests 2-4: sourceGUID secrecy, SetText, SetValue
 --------------------------------------------------------------------------------
 
 -- Reusable hidden test frame (created once, reused across calls)
@@ -184,7 +184,7 @@ local function RunAPITests()
         { name = "totalAmount",     value = src.totalAmount,     expected = "secret in combat" },
         { name = "amountPerSecond", value = src.amountPerSecond, expected = "secret in combat" },
         { name = "classFilename",   value = src.classFilename,   expected = "NeverSecret" },
-        { name = "specIconID",      value = src.specIconID,      expected = "NeverSecret" },
+        { name = "specIconID",      value = src.specIconID,      expected = "NeverSecret; SecretValue on one client" },
         { name = "isLocalPlayer",   value = src.isLocalPlayer,   expected = "NeverSecret" },
         { name = "deathRecapID",    value = src.deathRecapID,    expected = "NeverSecret" },
     }
@@ -268,9 +268,9 @@ local function RunAPITests()
     table.insert(lines, "")
 
     --------------------------------------------------------------------------
-    -- Tests 3-4: SetText and SetValue on Scoot-owned frames
+    -- Tests 3-4: SetText and SetValue on addon-owned frames
     --------------------------------------------------------------------------
-    table.insert(lines, "--- Scoot-Owned Frame Tests ---")
+    table.insert(lines, "--- " .. addon.Brand .. "-Owned Frame Tests ---")
 
     EnsureTestFrame()
 
@@ -332,9 +332,9 @@ local function RunAPITests()
 
     local frameTestsOK = okMM and okSV and okTN and okTA and okAPS
     if frameTestsOK then
-        table.insert(lines, "  SetText/SetValue on Scoot frames: All OK")
+        table.insert(lines, "  SetText/SetValue on " .. addon.Brand .. " frames: All OK")
     else
-        table.insert(lines, "  SetText/SetValue on Scoot frames: SOME FAILED (see above)")
+        table.insert(lines, "  SetText/SetValue on " .. addon.Brand .. " frames: SOME FAILED (see above)")
     end
 
     return lines
@@ -345,7 +345,7 @@ local function DebugDMYAPI()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY fields — Exhaustive mid-combat field dump
+-- debug dmY fields — Exhaustive mid-combat field dump
 -- Purpose: find any non-secret identifier that could correlate players across
 -- meter types during combat (solving the rank-drift problem).
 --------------------------------------------------------------------------------
@@ -714,7 +714,7 @@ local function DebugDMYFields()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY abbrev — Abbreviation config + formatter battery
+-- debug dmY abbrev — Abbreviation config + formatter battery
 -- Runs OOC on plain numbers (secrecy gates access, not formatting), so it
 -- fully characterizes the C-side formatters without needing combat values.
 --------------------------------------------------------------------------------
@@ -810,7 +810,7 @@ local function DebugDMYAbbrev()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY colprobe — identity-correlated secondary column probe
+-- debug dmY colprobe — identity-correlated secondary column probe
 -- Purpose: verify the session-correlation pipeline that replaced the
 -- stored-GUID bypass. Dumps restriction states, per-secondary-type session
 -- identity keys with secrecy flags, the live mergedData display simulation,
@@ -864,8 +864,8 @@ local function DebugDMYColprobe()
                 local mt = def and (def.primary or def.meterType)
                 if not def then
                     add("    col %d: %s — UNKNOWN FORMAT", c, tostring(colDef and colDef.format))
-                elseif mt == primaryType then
-                    add("    col %d: %s — same meter type as primary (reads the primary session record)", c, colDef.format)
+                elseif DMY._SameMeterFamily(mt, primaryType) then
+                    add("    col %d: %s — in the primary column's family (reads the row's own record)", c, colDef.format)
                 else
                     add("    col %d: %s (mt=%d) — session dump:", c, colDef.format, mt)
                     local ok, session
@@ -888,7 +888,7 @@ local function DebugDMYColprobe()
                             add("      #%d ikey=%s guidSecret=%s totalSecret=%s",
                                 idx, ikey, FormatSecretResult(guidSecret), FormatSecretResult(totalSecret))
                         end
-                        if mt == 9 then
+                        if mt == DMY.MT.Deaths then
                             add("      deaths per-ikey counts:")
                             for ikey, n in pairs(ikeyCounts) do
                                 add("        %s = %d", ikey, n)
@@ -935,8 +935,8 @@ local function DebugDMYColprobe()
                         local outcome
                         if not mt then
                             outcome = "?"
-                        elseif mt == pType then
-                            outcome = "PRIMARY-RECORD"
+                        elseif DMY._SameMeterFamily(mt, pType) then
+                            outcome = "OWN-RECORD"
                         elseif merged.identityCollisions and merged.identityCollisions[player.identityKey] then
                             outcome = "DASH(collision)"
                         elseif merged.secondaryQueried and merged.secondaryQueried[mt] then
@@ -956,6 +956,57 @@ local function DebugDMYColprobe()
         end
     end
 
+    -- [3b] The fields that decide whether the identity key can be narrower:
+    -- per source of the first enabled window's primary session, the secrecy of
+    -- the name and the GUID and the contents of the other identity fields; then
+    -- whether the per-source getter takes the row's own GUID back.
+    for i = 1, DMY.MAX_WINDOWS do
+        local cfg = DMY._GetWindowConfig(i)
+        local pDef = cfg and cfg.enabled and cfg.columns and cfg.columns[1] and FORMATS[cfg.columns[1].format]
+        local pType = pDef and (pDef.primary or pDef.meterType)
+        if pType ~= nil then
+            local ok, session
+            if cfg.sessionID then
+                ok, session = pcall(C_DamageMeter.GetCombatSessionFromID, cfg.sessionID, pType)
+            else
+                ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, cfg.sessionType, pType)
+            end
+            add("[3b] Window %d primary session (mt=%s), identity fields per source:", i, tostring(pType))
+            if not ok then
+                add("    query FAILED: %s", tostring(session))
+            elseif not session or not session.combatSources or #session.combatSources == 0 then
+                add("    no sources")
+            else
+                for idx, src in ipairs(session.combatSources) do
+                    local nameSecret = TestSecret(src.name)
+                    local guidSecret = TestSecret(src.sourceGUID)
+                    local displaySecret = TestSecret(src.sourceDisplayType)
+                    local factionSecret = TestSecret(src.factionGroup)
+                    add("    #%d ikey=%s nameSecret=%s guidSecret=%s classification=%s displayType=%s faction=%s deathRecapID=%s",
+                        idx,
+                        DMY._BuildIdentityKey(src.classFilename, src.specIconID, src.isLocalPlayer),
+                        FormatSecretResult(nameSecret), FormatSecretResult(guidSecret),
+                        FormatSafeValue(src.classification, TestSecret(src.classification)),
+                        FormatSafeValue(src.sourceDisplayType, displaySecret),
+                        FormatSafeValue(src.factionGroup, factionSecret),
+                        FormatSafeValue(src.deathRecapID, TestSecret(src.deathRecapID)))
+                end
+                -- The row's own GUID handed back to the per-source getter. The
+                -- documented contract (SecretArguments = AllowedWhenUntainted)
+                -- says addon code is refused while the GUID is secret.
+                local first = session.combatSources[1]
+                local getSource = (not cfg.sessionID) and C_DamageMeter.GetCombatSessionSourceFromType
+                if first and getSource then
+                    local srcOk, srcResult = pcall(getSource, cfg.sessionType, pType, first.sourceGUID)
+                    add("    per-source getter with source #1's own GUID: %s",
+                        srcOk and ("accepted (" .. type(srcResult) .. ")") or ("refused: " .. tostring(srcResult)))
+                end
+            end
+            add("")
+            break
+        end
+    end
+
     -- [4] Drilldown GUID cache state
     local cacheCount, collisionCount = 0, 0
     for _ in pairs(DMY._guidCache or {}) do cacheCount = cacheCount + 1 end
@@ -968,7 +1019,7 @@ local function DebugDMYColprobe()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY names — Hide Realm Names resolver state
+-- debug dmY names — Hide Realm Names resolver state
 -- Passive: reports which resolver tier painted rows since login plus the
 -- correlation caches. Not required for the feature; post-hoc diagnosis only.
 --------------------------------------------------------------------------------
@@ -1014,7 +1065,7 @@ local function DebugDMYNames()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY pets — pet owner map + creature sources per session
+-- debug dmY pets — pet owner map + creature sources per session
 -- Run out of combat after a pull where a pet interrupted or dispelled. Shows
 -- whether the meter's GUID for the pet matches the unit token's GUID, which is
 -- the one fact the fold in data.lua depends on.
@@ -1089,7 +1140,7 @@ local function DebugDMYPets()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY drillstate — In-combat drilldown resolution counters
+-- debug dmY drillstate — In-combat drilldown resolution counters
 -- Passive: reports which link of the combat drilldown chain succeeded or
 -- failed for clicks since login. Not required for the feature; post-hoc
 -- diagnosis only. Reads production counters.
@@ -1143,7 +1194,7 @@ local function DebugDMYDrillState()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY deathprobe — Deaths session + C_DeathRecap secrecy probe
+-- debug dmY deathprobe — Deaths session + C_DeathRecap secrecy probe
 -- Captures IMMEDIATELY (run it mid-combat — that's the point: it delivers the
 -- verdict on whether C_DeathRecap returns plain data during combat).
 -- Display defers to combat end when run in combat (colprobe pattern).
@@ -1170,7 +1221,7 @@ local function DebugDMYDeathProbe()
     -- [1] Deaths sessions: Current (1) and Overall (0)
     local firstRecapID = nil
     for _, sessionType in ipairs({ 1, 0 }) do
-        local label = sessionType == 1 and "Current" or "Overall"
+        local label = sessionType == DMY.ST.Current and "Current" or "Overall"
         add("[1] Deaths session (%s):", label)
         if not (C_DamageMeter and C_DamageMeter.GetCombatSessionFromType) then
             add("  C_DamageMeter unavailable")
@@ -1272,7 +1323,7 @@ local function DebugDMYDeathProbe()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug dmY headericons — Icons header mode gallery (visual tuning aid)
+-- debug dmY headericons — Icons header mode gallery (visual tuning aid)
 --
 -- Renders every DMY.HEADER_ICONS entry at the three common header font sizes
 -- (desaturated + tinted with the resolved Header Row color, exactly as the
@@ -1323,7 +1374,7 @@ local function DebugDMYHeaderIcons()
     local width = 16 + labelW + (#SIZES + 1) * cellW + 16
     local height = 46 + #KIND_ORDER * rowH + 26 + #ALT_SPECS * rowH + 12
 
-    local f = CreateFrame("Frame", "ScootDMYHeaderIconGallery", UIParent)
+    local f = CreateFrame("Frame", addon.Brand .. "DMYHeaderIconGallery", UIParent)
     headerIconGallery = f
     f:SetSize(width, height)
     f:SetPoint("CENTER")
@@ -1426,9 +1477,234 @@ local function DebugDMYHeaderIcons()
     f:Show()
 end
 
+--------------------------------------------------------------------------------
+-- debug dmY host: which host this copy runs under and what it found
+--------------------------------------------------------------------------------
+
+-- Reads only. The windows are listed while the meter's gate is open; with it
+-- closed the meter stores nothing and there is nothing to list.
+local METER_TYPE_NAMES = {
+    "DamageDone", "Dps", "HealingDone", "Hps", "Absorbs", "Interrupts",
+    "Dispels", "DamageTaken", "AvoidableDamageTaken", "Deaths", "EnemyDamageTaken",
+}
+local SESSION_TYPE_NAMES = { "Overall", "Current", "Expired" }
+local ENGINE_FUNCTIONS = {
+    "GetAvailableCombatSessions", "GetCombatSessionFromType", "GetCombatSessionFromID",
+    "GetCombatSessionSourceFromType", "GetCombatSessionSourceFromID",
+    "GetSessionDurationSeconds", "ResetAllCombatSessions",
+}
+
+local function namedValues(names, values)
+    local parts = {}
+    for _, name in ipairs(names) do
+        local value = values[name]
+        parts[#parts + 1] = name .. "=" .. (value == nil and "MISSING" or tostring(value))
+    end
+    return table.concat(parts, "  ")
+end
+
+local function DebugDMYHost()
+    local DMY = addon.DamageMetersY
+    if not DMY then
+        addon.DebugShowWindow("DMY Host", "DMY not available.")
+        return
+    end
+
+    local lines, add = addon.DebugLines("== DMY Host ==")
+    local version, build, _, interface = GetBuildInfo()
+    add("addon: %s (/%s)   client: %s build %s, interface %s",
+        addon.Brand, addon.SlashToken, tostring(version), tostring(build), tostring(interface))
+    add("")
+
+    local host = DMY._Host()
+    local where = host and host.where
+    add("[1] Host table: %s", host and "set" or "none, the profile keys")
+    add("    name: %s   window label: %s", DMY.DisplayName(), DMY.WindowLabel(1))
+    add("    fallback font: %s", DMY.FallbackFont())
+    if host then
+        add("    preview name: %s", tostring(host.previewName))
+        add("    banner: %s", tostring(host.banner))
+    end
+    add("    window configs: %s", (where and where.windows)
+        or (host and host.GetWindows and "the host's GetWindows") or "profile.damageMeterV2Windows")
+    add("    positions: %s", (where and where.positions)
+        or (host and host.GetPosition and "the host's GetPosition") or "profile.damageMeterV2Positions[layoutName][i]")
+    add("    styling keys: %s", addon.ComponentStore and "the host store, damageMeterV2.<key>"
+        or "profile.components.damageMeterV2")
+    add("")
+
+    local moduleOn = addon:IsModuleEnabled("damageMeter") and true or false
+    local meterOn = addon:IsModuleEnabled("damageMeter", "damageMeterV2") and true or false
+    local brandKey = string.upper(addon.Brand)
+    add("[2] Gate")
+    add("    module damageMeter: %s   this meter: %s", tostring(moduleOn), tostring(meterOn))
+    add("    component registered: %s   frames built: %s",
+        tostring(addon.Components ~= nil and addon.Components.damageMeterV2 ~= nil), tostring(DMY._initialized))
+    add("    slash words: SLASH_%sDMSHOW1=%s  SLASH_%sDMRESET1=%s",
+        brandKey, tostring(_G["SLASH_" .. brandKey .. "DMSHOW1"]),
+        brandKey, tostring(_G["SLASH_" .. brandKey .. "DMRESET1"]))
+    add("")
+
+    local layoutName = addon.EditMode and addon.EditMode.GetActiveLayoutName and addon.EditMode.GetActiveLayoutName()
+    add("[3] Windows (Edit Mode layout: %s)", tostring(layoutName))
+    if not meterOn then
+        add("    none: this meter's gate is closed, and it stores nothing then")
+    else
+        for i = 1, DMY.MAX_WINDOWS do
+            local cfg = DMY._GetWindowConfig(i)
+            local win = DMY._windows[i]
+            local frame = win and win.frame
+            local formats = {}
+            for c, col in ipairs(cfg and cfg.columns or {}) do formats[c] = tostring(col.format) end
+            local pos = layoutName and DMY._GetPosition(i, layoutName)
+            add("    %d: enabled=%s sessionType=%s columns=%s size=%sx%s scale=%s",
+                i, tostring(cfg and cfg.enabled), tostring(cfg and cfg.sessionType), table.concat(formats, ","),
+                tostring(cfg and cfg.frameWidth), tostring(cfg and cfg.frameHeight), tostring(cfg and cfg.windowScale))
+            add("       columnShare=%s (nil: the fixed name block)   nameWidthFraction=%s (nil: never dragged)",
+                tostring(cfg and cfg.columnShare), tostring(cfg and cfg.nameWidthFraction))
+            add("       stored position: %s   frame: %s%s",
+                pos and string.format("%s %.1f %.1f", tostring(pos.point), pos.x or 0, pos.y or 0) or "none",
+                frame and tostring(frame:GetName()) or "not built",
+                frame and (frame:IsShown() and " (shown)" or " (hidden)") or "")
+        end
+    end
+    add("")
+
+    add("[4] Engine")
+    if not C_DamageMeter then
+        add("    C_DamageMeter: ABSENT")
+    else
+        if C_DamageMeter.IsDamageMeterAvailable then
+            local ok, available, reason = pcall(C_DamageMeter.IsDamageMeterAvailable)
+            if not ok then
+                add("    IsDamageMeterAvailable: error: %s", tostring(available))
+            else
+                add("    IsDamageMeterAvailable: %s   failure reason: %s",
+                    FormatSafeValue(available, TestSecret(available)), FormatSafeValue(reason, TestSecret(reason)))
+            end
+        else
+            add("    IsDamageMeterAvailable: no such function")
+        end
+        local missing = {}
+        for _, name in ipairs(ENGINE_FUNCTIONS) do
+            if type(C_DamageMeter[name]) ~= "function" then missing[#missing + 1] = name end
+        end
+        add("    functions the meter calls: %s", #missing == 0 and "all present" or ("MISSING " .. table.concat(missing, ", ")))
+    end
+    add("")
+
+    add("[5] Blizzard's meter")
+    if C_CVar and C_CVar.GetCVar then
+        local okValue, value = pcall(C_CVar.GetCVar, "damageMeterEnabled")
+        local okDefault, default = pcall(C_CVar.GetCVarDefault, "damageMeterEnabled")
+        add("    damageMeterEnabled: %s   default: %s",
+            okValue and tostring(value) or "read failed", okDefault and tostring(default) or "read failed")
+    end
+    if host and host.GetHidBlizzardMeter then
+        add("    record (this addon turned it off): %s   at %s",
+            tostring(host.GetHidBlizzardMeter()), (where and where.record) or "the host")
+    else
+        add("    record: none, the profile CVar reconciler restores it")
+    end
+    add("")
+
+    add("[6] Types the client's enums name")
+    add("    meter: %s", namedValues(METER_TYPE_NAMES, DMY.MT))
+    add("    session: %s", namedValues(SESSION_TYPE_NAMES, DMY.ST))
+    local formats = {}
+    for key in pairs(DMY.COLUMN_FORMATS) do formats[#formats + 1] = key end
+    table.sort(formats)
+    add("    column formats built (%d): %s", #formats, table.concat(formats, ", "))
+    add("")
+
+    add("[7] Inspect APIs (export names, spec, item level)")
+    add("    service: %s   NotifyInspect: %s   GetInspectSpecialization: %s",
+        addon.Inspect and "loaded" or "not loaded", type(NotifyInspect), type(GetInspectSpecialization))
+    add("    C_PaperDollInfo.GetInspectItemLevel: %s   C_SpecializationInfo.GetSpecializationInfoByID: %s",
+        type(C_PaperDollInfo and C_PaperDollInfo.GetInspectItemLevel),
+        type(C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfoByID))
+    add("")
+
+    -- The art catalog as this client answers it, and the keys of the look.
+    add("[8] The look")
+    for _, key in ipairs(DMY._PanelArtOrder or {}) do
+        local entry = DMY.PanelArt[key]
+        local offered = DMY._PanelArtSource(entry) and "offered" or "NOT offered"
+        if entry.atlas then
+            local ok, info = pcall(C_Texture.GetAtlasInfo, entry.atlas)
+            local reported = "no such atlas"
+            if ok and type(info) == "table" then
+                reported = string.format("%sx%s, file %s, texcoords %.3f-%.3f x %.3f-%.3f",
+                    tostring(info.width), tostring(info.height), tostring(info.file or info.filename),
+                    info.leftTexCoord or -1, info.rightTexCoord or -1, info.topTexCoord or -1, info.bottomTexCoord or -1)
+            end
+            add("    %s (%s, \"%s\"): atlas %s, measured on %dx%d; %s",
+                key, entry.slot, entry.label, entry.atlas, entry.measured[1], entry.measured[2], offered)
+            add("       the client reports: %s", reported)
+        else
+            add("    %s (%s, \"%s\"): file %s; %s", key, entry.slot, entry.label, tostring(entry.file), offered)
+        end
+    end
+    local comp = DMY._comp
+    local db = comp and comp.db
+    if not db then
+        add("    styling keys: none read, the meter is not built")
+    else
+        add("    window backdrop: shown=%s texture=%s opacity=%s",
+            tostring(db.showBackdrop), tostring(db.windowBackdropTexture), tostring(db.windowBackdropOpacity))
+        add("    title bar backdrop: shown=%s texture=%s opacity=%s",
+            tostring(db.showTitleBarBackdrop), tostring(db.titleBarBackdropTexture), tostring(db.titleBarBackdropOpacity))
+        add("    window border: style=%s (an art line draws at the title bar's opacity)", tostring(db.windowBorderStyle))
+        add("    bars: mode=%s texture=%s", tostring(db.barMode), tostring(db.barTexture))
+        add("    bar span: starts %s right of the icon, ends %s short of the window's right edge; rank number %s right of the icon; columns end %s short",
+            tostring(DMY.BAR_ICON_GAP), tostring(DMY.BAR_RIGHT_INSET), tostring(DMY.RANK_LEFT), tostring(DMY.COLUMN_RIGHT_INSET))
+        for _, group in ipairs({ "textNames", "textValues", "textTitle", "textTimer", "textHeaders" }) do
+            local text = addon:ResolveComponentSubTable(comp, group) or {}
+            add("    %s: face=%s style=%s size=%s", group,
+                tostring(text.fontFace), tostring(text.fontStyle), tostring(text.fontSize))
+        end
+    end
+
+    addon.DebugShowWindow("DMY Host", lines)
+end
+
+-- Judging the starting config: a profile keeps the window records it was
+-- first given, so a changed starting value shows only in a new profile or
+-- after this.
+local function DebugDMYStartWindows()
+    local DMY = addon.DamageMetersY
+    if not DMY or not DMY.RecreateWindowRecords then
+        addon.DebugShowWindow("DMY Start Windows", "DMY not available.")
+        return
+    end
+
+    local lines, add = addon.DebugLines("== DMY Start Windows ==")
+    if not DMY.RecreateWindowRecords() then
+        add("Nothing written: this meter is switched off in the active profile.")
+        addon.DebugShowWindow("DMY Start Windows", lines)
+        return
+    end
+
+    add("The five window records of the active profile were written again from the starting values.")
+    add("Columns, session, size and column widths are back at the start. Positions were left alone.")
+    add("")
+    for i = 1, DMY.MAX_WINDOWS do
+        local cfg = DMY._GetWindowConfig(i)
+        local formats = {}
+        for c, col in ipairs(cfg and cfg.columns or {}) do formats[c] = tostring(col.format) end
+        add("%d: enabled=%s sessionType=%s columns=%s size=%sx%s scale=%s columnShare=%s",
+            i, tostring(cfg and cfg.enabled), tostring(cfg and cfg.sessionType), table.concat(formats, ","),
+            tostring(cfg and cfg.frameWidth), tostring(cfg and cfg.frameHeight), tostring(cfg and cfg.windowScale),
+            tostring(cfg and cfg.columnShare))
+    end
+    addon.DebugShowWindow("DMY Start Windows", lines)
+end
+
 addon:RegisterDebugCommand({
     name = "dmY", help = "Modern damage meter probes",
     verbs = {
+        { word = "host", help = "the host, its store, the gate and the engine", fn = DebugDMYHost },
+        { word = "startwindows", help = "write the five window records again from the starting values", fn = DebugDMYStartWindows },
         { word = "cvar", help = "CVar data collection", fn = DebugDMYCVar },
         { word = "api", help = "source API probe", fn = DebugDMYAPI },
         { word = "trace", help = "the trace log", fn = addon.DebugDMYTrace },

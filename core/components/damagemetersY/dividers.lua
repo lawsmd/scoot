@@ -246,7 +246,7 @@ end
 local function EnsureFrames()
     if container then return end
 
-    container = CreateFrame("Frame", "ScootDMYDividerOverlay", UIParent)
+    container = CreateFrame("Frame", addon.Brand .. "DMYDividerOverlay", UIParent)
     container:SetFrameStrata("DIALOG")
     container:SetFrameLevel(110)
     container:EnableMouse(false)
