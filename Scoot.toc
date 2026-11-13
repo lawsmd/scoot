@@ -81,6 +81,7 @@ core/specs.lua
 core/rules.lua
 core/apply_all.lua
 core/iconratio.lua
+core/procglow.lua
 core/modules.lua
 core/searchterms.lua
 core/inspect.lua
@@ -113,9 +114,12 @@ core/components/scootauras/styling.lua
 core/components/scootauras/engine.lua
 core/components/scootauras/cadence.lua
 core/components/scootauras/groups.lua
+core/components/scootauras/slots.lua
 core/components/scootauras/rearrange.lua
 core/components/scootauras/regions.lua
 core/components/scootauras/missing.lua
+core/components/scootauras/missingcast.lua
+core/components/scootauras/weaponbuff.lua
 core/components/scootauras/underlay.lua
 core/components/scootauras/classpower.lua
 core/components/scootauras/pips.lua
@@ -124,6 +128,7 @@ core/components/scootauras/cooldown.lua
 core/components/scootauras/stacks.lua
 core/components/scootauras/events.lua
 core/components/scootauras/importexport.lua
+core/components/scootauras/bonus.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
 core/components/auras.lua
@@ -198,11 +203,13 @@ core/components/castbarz/editmode.lua
 ## Quality of Life. qolhost is Scoot's store for the shared QoL files; smallfixes
 ## loads before Unit Frames Z, which registers a click refresher with it at file scope.
 ## keybinds carries every keybinding out as a string and back in, on the profile
-## codec; it stores nothing.
+## codec; it stores nothing. keybindprofiles keeps named sets of those keys,
+## account-wide.
 core/qolhost.lua
 core/qol.lua
 core/smallfixes.lua
 core/keybinds.lua
+core/keybindprofiles.lua
 ## Unit Frames Z (Text — Scoot-owned frames, the promoted health-text engine)
 core/components/unitframesz/core.lua
 core/components/unitframesz/engine.lua
@@ -247,6 +254,7 @@ core/components/damagemetersY/core.lua
 core/components/damagemetersY/columns.lua
 core/components/damagemetersY/data.lua
 core/components/damagemetersY/combat.lua
+core/components/damagemetersY/art.lua
 core/components/damagemetersY/frames.lua
 core/components/damagemetersY/layout.lua
 core/components/damagemetersY/styling.lua
@@ -257,10 +265,23 @@ core/components/damagemetersY/drilldown.lua
 core/components/damagemetersY/events.lua
 core/components/bosswarnings/core.lua
 ## Group Finder: the data layer and the box host. The window is under
-## ui/v2/groupfinder/ and loads with the framework.
+## ui/v2/groupfinder/ and loads with the framework. core/boxhost.lua is the
+## shared half of the host: a Blizzard edit box drawn in an addon window.
+core/boxhost.lua
 core/components/groupfinder/core.lua
 core/components/groupfinder/host.lua
 core/components/groupfinder/saved.lua
+
+## The bag window, shared with Camelot.toc in the same order. core defines
+## addon.Bags, which every file after it aliases at file scope.
+core/components/bags/core.lua
+core/components/bags/window.lua
+core/components/bags/cells.lua
+core/components/bags/layout.lua
+core/components/bags/keyring.lua
+core/components/bags/menu.lua
+core/components/bags/delete.lua
+core/components/bags/picklock.lua
 core/debug/export.lua
 # >>> SCOOT-DEV-ONLY
 # Development tooling. The export script (docs/scripts/export-curseforge.ps1)
@@ -403,6 +424,7 @@ ui/v2/settings/scootauras/PreviewStrip.lua
 ui/v2/settings/scootauras/EditorWindow.lua
 ui/v2/settings/scootauras/AuraListDrag.lua
 ui/v2/settings/scootauras/AuraListRenderer.lua
+ui/v2/settings/scootauras/BonusAurasRenderer.lua
 ui/v2/settings/actionbars/ActionBarRenderer.lua
 ui/v2/settings/actionbars/MicroBarRenderer.lua
 ui/v2/settings/actionbars/ExtraAbilitiesRenderer.lua
@@ -418,6 +440,7 @@ ui/v2/settings/interface/TooltipRenderer.lua
 ui/v2/settings/interface/NotesRenderer.lua
 ui/v2/settings/interface/DamageMeterXRenderer.lua
 ui/v2/settings/interface/DamageMeterYRenderer.lua
+ui/v2/settings/interface/BagsRenderer.lua
 ui/v2/settings/interface/ObjectiveTrackerRenderer.lua
 ui/v2/settings/interface/GroupFinderRenderer.lua
 ui/v2/settings/castbars/CastBarZRenderer.lua

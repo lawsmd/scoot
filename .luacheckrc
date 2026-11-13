@@ -111,6 +111,18 @@ read_globals = {
     "GetRaidTargetIndex",
     "SetRaidTargetIconTexture",
     "GetPetHappiness",
+    -- The pet happiness face and its tooltip (forever/unitframes/pet.lua).
+    "C_PetInfo",
+    "HasPetUI",
+    "GameTooltip_AddNormalLine",
+    "GameTooltip_Hide",
+    "GameTooltip_SetTitle",
+    "GAINING_LOYALTY",
+    "LOSING_LOYALTY",
+    "NONE",
+    "PET_DAMAGE_PERCENTAGE",
+    "PET_DIET_TEMPLATE",
+    "PET_FOOD_DELIMIT",
     -- The Modern player frame's state reads (forever/unitframes/modern/
     -- player.lua), screened the same way.
     "HasLFGRestrictions",
@@ -258,6 +270,7 @@ read_globals = {
     "GetInstanceInfo",
     "GetLocale",
     "GetNetStats",
+    "GetRealZoneText",
     "GetRealmName",
     "GetScreenHeight",
     "GetZonePVPInfo",
@@ -430,7 +443,7 @@ ignore = {
 -- legal here and nowhere else. The conventions gate (docs/tools/gate.mjs) catches
 -- the _G form.
 files["Scoot.lua"] = {
-    globals = { "SLASH_SCOOTCDM1", "SLASH_SCOOTDMSHOW1", "SLASH_SCOOTDMRESET1", "SlashCmdList" },
+    globals = { "SLASH_SCOOTCDM1", "SlashCmdList" },
 }
 -- The registry binds the brand's own slash word for whichever addon loaded it,
 -- so the one write lives here instead of once per entry file.
@@ -483,7 +496,62 @@ files["forever/objectivetracker/current.lua"] = {
         "CamelotQuestObjectiveTracker", "CamelotCampaignQuestObjectiveTracker",
         "CamelotCurrentQuestObjectiveTracker",
     },
-    read_globals = { "QuestObjectiveTrackerMixin", "CampaignQuestObjectiveTrackerMixin" },
+    read_globals = { "QuestObjectiveTrackerMixin", "CampaignQuestObjectiveTrackerMixin", "C_SuperTrack" },
+}
+files["forever/objectivetracker/quests.lua"] = {
+    -- What Blizzard's QuestMixin and the quest module's header click read,
+    -- transcribed here so the Camelot modules stay off QuestCache and never
+    -- show the world map.
+    read_globals = {
+        "QuestUtils_GetQuestName", "HaveQuestData", "C_QuestInfoSystem", "C_CampaignInfo",
+        "IsModifiedClick", "ChatFrameUtil", "ShowQuestComplete", "C_SuperTrack", "QuestUtil",
+        "MenuUtil", "InputUtil", "GamepadHudMode", "GamepadMode", "GetQuestLink",
+        "QuestMapQuestOptions_AbandonQuest",
+        "SUPER_TRACK_QUEST", "STOP_SUPER_TRACK_QUEST", "OBJECTIVES_HIDE_VIEW_IN_QUESTLOG",
+        "OBJECTIVES_VIEW_IN_QUESTLOG", "OBJECTIVES_STOP_TRACKING", "SHARE_QUEST", "SHARE_IN_CHAT",
+        "ABANDON_QUEST_ABBREV",
+    },
+}
+-- Camelot's group finder (forever/groupfinder/): the listing API, the
+-- Blizzard frames and templates the window names, and the util globals
+-- Blizzard's own finder reads. The key is a path prefix.
+files["forever/groupfinder/"] = {
+    read_globals = {
+        "C_LFGList", "C_LFGListRoles", "C_LFGInfo", "C_RaidLocks", "C_Discord", "C_VoiceChat",
+        "LE_PARTY_CATEGORY_HOME", "UnitIsGroupLeader", "UnitIsGroupAssistant", "UnitGetAvailableRoles",
+        "UnitSetRole", "InitiateRolePoll", "GetNumSavedInstances", "GetSavedInstanceInfo", "RequestRaidInfo",
+        "strcmputf8i", "GetGeneralPlaystyleString", "GetTexCoordsForRole", "GetBackgroundTexCoordsForRole",
+        "GroupFinderVanillaStyle_LoadUI", "LFGParentFrame", "LFGListingFrame", "LFGListingComment",
+        "LFGBrowseFrame",
+        "CreateScrollBoxListTreeListView", "CreateTreeDataProvider", "ScrollUtil", "CreateAnchor",
+        "UISpecialFrames", "UIErrorsFrame", "StaticPopup_Show", "GameTooltip_Hide",
+        "LFGActivityHeader", "LFGActivityEntry", "LFGActivityEntryTrivial", "LFGActivityEntryDifficult",
+        "DISABLED_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "RED_FONT_COLOR",
+        "LFG_TITLE", "LFG_LIST_TAB_1", "LFG_LIST_TAB_2", "LFG_LIST_TAB_3", "LFG_LIST_EDIT",
+        "LFG_POST_GROUP_SOLO", "LFG_POST_GROUP_PARTY", "LFG_POST_GROUP_UPDATE", "LFG_LIST_UNLIST", "BACK",
+        "LFG_LIST_ONLY_LEADER_CREATE", "LFG_LIST_ONLY_LEADER_UPDATE", "LFG_LIST_TOO_MANY_ACTIVITIES_SELECTED",
+        "LFG_LIST_TOO_MANY_FOR_ACTIVITY", "GROUP_FINDER_PLAYSTYLE_REQUIRED", "DESCRIPTION_OF_YOUR_GROUP",
+        "DESCRIPTION_OF_YOUR_GROUP_MANDATORY", "LFG_AUTHENTICATOR_DESCRIPTION_BOX",
+        "LFG_LIST_IGNORE_SUGGESTED_LEVEL", "LFD_LEVEL_FORMAT_SINGLE", "LFD_LEVEL_FORMAT_RANGE", "BOSSES_KILLED",
+        "LFG_LIST_MY_ACTIVITY_LIST_HEADER", "LFG_LIST_INDENT", "LFGBROWSE_ACTIVITY_COUNT",
+        "CLASS_ROLE_NOT_RECOMMENDED", "ROLE_POLL", "ERR_LFG_ROLE_CHECK_ONLY_LEADER", "SELECT_YOUR_ROLE",
+        "TANK", "HEALER", "DAMAGER", "LFG_LIST_NEW_PLAYER_FRIENDLY_TOOLTIP", "VOICE_CHAT",
+        "VOICE_CHAT_MODE_NONE", "VOICE_CHAT_MODE_LEGACY", "VOICE_CHAT_MODE_DISCORD", "VOICE_CHAT_MODE_CUSTOM",
+        "ERR_NOT_IN_COMBAT", "ERR_LFG_NO_LFG_OBJECT",
+        -- The Browse tab
+        "C_PartyInfo", "ChatFrameUtil", "GetGroupMemberCounts", "CreateFramePool", "CreateFontStringPool",
+        "TreeDataProviderConstants", "ScrollBoxConstants",
+        "LFGVANILLA_SETTING_BROWSE_SHOW_COLLAPSIBLE_CATEGORIES",
+        "LFGBrowseGroupDataDisplay_Update", "LFGBrowseSearchEntryTooltip_UpdateAndShow",
+        "LFGBrowseUtil_ReportListing", "LFGBrowseUtil_ReportAdvertisement",
+        "GRAY_FONT_COLOR", "BRIGHTBLUE_FONT_COLOR", "LIGHTGREEN_FONT_COLOR",
+        "LFG_LIST_CATEGORY_SOLO_PLAYERS", "LFG_LIST_CATEGORY_GROUPS", "LFG_LIST_SEARCH_FAILED",
+        "LFG_LIST_NO_RESULTS_FOUND", "LFG_SELF_LISTING", "LFGBROWSE_ACTIVITY_MATCHING_COUNT", "LEVEL_ABBR",
+        "CATEGORY", "LFG_TYPE_NONE", "LFGBROWSE_ACTIVITY_HEADER_DEFAULT", "LFGBROWSE_ACTIVITY_HEADER",
+        "LFG_LIST_SEARCH_AGAIN", "SEARCHING", "SEND_MESSAGE", "GROUP_INVITE", "LFG_LIST_REPORT_GROUP_FOR",
+        "REPORT_GROUP_FINDER_ADVERTISEMENT", "LFG_LIST_ENTRY_DELISTED", "LFG_LIST_NEW_PLAYER_FRIENDLY_HEADER",
+        "LFG_LIST_BOSSES_DEFEATED",
+    },
 }
 -- Camelot's action bars (forever/actionbars/). mixins.lua owns the two
 -- globals frames.xml names in mixin= attributes; the Blizzard action bar
@@ -526,7 +594,7 @@ files["forever/actionbars/suppression.lua"] = {
 }
 files["forever/actionbars/micro.lua"] = {
     read_globals = {
-        "CharacterMicroButton", "GuildMicroButton", "MainMenuMicroButton",
+        "CharacterMicroButton", "GuildMicroButton", "MainMenuMicroButton", "MicroMenu",
         "GetFileStreamingStatus", "GetBackgroundLoadingStatus", "MainMenuBarPerformanceBarFrame_OnEnter",
         "GameTooltip_SetTitle", "FEATURE_NOT_AVAILBLE_PANDAREN", "FEATURE_BECOMES_AVAILABLE_AT_LEVEL",
         "GetValueOrCallFunction", "RED_FONT_COLOR", "MainMenuMicroButton_AreAlertsEnabled",
@@ -576,6 +644,15 @@ files["forever/actionbars/gamepad.lua"] = {
 }
 files["core/debug/taintscan.lua"] = {
     read_globals = { "issecurevariable", "canaccesstable" },
+}
+-- The Weapon Buff reminder's read: the item in each weapon slot and its icon.
+files["core/components/scootauras/weaponbuff.lua"] = {
+    read_globals = { "GetInventoryItemID", "GetInventoryItemTexture", "INVSLOT_MAINHAND", "INVSLOT_OFFHAND" },
+}
+-- The reminder's click target: its debug line reports whether a held item waits
+-- for a weapon.
+files["core/components/scootauras/missingcast.lua"] = {
+    read_globals = { "SpellCanTargetItem" },
 }
 -- The Personal Resource Display (forever/personalresourcedisplay/). mixins.lua
 -- owns the one global frames.xml names in a mixin= attribute; the other
@@ -657,11 +734,51 @@ files["forever/qualityoflife/messagesdisplay.lua"] = {
     read_globals = { "UIErrorsFrame" },
 }
 
+-- Camelot's professions (forever/professions/): the two calls the client's
+-- own professions book reads the player's professions with.
+files["forever/professions/data.lua"] = {
+    read_globals = { "GetProfessions", "GetProfessionInfo" },
+}
+-- The tracker's icon click opens and closes a profession's window.
+files["forever/professions/tracker.lua"] = {
+    read_globals = { "C_TradeSkillUI", "ProfessionsFrame" },
+}
+
 -- Keybind export and import (core/keybinds.lua, both TOCs): the binding
 -- enumeration and writes.
 files["core/keybinds.lua"] = {
     read_globals = {
         "GetNumBindings", "GetBinding", "SetBinding", "SaveBindings",
         "GetCurrentBindingSet", "GetBindingAction", "C_KeyBindings",
+        "LoadBindings", "GetConvertedKeyOrButton", "IsKeyPressIgnoredForBinding",
+        "CreateKeyChordStringUsingMetaKeyState",
     },
 }
+files["forever/actionbars/keybindmode.lua"] = {
+    read_globals = {
+        "GetBindingName", "GetBindingText", "GetBindingFromClick", "PetActionBar",
+        "NOT_BOUND", "PRESS_KEY_TO_BIND", "ESCAPE_TO_UNBIND",
+    },
+}
+
+-- The bag window (core/components/bags/, both TOCs): Blizzard's container
+-- open state, the item button painters, the delete dialogs, the tooltip scan.
+local BAGS_READ_GLOBALS = {
+    "C_ActionBar", "ContainerFrameCombinedBags", "IsAnyBagOpen", "IsBagOpen", "CloseAllBags",
+    "IsAnyStandardHeldBagOpen",
+    "BAG_CLEANUP_BAGS", "SEARCH", "GetMoney", "GetMoneyString", "NUM_FREE_SLOTS",
+    "SetItemButtonTexture", "SetItemButtonQuality", "SetItemButtonCount", "SetItemButtonDesaturated",
+    "GetInventoryItemTexture", "StaticPopupDialogs", "CursorHasItem", "DeleteCursorItem",
+    "C_TooltipInfo", "LOCKED",
+    "KEYRING_CONTAINER", "GetKeyRingSize", "CloseBag", "KEYRING", "ButtonFrameTemplate_HidePortrait",
+    "DELETE", "GameTooltip_AddErrorLine",
+    "COMBINED_BAG_TITLE", "BAG_CLEANUP_BAGS_DESCRIPTION", "SETTINGS", "HIGHLIGHT_FONT_COLOR",
+    "ClearItemButtonOverlay", "EMPTY_BAG_SLOT_EFFECT_COLOR", "MenuResponse",
+    "BAG_NAME_BACKPACK", "BAG_NAME_BAG_1", "BAG_NAME_BAG_2", "BAG_NAME_BAG_3", "BAG_NAME_BAG_4",
+    "ContainerFrame_CanContainerUseFilterMenu", "ContainerFrameUtil_EnumerateBagGearFilters",
+    "BAG_FILTER_LABELS", "BAG_FILTER_ASSIGN_TO", "BAG_FILTER_IGNORE", "BAG_FILTER_CLEANUP",
+    "BAG_FILTER_TITLE_SORTING", "SELL_ALL_JUNK_ITEMS_EXCLUDE_FLAG",
+}
+for _, name in ipairs({ "core", "window", "cells", "layout", "keyring", "menu", "delete", "picklock" }) do
+    files["core/components/bags/" .. name .. ".lua"] = { read_globals = BAGS_READ_GLOBALS }
+end

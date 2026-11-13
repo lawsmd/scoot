@@ -50,6 +50,13 @@ Navigation.NavModel = {
             -- No `module`: the switch is registered by forever/statusbars/style.lua.
             { key = "statusBars", label = "Status Bars" },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
+            -- The damage meter, the shared system under this addon's name
+            -- (forever/meters/host.lua). The key is the renderer's. Beta
+            -- until it has been judged on Forever.
+            { key = "damageMeterV2", label = addon.Brand .. " Meters", module = "damageMeter", betaBadge = true },
+            -- The bag window, shared with the other addon. Beta until judged
+            -- on Forever.
+            { key = "bags", label = "Bags", module = "bags", betaBadge = true },
             -- No `module`: the switch is registered by forever/objectivetracker/
             -- tracker.lua, not by the components host the gate reads.
             { key = "objectiveTracker", label = "Objective Tracker" },
@@ -87,6 +94,13 @@ Navigation.NavModel = {
         collapsible = true,
         children = {
             { key = "auraList", label = "Aura List", module = addon.AurasHost.moduleCategory },
+            -- The built-in trackers (core/components/scootauras/bonus.lua),
+            -- shown while one can run here.
+            { key = "bonusAuras", label = "BonusAuras", module = addon.AurasHost.moduleCategory,
+              isVisible = function()
+                  local Bonus = addon.ScootAuras and addon.ScootAuras.Bonus
+                  return Bonus ~= nil and Bonus.AnyAvailable()
+              end },
         },
     },
     -- The Personal Resource Display, named short for the width. No `module`:
@@ -136,25 +150,31 @@ Navigation.NavModel = {
     -- Quality of life, at the bottom: conveniences on Blizzard's own elements
     -- with no Camelot frame behind them. Animations, first, is the overhead
     -- bars while eating, drinking and at a campfire (animations.lua), on by
-    -- default since they are Camelot's own frame. The next four are Scoot's
+    -- default since they are Camelot's own frame. Notifications is the anchor
+    -- and the look of the toasts any feature can send
+    -- (forever/notifications/), and Professions the tracker and the skill-up
+    -- toasts, its first source (forever/professions/). The next four are Scoot's
     -- pages, shared (ui/v2/settings/qol/, storage
     -- forever/qualityoflife/host.lua); Misc holds Camelot's own ones too small
     -- for a page, today the place of Blizzard's error and quest progress text
     -- (forever/qualityoflife/messages.lua). Keybinds, shared and above Misc,
     -- carries every keybinding out as a string and back in (core/keybinds.lua),
     -- the transport for keys that never pass through saved variables. No
-    -- `module`: each page's rows are their own switches.
+    -- `module`: each page's rows are their own switches. The Notifications
+    -- and Professions switches ship off.
     {
         key = "qol",
         label = "Quality of Life",
         collapsible = true,
         children = {
             { key = "qolAnimations", label = "Animations" },
+            { key = "qolNotifications", label = "Notifications" },
+            { key = "qolProfessions", label = "Professions" },
             { key = "qolEditMode", label = "Edit Mode" },
             { key = "qolLootVendors", label = "Loot & Vendors" },
             { key = "qolQuests", label = "Map & Quests" },
             { key = "qolSmallFixes", label = "Small Fixes" },
-            { key = "qolKeybinds", label = "Keybinds" },
+            { key = "qolKeybinds", label = "Keybinds", betaBadge = true },
             { key = "qolMisc", label = "Misc" },
         },
     },

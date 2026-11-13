@@ -2,7 +2,7 @@
 ## Title: Camelot
 ## Notes: The Classic interface for WoW Forever, rebuilt as Camelot frames with the conveniences of a modern UI.
 ## Author: Scooter
-## Version: 1.0.0
+## Version: 1.0.5
 ## IconTexture: Interface\AddOns\Camelot\forever\media\CamelotLogoBronze.png
 ## SavedVariables: CamelotDB
 ## SlashCmd: /camelot
@@ -71,6 +71,11 @@ core/opacity.lua
 core/iconborders.lua
 core/abbrev.lua
 
+## The damage meter's primitive (docs/damagemeters/dmhosts.md): the passive
+## inspect service an export reads names, specs and item levels from. It
+## reads nothing at file scope and starts when the meter asks.
+core/inspect.lua
+
 ## What the settings framework stands on. commands before fonts and before
 ## any ui/v2 file, since both register debug commands at file scope; media
 ## before fonts, which reads addon.MediaTokens at file scope; pool before
@@ -91,8 +96,10 @@ core/fonts.lua
 core/fontpair.lua
 core/blindfit.lua
 core/pool.lua
+core/boxhost.lua
 core/aurarow.lua
 core/iconratio.lua
+core/procglow.lua
 core/barborders.lua
 core/dialogs.lua
 core/apply_all.lua
@@ -156,6 +163,11 @@ forever/profiles.lua
 ## forever/components.lua, which reads the category for its Features row at
 ## file scope.
 forever/auras/host.lua
+## The damage meter's host: what the meter is called here, and where its
+## window configs, its window positions and the record of Blizzard's meter
+## are stored. The shared files in the component block read it at the moment
+## of use, so its place in this block is free.
+forever/meters/host.lua
 forever/recolor.lua
 
 ## Quality of Life shared with Scoot (docs/qualityoflife/qualityoflife.md).
@@ -168,13 +180,15 @@ forever/recolor.lua
 ## (modifier click targeting) on secretsafe, events and fonts. smallfixes
 ## loads before forever/unitframes/harness.lua, which registers a click
 ## refresher with it at file scope. keybinds carries every keybinding out as a
-## string and back in, on the profile codec; it stores nothing.
+## string and back in, on the profile codec; it stores nothing. keybindprofiles
+## keeps named sets of those keys, account-wide.
 forever/qualityoflife/host.lua
 core/editmode/nudgearrows.lua
 core/editmode/subgrid.lua
 core/qol.lua
 core/smallfixes.lua
 core/keybinds.lua
+core/keybindprofiles.lua
 
 ## Dynamic Layouts: resolver publishes base-or-dynamic edges; tween is the
 ## OnUpdate driver; engine holds the adapter registry and reads the store seam
@@ -215,15 +229,21 @@ core/components/tooltip.lua
 ## sits in the block at the end. No game-type gate: the trackers own their
 ## frames and ask both clients the same questions, so retail runs
 ## CamelotAuras beside the other addon's copy, as it does the Tooltip.
+## bonus.lua, the built-in trackers, is last: it aliases the engine and the
+## Spell Cooldown tables at file scope and reads addon.DynamicLayouts, above,
+## at the moment of use.
 core/components/scootauras/core.lua
 core/components/scootauras/layout.lua
 core/components/scootauras/styling.lua
 core/components/scootauras/engine.lua
 core/components/scootauras/cadence.lua
 core/components/scootauras/groups.lua
+core/components/scootauras/slots.lua
 core/components/scootauras/rearrange.lua
 core/components/scootauras/regions.lua
 core/components/scootauras/missing.lua
+core/components/scootauras/missingcast.lua
+core/components/scootauras/weaponbuff.lua
 core/components/scootauras/underlay.lua
 core/components/scootauras/classpower.lua
 core/components/scootauras/pips.lua
@@ -232,6 +252,41 @@ core/components/scootauras/cooldown.lua
 core/components/scootauras/stacks.lua
 core/components/scootauras/events.lua
 core/components/scootauras/importexport.lua
+core/components/scootauras/bonus.lua
+## The damage meter, shared whole, Camelot Meters here (docs/damagemeters/
+## dmhosts.md): one file set both TOCs list, in the other TOC's order. core
+## defines the namespace every file after it aliases at file scope; every
+## file reads addon.MetersHost above at the moment of use. The Features row
+## in forever/components.lua is off by default, and the component's
+## initializer does not run while it is off. core/debug/dmY.lua, its probes,
+## is development tooling and sits in the block at the end. No game-type
+## gate: the meter owns its frames and asks both clients the same questions,
+## so retail runs Camelot Meters beside the other addon's copy.
+core/components/damagemetersY/core.lua
+core/components/damagemetersY/columns.lua
+core/components/damagemetersY/data.lua
+core/components/damagemetersY/combat.lua
+core/components/damagemetersY/art.lua
+core/components/damagemetersY/frames.lua
+core/components/damagemetersY/layout.lua
+core/components/damagemetersY/styling.lua
+core/components/damagemetersY/editmode.lua
+core/components/damagemetersY/dividers.lua
+core/components/damagemetersY/export.lua
+core/components/damagemetersY/drilldown.lua
+core/components/damagemetersY/events.lua
+## The bag window, shared with Scoot.toc in the same order. core defines
+## addon.Bags, which every file after it aliases at file scope. The Features
+## row in forever/components.lua is off by default. No game-type gate: the
+## window asks both clients the same questions.
+core/components/bags/core.lua
+core/components/bags/window.lua
+core/components/bags/cells.lua
+core/components/bags/layout.lua
+core/components/bags/keyring.lua
+core/components/bags/menu.lua
+core/components/bags/delete.lua
+core/components/bags/picklock.lua
 ## The HUD, the unit frames and the cast bar, is Forever's alone. Retail loads
 ## this TOC too, through the AddOns\Camelot junction, for the settings panel,
 ## so every HUD line carries [ExcludeLoadGameType standard]: retail's game type
@@ -308,7 +363,10 @@ forever/castbars/dynamic.lua [ExcludeLoadGameType standard]
 ## container, the module twins and the two item button templates from
 ## Blizzard_ObjectiveTracker's virtual templates, which the Dependencies line
 ## above guarantees are parsed by then; tracker.lua wires the manager, parks
-## Blizzard's frame and registers the Edit Mode positionables; itembutton.lua
+## Blizzard's frame and registers the Edit Mode positionables; quests.lua
+## gives the modules quest objects and POI buttons of their own, so nothing
+## they write is read by the world map (replica.md, "Shared objects");
+## itembutton.lua
 ## stands the secure quest item buttons on the blocks' slots; current.lua keeps
 ## the Current Objectives pane's state and routes quests between the panes
 ## (docs/objectivetracker/current.md); flash.lua flashes a count that rises in
@@ -324,6 +382,7 @@ forever/objectivetracker/style.lua
 forever/objectivetracker/mixins.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/frames.xml [ExcludeLoadGameType standard]
 forever/objectivetracker/tracker.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/quests.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/itembutton.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/current.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/flash.lua [ExcludeLoadGameType standard]
@@ -387,6 +446,7 @@ forever/actionbars/bagbar.lua [ExcludeLoadGameType standard]
 forever/actionbars/stance.lua [ExcludeLoadGameType standard]
 forever/actionbars/gamepad.lua [ExcludeLoadGameType standard]
 forever/actionbars/bars.lua [ExcludeLoadGameType standard]
+forever/actionbars/keybindmode.lua [ExcludeLoadGameType standard]
 
 ## The Personal Resource Display: Forever's PRD on a Camelot-owned frame
 ## (docs/personalresourcedisplay/replica.md). style.lua holds the module, its
@@ -432,6 +492,7 @@ forever/minimap/style.lua
 forever/minimap/frames.xml [ExcludeLoadGameType standard]
 forever/minimap/display.lua [ExcludeLoadGameType standard]
 forever/minimap/text.lua [ExcludeLoadGameType standard]
+forever/minimap/tracking.lua [ExcludeLoadGameType standard]
 forever/minimap/editmode.lua [ExcludeLoadGameType standard]
 forever/minimap/dynamic.lua [ExcludeLoadGameType standard]
 
@@ -451,6 +512,23 @@ forever/statusbars/frames.xml [ExcludeLoadGameType standard]
 forever/statusbars/display.lua [ExcludeLoadGameType standard]
 forever/statusbars/editmode.lua [ExcludeLoadGameType standard]
 forever/statusbars/dynamic.lua [ExcludeLoadGameType standard]
+
+## The group finder: Forever's Vanilla-style finder (LFGParentFrame) rebuilt
+## as a window the addon owns, from Blizzard's own templates and atlases,
+## driving C_LFGList itself (docs/groupfinder/foreverreplica.md). Blizzard's
+## finder is load on demand and host.lua loads it as the window first opens,
+## so it is on no Deps line. style.lua holds the switch's default and the
+## layout numbers and loads on retail too; data.lua the reads, the calls and
+## the topics; host.lua Blizzard's addon and the lease of its comment box,
+## the one text the client reads from a box of its own, through
+## core/boxhost.lua; window.lua the frame, the eye, the side tabs and
+## /camelot lfg; listing.lua the Listing tab; browse.lua the Browse tab.
+forever/groupfinder/style.lua
+forever/groupfinder/data.lua [ExcludeLoadGameType standard]
+forever/groupfinder/host.lua [ExcludeLoadGameType standard]
+forever/groupfinder/window.lua [ExcludeLoadGameType standard]
+forever/groupfinder/listing.lua [ExcludeLoadGameType standard]
+forever/groupfinder/browse.lua [ExcludeLoadGameType standard]
 
 ## The chat: Blizzard's windows parked through NativeFrame with every event
 ## still registered, so Blizzard's secure formatter keeps filling them, and
@@ -496,6 +574,27 @@ forever/qualityoflife/messagesdisplay.lua [ExcludeLoadGameType standard]
 ## Display's bar template, so it loads after frames.xml.
 forever/qualityoflife/animations.lua
 forever/qualityoflife/animationsdisplay.lua [ExcludeLoadGameType standard]
+
+## Notifications (docs/notifications.md): toasts that rise to one Edit Mode
+## anchor, for any feature to send. notifications.lua holds the shared
+## settings and the registry of sources and loads on retail too for the
+## pages; rollingnumber.lua is the digit-roll widget a source can draw with;
+## display.lua is the anchor and the toasts. Stands on events, pool, strata,
+## fonts, fontpair, the positionables, forever/db.lua and forever/profiles.lua.
+forever/notifications/notifications.lua
+forever/notifications/rollingnumber.lua [ExcludeLoadGameType standard]
+forever/notifications/display.lua [ExcludeLoadGameType standard]
+
+## Professions (docs/qualityoflife/professions.md): the Professions Tracker
+## and Skill Up Notifications. professions.lua holds both features' settings
+## and registers the notification source, so it follows notifications.lua and
+## loads on retail too; data.lua reads the professions; tracker.lua draws the
+## tracker on the media, border and icon border files; skillups.lua paints
+## the toast with the tracker's icon and the rolling number.
+forever/professions/professions.lua
+forever/professions/data.lua [ExcludeLoadGameType standard]
+forever/professions/tracker.lua [ExcludeLoadGameType standard]
+forever/professions/skillups.lua [ExcludeLoadGameType standard]
 
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
@@ -611,8 +710,8 @@ ui/v2/settings/BuilderComposites.lua
 ui/v2/settings/interface/TooltipRenderer.lua
 
 ## The aura tracker's settings surface: the editor's tabs, picker, fly-outs,
-## carousel and window, then the Aura List page, which registers its renderer
-## at file scope after settingspanel/renderers.lua. Every file reads
+## carousel and window, then the Aura List page and the BonusAuras page, which
+## register their renderers at file scope after settingspanel/renderers.lua. Every file reads
 ## addon.ScootAuras at call time; the controls they stand on (Flyout, Preview,
 ## IconPicker, Window) and BuilderComposites are above.
 ui/v2/settings/scootauras/EditorTabs.lua
@@ -624,6 +723,15 @@ ui/v2/settings/scootauras/PreviewStrip.lua
 ui/v2/settings/scootauras/EditorWindow.lua
 ui/v2/settings/scootauras/AuraListDrag.lua
 ui/v2/settings/scootauras/AuraListRenderer.lua
+ui/v2/settings/scootauras/BonusAurasRenderer.lua
+
+## The damage meter's settings page, shared, under the renderer key
+## damageMeterV2. It aliases addon.DamageMetersY from the component block at
+## file scope and registers after settingspanel/renderers.lua; Helpers, the
+## builder and the controls above are read at call time.
+ui/v2/settings/interface/DamageMeterYRenderer.lua
+## The bag window's settings page, shared, under the renderer key bags.
+ui/v2/settings/interface/BagsRenderer.lua
 
 ## Camelot's page tree, the minimap button's icon and storage, the Defaults
 ## button's scopes (defaults.lua), the starting points, then forever/slash.lua,
@@ -646,6 +754,8 @@ ui/v2/settings/qol/SmallFixesRenderer.lua
 ui/v2/settings/qol/KeybindsRenderer.lua
 forever/qualityoflife/miscpage.lua
 forever/qualityoflife/animationspage.lua
+forever/notifications/page.lua
+forever/professions/page.lua
 forever/actionbars/page.lua [ExcludeLoadGameType standard]
 forever/actionbars/microbagspage.lua [ExcludeLoadGameType standard]
 forever/actionbars/stancepage.lua [ExcludeLoadGameType standard]
@@ -662,6 +772,7 @@ forever/slash.lua
 # in this block only behind a bare test (the gate's release-read check). A
 # junctioned repo install keeps everything.
 core/debug/scootauras.lua
+core/debug/dmY.lua
 forever/gallery.lua
 core/debug/taintscan.lua
 forever/debug.lua

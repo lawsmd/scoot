@@ -34,15 +34,26 @@ local DB = addon.DB
 -- forever/minimap/, whose style.lua registers its own row on the same path.
 local CATEGORY = {
     tooltip = "tooltip",
+    -- The damage meter keeps the other addon's tokens (forever/meters/host.lua).
+    damageMeterV2 = "damageMeter",
+    bags = "bags",
 }
 
 -- A row sits under Interface unless it names a group of its own. The aura
 -- tracker's row reads its category off the host table, so
--- forever/auras/host.lua precedes this file on the TOC.
+-- forever/auras/host.lua precedes this file on the TOC. A row is on by
+-- default unless it says default = false. The damage meter ships off: it was
+-- to switch on with its look (CAMELOT_LOOKS below), and the owner left it off
+-- when that look was set, 5 November 2026.
 local FEATURES = {
     { category = "tooltip", label = "Tooltip" },
     { category = addon.AurasHost.moduleCategory, label = addon.Brand .. "Auras",
       group = "auras", groupLabel = "Auras" },
+    { category = "damageMeter", label = addon.Brand .. " Meters", default = false },
+    -- The bag window ships off until it has been judged on Forever. Retail
+    -- loads this TOC too, and the other addon's copy of the window would
+    -- draw beside this one.
+    { category = "bags", label = "Bags", default = false },
 }
 
 local function switchPath(category)
@@ -51,9 +62,11 @@ end
 
 -- On while the beta reads saved variables too late for ADDON_LOADED: nothing a
 -- player switches there survives the reload, so an off default can never be
--- turned on. Stand-in; the value that goes back is false.
+-- turned on. Stand-in; the value that goes back is false. A row that says
+-- default = false is off on every client, and on one that keeps no saved
+-- variable it stays off.
 for _, row in ipairs(FEATURES) do
-    DB.RegisterDefaults({ [switchPath(row.category)] = true })
+    DB.RegisterDefaults({ [switchPath(row.category)] = row.default ~= false })
     addon.Features.Register({ group = row.group or "interface", groupLabel = row.groupLabel or "Interface",
         id = row.category, label = row.label, path = switchPath(row.category) })
 end
@@ -159,6 +172,30 @@ local CAMELOT_DEFAULTS = {
     },
 }
 
+-- A look this addon gives a shared component on every start, by path under
+-- the component's id. The paths replace the component's own defaults and no
+-- preset keeps the old value. The damage meter's is the owner's of 5 November
+-- 2026: the Character pane's title plate over its rock, both seen through,
+-- a thin bronze line around the window and under the title bar, the Cooldown
+-- Manager fill on the bars, and every string on Friz Quadrata in the crisp
+-- thick outline. Thin bars are the component's own default.
+local METER_FACE, METER_STYLE = "FRIZQT__", "THICKOUTLINESLUG"
+local CAMELOT_LOOKS = {
+    damageMeterV2 = {
+        windowBackdropTexture = "rock",
+        windowBackdropOpacity = 50,
+        windowBorderStyle = "bronzeLine",
+        titleBarBackdropTexture = "titlePlate",
+        titleBarBackdropOpacity = 65,
+        barTexture = "blizzardCooldownManager",
+        ["textNames.fontFace"] = METER_FACE,   ["textNames.fontStyle"] = METER_STYLE,
+        ["textValues.fontFace"] = METER_FACE,  ["textValues.fontStyle"] = METER_STYLE,
+        ["textTitle.fontFace"] = METER_FACE,   ["textTitle.fontStyle"] = METER_STYLE,
+        ["textTimer.fontFace"] = METER_FACE,   ["textTimer.fontStyle"] = METER_STYLE,
+        ["textHeaders.fontFace"] = METER_FACE, ["textHeaders.fontStyle"] = METER_STYLE,
+    },
+}
+
 local function shapeOf(component)
     local shape = shapes[component.id]
     if shape then return shape end
@@ -176,6 +213,9 @@ local function shapeOf(component)
         local path = component.id .. "." .. key
         stock[path] = flat[path]
         flat[path] = value
+    end
+    for key, value in pairs(CAMELOT_LOOKS[component.id] or {}) do
+        flat[component.id .. "." .. key] = value
     end
     DB.RegisterStock(stock)
     DB.RegisterDefaults(flat)
@@ -198,21 +238,51 @@ addon.ComponentStore = {
 -- Lifecycle
 --------------------------------------------------------------------------------
 
--- forever/db.lua is listed first, so addon.db exists by the time this runs.
-addon.Events.OnAddonLoaded(addonName, function()
-    -- What the nav and the search read to grey out a page whose feature is off
-    -- (ui/v2/Navigation.lua, IsNavModuleActive).
-    addon._activeModules = {}
+-- category -> true once its initializers have run this session.
+local built = {}
+-- True once the first pass below has run.
+local ready = false
+
+-- What the nav and the search read to grey out a page whose feature is off
+-- (ui/v2/Navigation.lua, IsNavModuleActive).
+local function snapshotGate()
+    addon._activeModules = addon._activeModules or {}
     for _, row in ipairs(FEATURES) do
         addon._activeModules[row.category] = addon:IsModuleEnabled(row.category)
     end
+end
 
+-- forever/db.lua is listed first, so addon.db exists by the time this runs.
+addon.Events.OnAddonLoaded(addonName, function()
+    snapshotGate()
     addon:InitializeComponents()
+    for _, row in ipairs(FEATURES) do
+        if addon._activeModules[row.category] then built[row.category] = true end
+    end
     addon:LinkComponentsToDB()
+    ready = true
 end)
 
+-- The profile open at ADDON_LOADED is the one AceDB has on record for the
+-- character, and the engine may move to another once the world loads: the
+-- profile follows the Edit Mode layout. The gate is read again after every
+-- pass, and a category that reads on for the first time this session runs its
+-- initializers then. A category that reads off after it was built keeps its
+-- components until the reload; each gates its own styling.
 addon.Profiles.RegisterApplyStep("camelotComponents", function(_, ctx)
     if ctx.initial then return end
+    if ready then
+        snapshotGate()
+        local opened = false
+        for _, row in ipairs(FEATURES) do
+            if addon._activeModules[row.category] and not built[row.category] then
+                built[row.category] = true
+                addon:InitializeComponentCategory(row.category)
+                opened = true
+            end
+        end
+        if opened then addon:LinkComponentsToDB() end
+    end
     addon:ApplyStyles()
 end, 30)
 
