@@ -13,9 +13,10 @@
 -- (DL.TargetAttackableNPCs) is on; and a fourth trigger, fixed and off the
 -- panel, holdingAction, reads true while something placeable on an action
 -- bar is on the cursor and a frame that takes a drop takes part, so the
--- layout comes back for the placement, and its clearing never waits. A
--- fifth, menuOpen, fixed and no-wait the same way, reads true while the game
--- menu or Blizzard's settings window is shown. A sixth, spellbookOpen, the
+-- layout comes back for the placement, and the drop waits out the delay. A
+-- fifth, menuOpen, fixed, whose clearing never waits, reads true while the game
+-- menu, Blizzard's settings window, this addon's menu or Keybind Mode's window
+-- is shown. A sixth, spellbookOpen, the
 -- same again since 20 October 2026, reads true while a spellbook is open.
 --
 -- Two lanes, 19 October 2026: the main answer every frame follows, and a
@@ -133,10 +134,13 @@ end
 -- back. The menu is Blizzard's GameMenuFrame or the branded replacement
 -- ui/v2/GameMenu.lua shows in its place; the settings window opens from the
 -- menu and hides it, and the swap lands in one frame, so the pair coalesces.
--- The frames have no events; installMenuHooks below arms on their shows and
--- hides.
+-- The addon's own menu counts too, and Keybind Mode's window, which needs
+-- every bar in reach and takes over from the menu in one frame: the owner's
+-- calls of 9 November 2026. The frames have no events; installMenuHooks below
+-- arms on their shows and hides.
 local function menuFrames()
-    return GameMenuFrame, SettingsPanel, _G[addon.Brand .. "GameMenuFrame"]
+    return GameMenuFrame, SettingsPanel, _G[addon.Brand .. "GameMenuFrame"],
+        _G[addon.Brand .. "SettingsFrame"], _G[addon.Brand .. "KeybindModeWindow"]
 end
 
 local function shown(frame)
@@ -145,8 +149,8 @@ local function shown(frame)
 end
 
 local function probeMenuOpen()
-    local a, b, c = menuFrames()
-    return shown(a) or shown(b) or shown(c)
+    local a, b, c, d, e = menuFrames()
+    return shown(a) or shown(b) or shown(c) or shown(d) or shown(e)
 end
 
 -- A spellbook is open, the owner's call of 20 October 2026: the player is
@@ -177,7 +181,7 @@ local TRIGGERS = {
     { name = "inCombat",       probe = probeInCombat },
     { name = "targetAcquired", probe = probeTargetAcquired },
     { name = "insideInstance", probe = probeInsideInstance },
-    { name = "holdingAction",  probe = probeHoldingAction, fixed = true, noWait = true },
+    { name = "holdingAction",  probe = probeHoldingAction, fixed = true },
     { name = "menuOpen",       probe = probeMenuOpen, fixed = true, noWait = true },
     { name = "spellbookOpen",  probe = probeSpellbookOpen, fixed = true, noWait = true },
     { name = "friendlyUnit",    probe = probeFriendlyUnit, fixed = true, wide = true },
@@ -379,11 +383,11 @@ local function step(lane, origin, events, values, allFlips, now)
         return true
     elseif newAnswer == "dynamic" and answer == "base" then
         local wait = delaySeconds()
-        -- The cursor emptied or the menu closed: the layout goes back at once,
+        -- The menu or the spellbook closed: the layout goes back at once,
         -- the owner's call, since the delay is for looting and regrouping
         -- between pulls and neither is that.
-        local dropped = noWaitFlipped(flips)
-        if wait > 0 and #flips > 0 and not dropped then
+        local skipWait = noWaitFlipped(flips)
+        if wait > 0 and #flips > 0 and not skipWait then
             -- The last trigger cleared: the wait starts, or starts over.
             armHold(lane, wait, now)
             log("hold", { wait = wait })
@@ -392,7 +396,7 @@ local function step(lane, origin, events, values, allFlips, now)
         -- Nothing flipped: a running wait goes on; with none, or with the
         -- delay set to 0 meanwhile, the answer changes now (Edit Mode
         -- closing, a mask change, the wait's own end).
-        if lane.hold and wait > 0 and not dropped then return false end
+        if lane.hold and wait > 0 and not skipWait then return false end
         dropHold(lane)
     end
     if newAnswer ~= answer then
@@ -519,6 +523,10 @@ end
 -- branded menu is Camelot's own frame and keeps its script hooks; it is
 -- created on its first Show, so a hook on GameMenu.Show catches it there and
 -- arms for that first show, which ran before the frame's own hook existed.
+-- The addon's menu is its own frame too. A hook on the panel's Initialize
+-- reaches it before its first show, and after Initialize's own SetScript.
+-- Keybind Mode's window is created and shown inside Mode.Enter, so a hook on
+-- Enter catches it there and arms for that first show, as GameMenu.Show does.
 local menuHooked = {}
 
 local function onMenuShow() onEvent("MENU_SHOW") end
@@ -538,14 +546,20 @@ if type(_G.ShowUIPanel) == "function" and type(_G.HideUIPanel) == "function" the
     end)
 end
 
-local function installMenuHooks()
-    local _, _, branded = menuFrames()
-    if branded and not menuHooked[branded] and branded.HookScript then
-        menuHooked[branded] = true
+local function hookOwnMenu(frame)
+    if frame and not menuHooked[frame] and frame.HookScript then
+        menuHooked[frame] = true
         -- Kept off addon.Enforce: the hooks read visibility, they hide nothing.
-        branded:HookScript("OnShow", onMenuShow)
-        branded:HookScript("OnHide", onMenuHide)
+        frame:HookScript("OnShow", onMenuShow)
+        frame:HookScript("OnHide", onMenuHide)
     end
+end
+
+local function installMenuHooks()
+    local _, _, branded, panel, keybindMode = menuFrames()
+    hookOwnMenu(branded)
+    hookOwnMenu(panel)
+    hookOwnMenu(keybindMode)
 end
 
 -- The books' grid pair (spellbookOpen). A pickup calls the same pair with the
@@ -568,12 +582,27 @@ if SPELLCOLLECTION and _G.MultiActionBar_ShowAllGrids and _G.MultiActionBar_Hide
 end
 
 local brandMenuHooked = false
+local panelMenuHooked = false
+local keybindModeHooked = false
 addon.Events.On(OWNER .. "Menu", "PLAYER_ENTERING_WORLD", function()
     installMenuHooks()
     local GameMenu = addon.UI and addon.UI.GameMenu
     if not brandMenuHooked and GameMenu and GameMenu.Show then
         brandMenuHooked = true
         hooksecurefunc(GameMenu, "Show", function()
+            installMenuHooks()
+            onMenuShow()
+        end)
+    end
+    local Panel = addon.UI and addon.UI.SettingsPanel
+    if not panelMenuHooked and Panel and Panel.Initialize then
+        panelMenuHooked = true
+        hooksecurefunc(Panel, "Initialize", installMenuHooks)
+    end
+    local KeybindMode = addon.Keybinds and addon.Keybinds.Mode
+    if not keybindModeHooked and KeybindMode and KeybindMode.Enter then
+        keybindModeHooked = true
+        hooksecurefunc(KeybindMode, "Enter", function()
             installMenuHooks()
             onMenuShow()
         end)

@@ -32,6 +32,11 @@
 --                      wakes it while its frame takes part and rests it again
 --                      on exit (the gamepad bar, whose regular handle is
 --                      Blizzard's box under it)
+--     dynamicViewMember = boolean
+--                      optional; the box stays live in the Dynamic Layouts
+--                      view though its frame has no adapter, and a drop there
+--                      saves through the store above as it does outside it
+--                      (a frame that shows only in the dynamic layout)
 --     brand          = table                 Brand:Register(frame, brand) options
 -- })
 -- Returns the LibEditMode selection frame, nil without the library. A repeat
@@ -421,7 +426,9 @@ end
 --- one bad list cannot take the row down with it.
 local function composeMirror(entry, componentMirror)
     return function(frame)
-        if dynamicView then return dynamicRows(entry, frame) end
+        -- A view member has no adapter and so no dynamic rows: its own rows
+        -- stand in both views.
+        if dynamicView and not entry.dynamicViewMember then return dynamicRows(entry, frame) end
         local specs
         if type(componentMirror) == "function" then
             local ok, list = pcall(componentMirror, frame)
@@ -495,6 +502,7 @@ function EM.RegisterPositionable(frame, opts)
         restoreDefault = opts.restoreDefault and true or false,
         positionEditable = opts.positionEditable,
         dynamicViewOnly = opts.dynamicViewOnly and true or false,
+        dynamicViewMember = opts.dynamicViewMember and true or false,
         brand = opts.brand,
     }
     -- Before AddFrame: the first AddFrame of a session creates the dialog and
@@ -638,6 +646,13 @@ end
 function EM.IsDynamicViewOnly(frame)
     local entry = registry[frame]
     return (entry and entry.dynamicViewOnly) and true or false
+end
+
+--- Whether the frame's box stays live in the view with no adapter behind it
+--- (`dynamicViewMember`).
+function EM.IsDynamicViewMember(frame)
+    local entry = registry[frame]
+    return (entry and entry.dynamicViewMember) and true or false
 end
 
 --- The dialog's "Match Regular Layout" in the dynamic view: the frame's

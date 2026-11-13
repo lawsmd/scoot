@@ -58,8 +58,9 @@ end
 -- Camelot preset constants.
 local SPACING = 4
 
--- The owner's setup off the beta's saved profile: no end caps, Action Bars 1 to 3 compact with their empty buttons hidden,
--- and Action Bar 5 in a cluster of its own, two rows at 80 percent.
+-- The owner's setup off the beta's saved profile: no end caps, Action Bars 1 to
+-- 4 compact with their empty buttons hidden (bar 1 alone keeps the bar art and
+-- page arrows), and Action Bar 5 in a cluster of its own, two rows at 80 percent.
 local function compact(identity, extra)
     local m = member(identity, extra)
     m.compact, m.alwaysShowButtons = true, false
@@ -70,7 +71,7 @@ Clusters.DEFAULTS = {
     { id = 1, axis = "vertical", spacing = SPACING, endCaps = false, endCapStyle = "sitting", endCapScale = 100,
       members = {
           compact("bar1", { barArt = true, pageArrows = true }),
-          compact("bar2"), compact("bar3"), member("bar4"),
+          compact("bar2"), compact("bar3"), compact("bar4"),
       } },
     { id = 2, axis = "vertical", spacing = SPACING, endCaps = false,
       members = { member("pet", { buttons = 10 }) } },
@@ -111,13 +112,14 @@ Clusters.DEFAULT_ANCHOR = {
 -- preset enrolls them; a preset start reads no record.
 DB.RegisterDefaults({ ["dynamicLayouts.participating.actionBarClusters"] = true })
 DB.RegisterStock({ ["dynamicLayouts.participating.actionBarClusters"] = false })
-addon.DynamicLayoutsStore.RegisterDefaultRecord(Clusters.Key(1), { offscreen = "BOTTOM" })
 
 --- The layout key a cluster's Edit Mode positions and its dynamic record
 --- sit under.
 function Clusters.Key(id)
     return "actionBarCluster." .. tostring(id)
 end
+
+addon.DynamicLayoutsStore.RegisterDefaultRecord(Clusters.Key(1), { offscreen = "BOTTOM" })
 
 --- The stored document, or the defaults when the player has never edited a
 --- cluster. Nothing is written here.

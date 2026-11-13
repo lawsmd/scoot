@@ -112,13 +112,35 @@ function CamelotActionButtonMixin:ActionBarButtonMixin_OnLoad()
     ActionButton_UpdateCooldownNumberHidden(self)
 end
 
+-- Replace the drag handlers the XML scripts name: ActionBarButtonMixin_
+-- OnDragStart, ActionBarActionButtonDerivedMixin_OnDragStart and _OnReceiveDrag.
+-- PickupAction and PlaceAction are protected in combat, and from a Camelot
+-- button they run tainted, so a drag in combat does nothing.
+function CamelotActionButtonMixin:ActionBarButtonMixin_OnDragStart()
+    if InCombatLockdown() then return end
+    BaseActionButtonMixin.BaseActionButtonMixin_OnDragStart(self)
+    ActionBarActionButtonMixin.OnDragStart(self)
+end
+
+function CamelotActionButtonMixin:ActionBarActionButtonDerivedMixin_OnDragStart()
+    if InCombatLockdown() then return end
+    ActionBarActionButtonMixin.OnDragStart(self)
+end
+
+function CamelotActionButtonMixin:ActionBarActionButtonDerivedMixin_OnReceiveDrag()
+    if InCombatLockdown() then return end
+    ActionBarActionButtonMixin.OnReceiveDrag(self)
+end
+
 -- Replaces ActionBarActionButtonMixin:UpdateAction. Left out: the assisted
 -- combat rotation frame, an EventRegistry consumer, and the
 -- EventRegistry:TriggerEvent, whose dispatch loop a Camelot call would
--- taint. In lockdown the ping attribute and the bar's shown pass wait for
--- regen, since a SetAttribute or a SetShown on a protected frame is blocked
--- there. The casting animation reads the player's cast, which can be secret
--- in a fight, so it runs guarded and a refusal costs that animation only.
+-- taint. In lockdown the ping attribute waits for regen, since a
+-- SetAttribute on a protected frame is blocked there; the bar's shown pass
+-- runs in both cases, because in a fight it is the alpha pass that shows a
+-- button a page flip has just filled. The casting animation reads the
+-- player's cast, which can be secret in a fight, so it runs guarded and a
+-- refusal costs that animation only.
 function CamelotActionButtonMixin:UpdateAction(force)
     local action = self:CalculateAction()
     if action == self.action and not force then return end
@@ -140,17 +162,13 @@ function CamelotActionButtonMixin:UpdateAction(force)
     self:Update()
 
     if InCombatLockdown() then
-        queue(function()
-            self:UpdatePingAttributes()
-            if self.index and self.bar then
-                self.bar:UpdateShownButtons()
-            end
-        end, "camelotActionBars.action." .. self:GetName())
+        queue(function() self:UpdatePingAttributes() end,
+            "camelotActionBars.action." .. self:GetName())
     else
         self:UpdatePingAttributes()
-        if self.index and self.bar then
-            self.bar:UpdateShownButtons()
-        end
+    end
+    if self.index and self.bar then
+        self.bar:UpdateShownButtons()
     end
 end
 
@@ -371,20 +389,29 @@ end
 
 CamelotActionBarMixin = {}
 
--- Replaces ActionBarMixin:UpdateShownButtons. SetShown on a button or its
--- container is blocked in lockdown, both being protected, so a pass that
--- lands in a fight changes alpha instead and the pass queued here puts the
--- real shown state back at regen. Out of combat the pass is bracketed by
+-- Whether a button draws, by Blizzard's rule: within the showable count, not
+-- hidden by attribute, and the grid shows or the slot holds an action.
+local function drawn(bar, actionButton)
+    return actionButton.index <= bar.numButtonsShowable
+        and not actionButton:GetAttribute("statehidden")
+        and (actionButton:GetShowGrid() or actionButton:HasAction()) and true or false
+end
+
+-- Replaces ActionBarMixin:UpdateShownButtons. Blizzard shows a button when
+-- it draws and hides it otherwise. Here a button that draws is shown at
+-- alpha 1, a button a form can fill (compact.lua, OnAnyUnionPage) is shown
+-- at alpha 0, and the rest are hidden. Show on a button or its container is
+-- blocked in lockdown, both being protected, and SetAlpha is not: a pass
+-- that lands in a fight writes the alpha alone, which is what shows a
+-- button a page flip has just filled, and the pass queued here puts the
+-- shown state back at regen. Out of combat the pass is bracketed by
 -- compact.lua: the pickup and spellbook bits are written from the bar's own
 -- record first, so a grid call that landed in a fight counts, and the
 -- compaction runs last over the shown state.
 function CamelotActionBarMixin:UpdateShownButtons()
     if InCombatLockdown() then
         for _, actionButton in pairs(self.actionButtons) do
-            local showButton = actionButton.index <= self.numButtonsShowable
-                and not actionButton:GetAttribute("statehidden")
-                and (actionButton:GetShowGrid() or actionButton:HasAction())
-            actionButton:SetAlpha(showButton and 1 or 0)
+            actionButton:SetAlpha(drawn(self, actionButton) and 1 or 0)
         end
         queue(function() self:UpdateShownButtons() end, "camelotActionBars.shown." .. self:GetName())
         return
@@ -395,13 +422,13 @@ function CamelotActionBarMixin:UpdateShownButtons()
 
     wipe(self.shownButtonContainers)
     for i, actionButton in pairs(self.actionButtons) do
-        local showButton = actionButton.index <= self.numButtonsShowable
-            and not actionButton:GetAttribute("statehidden")
-            and (actionButton:GetShowGrid() or actionButton:HasAction())
-        actionButton:SetAlpha(1)
-        actionButton:SetShown(showButton)
+        local draws = drawn(self, actionButton)
+        local kept = draws or (compact ~= nil and actionButton.index <= self.numButtonsShowable
+            and compact.OnAnyUnionPage(self, actionButton))
+        actionButton:SetAlpha(draws and 1 or 0)
+        actionButton:SetShown(kept)
 
-        local showButtonContainer = showButton or (not self.noSpacers and i <= self.numButtonsShowable)
+        local showButtonContainer = kept or (not self.noSpacers and i <= self.numButtonsShowable)
         actionButton.container:SetShown(showButtonContainer)
         if showButtonContainer then
             table.insert(self.shownButtonContainers, actionButton.container)

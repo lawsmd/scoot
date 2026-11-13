@@ -843,11 +843,15 @@ function CamelotGamepadClickMixin:OnMouseUp()
     end
 end
 
+-- PickupAction and PlaceAction are protected in combat and run tainted from
+-- here, so a drag in combat does nothing.
 function CamelotGamepadClickMixin:OnDragStart()
+    if InCombatLockdown() then return end
     if self.visual then self.visual:OnDragStart() end
 end
 
 function CamelotGamepadClickMixin:OnReceiveDrag()
+    if InCombatLockdown() then return end
     if self.visual then self.visual:OnReceiveDrag() end
 end
 

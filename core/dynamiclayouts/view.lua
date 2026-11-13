@@ -237,12 +237,19 @@ local function restBox(selection)
     if selection.EnableMouse then selection:EnableMouse(false) end
 end
 
+-- A frame with no adapter that shows only in the dynamic layout keeps its
+-- box in the view (positionables.lua, dynamicViewMember): this is where it
+-- is placed, and its drop saves through its own store.
+local function viewMember(frame)
+    return (EM.IsDynamicViewMember and EM.IsDynamicViewMember(frame)) and true or false
+end
+
 local function arrangeBoxes()
     if not EM.ForEachPositionable then return end
     EM.ForEachPositionable(function(frame, selection)
         if not selection then return end
         local id = DL.IdForFrame(frame)
-        if id and View.IsParticipating(id) then
+        if (id and View.IsParticipating(id)) or viewMember(frame) then
             unfadeBox(selection)
             if viewOnly(frame) then wakeBox(selection) end
             raiseBox(selection)

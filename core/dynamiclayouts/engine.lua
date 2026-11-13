@@ -888,6 +888,17 @@ function DL.Delay()
     return delay()
 end
 
+--- What a state opacity fade takes from the panel (core/opacity.lua, "The
+--- state fade"): the "when leaving" duration, for both directions, and the
+--- wait before a change that leaves combat or a target. The wait holds only
+--- while the feature is on. The duration answers either way, since the
+--- store's speed is not behind the Features row.
+function DL.FadeTiming()
+    local store = Store()
+    local on = store and store.IsEnabled and store.IsEnabled()
+    return speed("in"), on and delay() or 0
+end
+
 --- Whether the target trigger counts only an NPC the player can attack; the
 --- resolver reads it on every target change.
 function DL.TargetAttackableNPCs()

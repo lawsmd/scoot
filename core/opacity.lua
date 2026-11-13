@@ -10,6 +10,8 @@
 -- then calls it; Camelot's host wires it to the same edges.
 -- Resolve works in percent space, clamps every value it reads, and converts
 -- once, so a string, a nil, or a 250 in a profile never reaches SetAlpha.
+-- Fade carries a resolved value to the frame over the Dynamic Layouts
+-- transition time where that engine is loaded ("The state fade", below).
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -189,10 +191,167 @@ function Opacity.RefreshComponents()
     end
 end
 
+--------------------------------------------------------------------------------
+-- The state fade
+--------------------------------------------------------------------------------
+-- A change of state carries the alpha to its new value over the Dynamic
+-- Layouts "when leaving" duration, and a change that leaves combat or a
+-- target first waits out that panel's delay while the feature is on
+-- (DL.FadeTiming, core/dynamiclayouts/engine.lua). Everything else is written
+-- at once: the first value a key takes, a new value under the same state (a
+-- slider, a profile switch), and any change to or from no state, which is how
+-- a caller names Edit Mode, a mouseover reveal or a preview.
+--
+-- The engine is read at the moment of use: one host lists it and the other
+-- does not, and both list this file. Without it Fade answers the alpha it was
+-- handed, so every site writes as it did before the fade existed.
+
+local RANK = { ooc = 0, target = 1, combat = 2 }
+local fades = {} -- key -> { key, value, target, state, wait, onTick, tick }
+
+local function Tweens()
+    local DL = addon.DynamicLayouts
+    if type(DL) ~= "table" or type(DL.Tween) ~= "table" then return nil end
+    return DL.Tween
+end
+
+local function Transitions()
+    local DL = addon.DynamicLayouts
+    if not Tweens() or type(DL.FadeTiming) ~= "function" then return nil end
+    return DL
+end
+
+local function always() return true end
+
+local function writeFade(rec, value)
+    rec.value = value
+    if rec.onTick then
+        rec.onTick(value)
+    else
+        rec.key:SetAlpha(value)
+    end
+end
+
+local function cancelWait(rec)
+    if not rec.wait then return end
+    rec.wait.timer:Cancel()
+    rec.wait = nil
+end
+
+-- At once: the value is the caller's to write, from Fade's return.
+local function landFade(rec, alpha, state)
+    local tweens = Tweens()
+    if tweens then tweens.Cancel(rec) end
+    rec.value, rec.target, rec.state = alpha, alpha, state
+    return alpha
+end
+
+-- The record is the tween's id, so a fade never shares a clock with an
+-- adapter's channels on the same frame.
+local function startFade(rec, DL, alpha, state, seconds)
+    rec.target, rec.state = alpha, state
+    DL.Tween.Start(rec, {
+        duration = seconds,
+        legal = always,
+        write = rec.tick,
+        finish = rec.tick,
+        channels = { opacity = { from = rec.value, to = alpha } },
+    })
+end
+
+-- value = Opacity.Fade(key, alpha, state, onTick)
+-- key     the frame, or any table that stands for one faded value
+-- alpha   the value Resolve returned
+-- state   the state Resolve returned, or nil for a value outside the triple
+-- onTick  function(value), the writer for the ticks that follow; without one
+--         the key is a frame and takes SetAlpha
+-- Returns the value to write now: the alpha itself, or where a fade or a
+-- wait stands. The caller writes it, so a site that multiplies the state
+-- opacity into another alpha does so in its own writer.
+function Opacity.Fade(key, alpha, state, onTick)
+    local rec = fades[key]
+    if not rec then
+        rec = { key = key }
+        rec.tick = function(_, value) writeFade(rec, value) end
+        fades[key] = rec
+    end
+    rec.onTick = onTick
+
+    local wait = rec.wait
+    if wait then
+        if wait.state == state and wait.alpha == alpha then return rec.value end
+        cancelWait(rec)
+        -- The value the wait was for changed under it: a setting.
+        if wait.state == state then return landFade(rec, alpha, state) end
+    end
+
+    local from, to = RANK[rec.state], RANK[state]
+    local DL = Transitions()
+    if not DL or rec.value == nil or not from or not to then
+        return landFade(rec, alpha, state)
+    end
+    if from == to then
+        -- A second call on one edge, which leaves a fade in flight alone, or
+        -- a setting.
+        if rec.target == alpha then return rec.value end
+        return landFade(rec, alpha, state)
+    end
+    if rec.target == alpha then
+        rec.state = state
+        return rec.value
+    end
+
+    local seconds, hold = DL.FadeTiming()
+    if to < from and hold > 0 then
+        local pending = { alpha = alpha, state = state }
+        pending.timer = C_Timer.NewTimer(hold, function()
+            if rec.wait ~= pending then return end
+            rec.wait = nil
+            local engine = Transitions()
+            if engine then
+                startFade(rec, engine, alpha, state, (engine.FadeTiming()))
+            else
+                writeFade(rec, landFade(rec, alpha, state))
+            end
+        end)
+        rec.wait = pending
+        return rec.value
+    end
+    startFade(rec, DL, alpha, state, seconds)
+    return rec.value
+end
+
+--- Where a key's fade stands now, or nil for a key Fade never saw. For a
+--- site that divides the state opacity out of another alpha.
+function Opacity.FadeValue(key)
+    local rec = fades[key]
+    return rec and rec.value or nil
+end
+
+--- Drop a key: its fade and its wait end with no write. For a frame that
+--- leaves the screen or changes hands.
+function Opacity.FadeForget(key)
+    local rec = fades[key]
+    if not rec then return end
+    cancelWait(rec)
+    local tweens = Tweens()
+    if tweens then tweens.Cancel(rec) end
+    fades[key] = nil
+end
+
+local function fadeLabel(key)
+    if type(key) == "table" and type(key.GetName) == "function" then
+        local ok, name = pcall(key.GetName, key)
+        if ok and type(name) == "string" then return name end
+    end
+    return tostring(key)
+end
+
 -- Introspection for verification: /run ScootAddon.Opacity.Dump()
 -- The two probes, then one line per configured component whose settings
 -- declare a full key set: the raw values and the alpha and state Resolve
--- returns with default options (a site's own floors are not reflected).
+-- returns with default options (a site's own floors are not reflected). Then
+-- one line per key the state fade holds.
 function Opacity.Dump()
     local inCombat, hasTarget = Opacity.InCombat(), Opacity.HasTarget()
     local lines = {
@@ -221,6 +380,22 @@ function Opacity.Dump()
             alpha, state)
     end
     lines[#lines + 1] = ("components: %d"):format(#ids)
+    local tweens = Tweens()
+    local fadeLines = {}
+    for key, rec in pairs(fades) do
+        local note = ""
+        if rec.wait then
+            note = (", waiting for %s at %.2f"):format(rec.wait.state, rec.wait.alpha)
+        elseif tweens and tweens.IsActive(rec) then
+            note = ", fading"
+        end
+        fadeLines[#fadeLines + 1] = ("fade %s: %.2f -> %.2f (%s)%s"):format(
+            fadeLabel(key), rec.value or 0, rec.target or 0, tostring(rec.state), note)
+    end
+    table.sort(fadeLines)
+    for _, line in ipairs(fadeLines) do
+        lines[#lines + 1] = line
+    end
     if addon.DebugShowWindow then
         addon.DebugShowWindow(("Opacity (%d components)"):format(#ids), lines)
     end

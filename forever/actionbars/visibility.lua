@@ -211,18 +211,25 @@ function Visibility.ApplyShown(token)
     addon.Events.RunOutOfCombat(function() applyShown(token) end, OWNER .. ".visible." .. token)
 end
 
+--- The bar's alpha and the state it answers to. Edit Mode, an unplaced bar
+--- and the mouseover reveal answer 1 with no state, which the state fade
+--- writes at once.
 function Visibility.Alpha(token)
     if editMode or not placed(token) or addon.HoverFade.IsOver(barOf(token)) then return 1 end
     local values = {
         [KEYS.combat] = get(token, KEYS.combat),
         [KEYS.target] = get(token, KEYS.target),
     }
-    return (addon.Opacity.Resolve(values, KEYS))
+    return addon.Opacity.Resolve(values, KEYS)
 end
 
+-- Through the state fade (core/opacity.lua): a change of state travels over
+-- the dynamic layout's transition time, and everything else lands at once.
 function Visibility.ApplyAlpha(token)
     local bar = barOf(token)
-    if bar then bar:SetAlpha(Visibility.Alpha(token)) end
+    if not bar then return end
+    local alpha, state = Visibility.Alpha(token)
+    bar:SetAlpha(addon.Opacity.Fade(bar, alpha, state))
 end
 
 function Visibility.ApplyHover(token)
@@ -256,6 +263,7 @@ end
 function Visibility.Release(frame)
     if not frame then return end
     addon.HoverFade.Unwatch(frame)
+    addon.Opacity.FadeForget(frame)
     addon.Events.RunOutOfCombat(function()
         unregister(frame)
         frame:Show()
@@ -287,7 +295,8 @@ end
 --------------------------------------------------------------------------------
 -- The opacity edges: the pull one frame late so the state reads settle, the
 -- regen a tenth of a second late, the target change and the world entry at
--- once. SetAlpha is unprotected, so the combat edge runs in combat.
+-- once. SetAlpha is unprotected, so the combat edge runs in combat, and so do
+-- the fade's ticks.
 --------------------------------------------------------------------------------
 
 local function refreshAlpha()

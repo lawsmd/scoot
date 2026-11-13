@@ -147,6 +147,7 @@ local function Build()
     ActionBars.GamepadBar.Build()
     ActionBars.Suppression.Apply()
     HookPresses()
+    addon.Keybinds.Mode.Install()
     built = true
 end
 

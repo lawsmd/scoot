@@ -36,8 +36,7 @@ MicroBags.Micro = Micro
 local PREFIX = "UI-HUD-MicroMenu-"
 
 -- Forever's MicroMenuMixin:GenerateButtonInfos, in its order. A button is
--- drawn while Blizzard's is shown, which is how the game rules and the
--- hidden Help button reach the replica.
+-- drawn while Blizzard's menu holds it and it is shown (Micro.Visible).
 Micro.ORDER = {
     "CharacterMicroButton", "ProfessionMicroButton", "SpellbookMicroButton", "TalentMicroButton",
     "LegacyMicroButton", "QuestLogMicroButton", "HousingMicroButton", "GuildMicroButton",
@@ -248,12 +247,21 @@ function Micro.SyncAll()
     for _, btn in ipairs(buttons) do Sync(btn) end
 end
 
--- Which twins draw: Blizzard's shown flag, which its own layout and the game
--- rules set. Read when the strip lays out, out of combat.
+-- MicroMenuMixin:InitializeButtons adds a button with AddButton, which
+-- parents it to MicroMenu. A button a game rule or a callback gates out is
+-- skipped there and never hidden: it keeps its XML state, shown and without
+-- a parent. Forever gates the Adventure Guide out this way, and its journal
+-- addon does not load, so EJMicroButton's OnClick calls a nil global.
+local function InMenu(blizz)
+    return MicroMenu ~= nil and blizz:GetParent() == MicroMenu
+end
+
+-- Which twins draw: the buttons Blizzard's menu holds, less the ones it
+-- hides (Help, in XML). Read when the strip lays out, out of combat.
 function Micro.Visible()
     local list = {}
     for _, btn in ipairs(buttons) do
-        if btn.blizz:IsShown() then list[#list + 1] = btn end
+        if InMenu(btn.blizz) and btn.blizz:IsShown() then list[#list + 1] = btn end
     end
     return list
 end
@@ -454,8 +462,8 @@ end
 function Micro.Report(push)
     for _, btn in ipairs(buttons) do
         local blizz = btn.blizz
-        push("    %-24s blizz shown %-5s enabled %-5s state %-7s twin shown %-5s %s",
-            blizz:GetName(), tostring(blizz:IsShown()), tostring(blizz:IsEnabled()),
+        push("    %-24s in menu %-5s blizz shown %-5s enabled %-5s state %-7s twin shown %-5s %s",
+            blizz:GetName(), tostring(InMenu(blizz)), tostring(blizz:IsShown()), tostring(blizz:IsEnabled()),
             tostring(blizz:GetButtonState()), tostring(btn:IsShown()), tostring(btn.textureName))
     end
 end

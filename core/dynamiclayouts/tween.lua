@@ -11,7 +11,12 @@
 -- are now, so nothing jumps. A channel whose legality check fails on a tick
 -- leaves the tween at once and its finish runs with ok=false, which the engine
 -- turns into a deferred write. Finished ids are collected and paid after the
--- loop, because a finish may start a new tween.
+-- loop, because a finish may start a new tween. A write may start one too,
+-- so the loop walks a snapshot of the ids, and an id retargeted after it
+-- reached its end keeps the new tween.
+--
+-- The state opacity fade (core/opacity.lua) is the second caller: one opacity
+-- channel per faded value, under an id of its own.
 --
 -- Easing is smoothstep, p*p*(3-2p): zero velocity at both ends, and a peak of
 -- 1.5 against cubic in-out's 3, so a mid-flight retarget, which restarts from
@@ -33,7 +38,9 @@ local driver = CreateFrame("Frame")
 driver:Hide()
 
 local active = {}   -- id -> tween
+local ids = {}      -- a tick's snapshot of the active ids
 local finished = {} -- ids collected during a tick
+local ended = {}    -- the tween each collected id reached its end as
 
 local function ease(p)
     return p * p * (3 - 2 * p)
@@ -77,22 +84,45 @@ local function tickChannel(t, ch, e)
 end
 
 local function tick(_, elapsed)
-    for i = #finished, 1, -1 do finished[i] = nil end
-    for id, t in pairs(active) do
-        t.elapsed = t.elapsed + elapsed
-        local p = t.elapsed / t.duration
-        if p > 1 then p = 1 end
-        t.progress = p
-        local e = ease(p)
-        for _, ch in ipairs(ORDER) do
-            tickChannel(t, ch, e)
-        end
-        if p >= 1 or next(t.channels) == nil then
-            finished[#finished + 1] = id
+    -- A snapshot of the ids: a write may start a tween on a new id (the unit
+    -- frames' opacity write starts a state fade, core/opacity.lua), and a new
+    -- key under pairs is undefined.
+    local count = 0
+    for id in pairs(active) do
+        count = count + 1
+        ids[count] = id
+    end
+    local done = 0
+    for i = 1, count do
+        local id = ids[i]
+        local t = active[id]
+        if t then
+            t.elapsed = t.elapsed + elapsed
+            local p = t.elapsed / t.duration
+            if p > 1 then p = 1 end
+            t.progress = p
+            local e = ease(p)
+            for _, ch in ipairs(ORDER) do
+                tickChannel(t, ch, e)
+            end
+            if p >= 1 or next(t.channels) == nil then
+                done = done + 1
+                finished[done] = id
+                ended[done] = t
+            end
         end
     end
-    for _, id in ipairs(finished) do
-        Tween.Finish(id)
+    for i = 1, done do
+        -- Only the tween that reached its end: a write later in the loop may
+        -- have retargeted the id, and that tween has its travel ahead of it.
+        if active[finished[i]] == ended[i] then
+            Tween.Finish(finished[i])
+        end
+    end
+    for i = count, 1, -1 do ids[i] = nil end
+    for i = done, 1, -1 do
+        finished[i] = nil
+        ended[i] = nil
     end
     if next(active) == nil then
         driver:Hide()

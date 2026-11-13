@@ -15,7 +15,13 @@
 -- Action Bar 1 pages in a fight and nothing below can move in one, so its
 -- filled set is the union over page 1, the page it shows and the bonus
 -- pages: one layout across every form, a slot any form uses keeps its
--- place, and a form that leaves it empty shows a gap there.
+-- place, and a form that leaves it empty shows a gap there. The gap is the
+-- button itself, shown at alpha 0: Show on a secure button is protected in
+-- a fight and SetAlpha is not, so a button a form can fill is never hidden,
+-- and a page flip in a fight shows or empties it by alpha at once
+-- (UpdateShownButtons, mixins.lua). A slot empty on every union page is
+-- hidden as Blizzard hides it; a page outside the union arriving in a fight
+-- (a manual page, a vehicle, an override bar) fills such a slot at regen.
 --
 -- The grid bits live here too. A button's SetShowGrid writes its showgrid
 -- attribute only from secure code, and a call from this addon is not, so
@@ -137,15 +143,22 @@ function Compact.Prepare(bar, m)
     Compact.SetGridBit(bar, editing and bar.compactAlign ~= nil, Compact.REASON_EDITMODE)
 end
 
+--- Whether a form can fill the button: the bar pages and some page of the
+--- union holds an action at its slot. The shown pass keeps such a button
+--- shown, at alpha 0 while the current page leaves it empty.
+function Compact.OnAnyUnionPage(bar, button)
+    if not bar.compactPaged or button:GetAttribute("statehidden") then return false end
+    for _, page in ipairs(UNION_PAGES) do
+        if C_ActionBar.HasAction((page - 1) * SLOTS + button.index) then return true end
+    end
+    return false
+end
+
 -- Whether a button draws an action: on the paging bar, on any page of the
 -- union; elsewhere, on its own slot.
 local function filled(bar, button)
     if button:GetAttribute("statehidden") then return false end
-    if bar.compactPaged then
-        for _, page in ipairs(UNION_PAGES) do
-            if C_ActionBar.HasAction((page - 1) * SLOTS + button.index) then return true end
-        end
-    end
+    if Compact.OnAnyUnionPage(bar, button) then return true end
     local action = button.action
     return action ~= nil and C_ActionBar.HasAction(action) or false
 end
