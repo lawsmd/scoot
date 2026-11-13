@@ -37,14 +37,16 @@ local HIT_LEVEL = 20         -- the click button's level over the preview's own 
 -- Alpha by ring: the selected member, then each neighbour out, flat past four.
 local ALPHA_KNOTS = { [0] = 1, [1] = 0.5, [2] = 0.3, [3] = 0.2, [4] = 0.15 }
 
--- Grow direction as groups.lua lays the live group out: RIGHT and LEFT are
--- rows sharing a bottom edge, DOWN and UP columns sharing a left edge. `dir`
--- is the sign along the screen axis from member i to member i + 1.
+-- Grow direction as groups.lua lays the live group out: RIGHT, LEFT and
+-- CENTER are rows sharing a bottom edge, DOWN and UP columns sharing a left
+-- edge. `dir` is the sign along the screen axis from member i to member
+-- i + 1.
 local GROW = {
-    RIGHT = { horizontal = true,  dir =  1 },
-    LEFT  = { horizontal = true,  dir = -1 },
-    DOWN  = { horizontal = false, dir = -1 },
-    UP    = { horizontal = false, dir =  1 },
+    RIGHT  = { horizontal = true,  dir =  1 },
+    LEFT   = { horizontal = true,  dir = -1 },
+    CENTER = { horizontal = true,  dir =  1 },
+    DOWN   = { horizontal = false, dir = -1 },
+    UP     = { horizontal = false, dir =  1 },
 }
 
 local function Knot(knots, last, d)

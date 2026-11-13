@@ -29,6 +29,12 @@ end
 -- Set `mask = false` on a style whose art is square-cornered; a rounded mask there
 -- would carve the icon back from art that never covered the corner in the first place.
 -- Per-style `maskScale` overrides DEFAULT_MASK_SCALE if a frame's radius needs tuning.
+--
+-- `cornerCut` is how far in from each corner the frame art's diagonal corner stroke
+-- runs, as a share of the art's side. The ScootAuras icon swipe ends its line there
+-- (scootauras/styling.lua SwipeSquare). Measured on UI-HUD-ActionBar-IconFrame, 46 texels
+-- wide: the opaque stroke spans 4 to 7 texels on Forever's member and 5 to 8 on retail's,
+-- and 0.14 sits inside both.
 local ROUNDED_ICON_MASK = "UI-HUD-ActionBar-IconFrame-Mask"
 local DEFAULT_MASK_SCALE = 1.5
 
@@ -37,7 +43,7 @@ local ICON_BORDER_DEFINITIONS = {
     { key = "square", label = "Square", type = "square", order = 10, defaultColor = {0, 0, 0, 1} },
 
     -- Blizzard atlas selections (always available)
-    { key = "blizzard", label = "Blizzard Default", type = "atlas", atlas = "UI-HUD-ActionBar-IconFrame", order = 100, expandX = 0, expandY = 0, defaultColor = {1, 1, 1, 1}, allowThicknessInset = true, insetStep = 0.2, insetCenter = 8, defaultThickness = 8, adjustLeft = 1, adjustRight = 3, adjustTop = 1, adjustBottom = 2, mask = ROUNDED_ICON_MASK },
+    { key = "blizzard", label = "Blizzard Default", type = "atlas", atlas = "UI-HUD-ActionBar-IconFrame", order = 100, expandX = 0, expandY = 0, defaultColor = {1, 1, 1, 1}, allowThicknessInset = true, insetStep = 0.2, insetCenter = 8, defaultThickness = 8, adjustLeft = 1, adjustRight = 3, adjustTop = 1, adjustBottom = 2, mask = ROUNDED_ICON_MASK, cornerCut = 0.14 },
     { key = "cooldownOverlay", label = "Cooldown Manager Overlay", type = "atlas", atlas = "UI-HUD-CoolDownManager-IconOverlay", order = 110, expandX = 8, expandY = 8, defaultColor = {1, 1, 1, 1}, allowThicknessInset = true, insetStep = 0.2, insetCenter = 8, defaultThickness = 8, mask = ROUNDED_ICON_MASK },
     { key = "bagsGlow", label = "Bags Glow", type = "atlas", atlas = "bags-glow-white", order = 120, expandX = 2, expandY = 2, defaultColor = {1, 1, 1, 1}, allowThicknessInset = true, insetStep = 0.2, insetCenter = 8, defaultThickness = 8 },
     { key = "gearEnchant", label = "Gear Enchant", type = "atlas", atlas = "GearEnchant_IconBorder", order = 130, expandX = 1.5, expandY = 1.5, defaultColor = {1, 1, 1, 1}, allowThicknessInset = true, insetStep = 0.2, insetCenter = 8, defaultThickness = 8 },

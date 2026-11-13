@@ -469,6 +469,7 @@ local function LifecycleDump()
                 tostring(entry.lemRegistered or false), tostring(entry.frame:IsShown())))
         end
         push("Group parenting queued: " .. tostring(SAU.Groups.HasPendingWork()))
+        if SAU.Slots then SAU.Slots.AddDebug(push) end
         push("")
     end
 
@@ -753,7 +754,10 @@ end
 local function DumpButtonMethods(trackerId)
     local entry = addon.ScootAuras.Engine._byTracker[trackerId]
     if not entry or not entry.button then
-        addon:Print("Tracker t" .. tostring(trackerId) .. " has no wired button.")
+        addon.DebugShowWindow(Title("Button Methods"), {
+            "Tracker t" .. tostring(trackerId) .. " has no wired button.",
+            "Tracker ids are in " .. SLASH .. " list.",
+        })
         return
     end
     local names = {
@@ -769,6 +773,95 @@ local function DumpButtonMethods(trackerId)
         table.insert(lines, n .. " = " .. type(entry.button[n]))
     end
     addon.DebugShowWindow(Title("Button Methods"), lines)
+end
+
+-- A value for a dump line: "secret" for a secret, "err" for a refused read,
+-- the plain value rounded otherwise. Never compares or formats a secret.
+local function DV(v)
+    if issecretvalue and issecretvalue(v) then return "secret" end
+    if type(v) == "number" then return string.format("%.3f", v) end
+    return tostring(v)
+end
+
+-- Every return of method `m` on `obj`, through DV, as one string.
+local function DCall(obj, m, ...)
+    if not (obj and obj[m]) then return "n/a" end
+    local r = { pcall(obj[m], obj, ...) }
+    if not r[1] then return "err" end
+    local out = {}
+    for i = 2, #r do out[#out + 1] = DV(r[i]) end
+    return #out > 0 and table.concat(out, " ") or "-"
+end
+
+local function DumpRegion(push, label, region)
+    if not region then
+        push(label .. ": none")
+        return
+    end
+    push(label .. ": shown=" .. DCall(region, "IsShown") .. " visible=" .. DCall(region, "IsVisible")
+        .. " alpha=" .. DCall(region, "GetAlpha") .. " size=" .. DCall(region, "GetSize"))
+    if region.GetFrameLevel then
+        push("  level=" .. DCall(region, "GetFrameLevel") .. " strata=" .. DCall(region, "GetFrameStrata")
+            .. " clips=" .. DCall(region, "DoesClipChildren"))
+    end
+    if region.GetTexture then
+        push("  texture=" .. DCall(region, "GetTexture") .. " atlas=" .. DCall(region, "GetAtlas")
+            .. " layer=" .. DCall(region, "GetDrawLayer"))
+        push("  texcoord=" .. DCall(region, "GetTexCoord"))
+        push("  vertex=" .. DCall(region, "GetVertexColor") .. " blend=" .. DCall(region, "GetBlendMode"))
+    end
+    local n = region.GetNumPoints and select(2, pcall(region.GetNumPoints, region))
+    if type(n) == "number" and not issecretvalue(n) then
+        for i = 1, n do
+            local ok, p, rel, rp = pcall(region.GetPoint, region, i)
+            if ok then
+                local relName = rel and (rel.GetDebugName and select(2, pcall(rel.GetDebugName, rel))) or "?"
+                push(string.format("  point%d %s -> %s %s", i, DV(p), DV(relName), DV(rp)))
+            else
+                push(string.format("  point%d err", i))
+            end
+        end
+    end
+end
+
+-- The bar element of a live tracker, piece by piece: the StatusBar the engine
+-- drives, its fill texture, the turned fill copy and its host, the clip, the
+-- two backgrounds. Run it while the aura is up.
+local function DumpBar(trackerId)
+    local entry = addon.ScootAuras.Engine._byTracker[trackerId]
+    local lines, push = addon.DebugLines("=== Bar element (t" .. tostring(trackerId) .. ") ===", "")
+    local bar
+    for _, elem in ipairs(entry and entry.elements or {}) do
+        if elem.type == "bar" then bar = elem end
+    end
+    if not bar then
+        push("No bar element on this tracker's entry. Tracker ids are in " .. SLASH .. " list.")
+        addon.DebugShowWindow(Title("Bar"), lines)
+        return
+    end
+    local tracker = addon.ScootAuras.GetTracker(trackerId)
+    local db = addon.ScootAuras.GetDB(trackerId)
+    push("shape=" .. DV(tracker and tracker.shape) .. " fg=" .. DV(db and db.barForegroundTexture)
+        .. " bg=" .. DV(db and db.barBackgroundTexture) .. " inCombat=" .. DV(InCombatLockdown()))
+    push("button=" .. DV(entry.button ~= nil) .. " buttonShown=" .. DCall(entry.button, "IsShown"))
+    push("")
+    local fill = bar.barFill
+    DumpRegion(push, "barFill (StatusBar)", fill)
+    push("  orientation=" .. DCall(fill, "GetOrientation") .. " rotates=" .. DCall(fill, "GetRotatesTexture")
+        .. " reverse=" .. DCall(fill, "GetReverseFill"))
+    push("  value=" .. DCall(fill, "GetValue") .. " minmax=" .. DCall(fill, "GetMinMaxValues")
+        .. " timer=" .. DCall(fill, "GetTimerDuration"))
+    local okT, fillTex = pcall(fill.GetStatusBarTexture, fill)
+    DumpRegion(push, "fill texture", okT and fillTex or nil)
+    push("  sameAsFirstSeen=" .. DV(bar._dbgFillTex == nil and "first look" or (bar._dbgFillTex == fillTex)))
+    bar._dbgFillTex = bar._dbgFillTex or (okT and fillTex) or nil
+    push("  file=" .. DCall(okT and fillTex or nil, "GetTexture") .. " atlas=" .. DCall(okT and fillTex or nil, "GetAtlas"))
+    DumpRegion(push, "barClip", bar.barClip)
+    DumpRegion(push, "barRegion", bar.widget)
+    DumpRegion(push, "barBg", bar.barBg)
+    DumpRegion(push, "barBgTurned", bar.barBgTurned)
+    DumpRegion(push, "bgTurn", bar.bgTurn)
+    addon.DebugShowWindow(Title("Bar"), lines)
 end
 
 --------------------------------------------------------------------------------
@@ -1036,11 +1129,15 @@ end
 -- Dispatch
 --------------------------------------------------------------------------------
 
-local VALID_UNITS = { player = true, group = true, target = true, focus = true }
+local VALID_UNITS = {
+    player = true, group = true, target = true, focus = true,
+    weapons = true, mainhand = true, offhand = true,
+}
 local VALID_SHAPES = { icon = true, bar = true, vbar = true, shape = true, text = true, icontext = true, icons = true }
 local VALID_KINDS = {
     buff = true, debuff = true, buffstacks = true, debuffstacks = true,
     missingbuff = true, classpower = true, classresource = true, cooldown = true,
+    reactive = true, weaponbuff = true,
 }
 
 local Commands = addon.Commands
@@ -1213,7 +1310,7 @@ addon:RegisterDebugCommand({
         { word = "host", help = "the host in effect: brand, tokens, store, spec axis, Cooldown Manager, saved variable", fn = HostDump },
         { word = "catalog", help = "every picker cell: shown name, stored base", fn = CatalogDump },
         { word = "log", help = "probe log", fn = DumpLog },
-        { word = "add", usage = "add <spellId|classpower|classresource> [player|group|target|focus] [buff|debuff|buffstacks|debuffstacks|missingbuff|cooldown] [icon|bar|vbar|shape|text|icontext|icons]",
+        { word = "add", usage = "add <spellId|classpower|classresource|weaponbuff> [player|group|target|focus|weapons|mainhand|offhand] [buff|debuff|buffstacks|debuffstacks|missingbuff|cooldown|reactive] [icon|bar|vbar|shape|text|icontext|icons]",
           help = "create a tracker; the arguments after the first are order-free", fn = function(a1, a2, a3, a4)
             local spellId = tonumber(a1)
             local unit, shape, kind = nil, nil, "buff"
@@ -1305,6 +1402,12 @@ addon:RegisterDebugCommand({
             if not trackerId then return Commands.USAGE end
             DumpButtonMethods(trackerId)
         end },
+        { word = "bar", usage = "bar <id>", help = "a bar tracker's pieces: the engine's StatusBar, its fill texture, the turned fill, the clip, the backgrounds",
+          fn = function(a1)
+            local trackerId = tonumber(a1)
+            if not trackerId then return Commands.USAGE end
+            DumpBar(trackerId)
+        end },
         { word = "swipe", usage = "swipe <id> [plain|tint]", help = "icon swipe pieces; plain or tint swaps in a red test swipe until the next restyle",
           fn = function(a1, a2)
             local trackerId = tonumber(a1)
@@ -1340,11 +1443,22 @@ addon:RegisterDebugCommand({
             if not trackerId or not SAU.ClassResource then return Commands.USAGE end
             addon.DebugShowWindow(Title("Class Resource t") .. trackerId, SAU.ClassResource.DebugInfo(trackerId))
         end },
-        { word = "cooldown", usage = "cooldown <id>", help = "spell cooldown tracker: resolved spell, known gate, secrecy of every read, show rule, last paint", fn = function(a1)
+        { word = "cooldown", usage = "cooldown <id>", help = "spell cooldown or reactive ability tracker: resolved spell, known gate, secrecy of every read, the usable read, show rule, last paint", fn = function(a1)
             local SAU = addon.ScootAuras
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.Cooldown then return Commands.USAGE end
             addon.DebugShowWindow(Title("Spell Cooldown t") .. trackerId, SAU.Cooldown.DebugInfo(trackerId))
+        end },
+        { word = "slots", usage = "slots [on|off]", help = "group slots that follow state: off lays every group out on its plain chain for the session; the chain's state is in list",
+          fn = function(a1)
+            local Slots = addon.ScootAuras.Slots
+            if not Slots then return Commands.USAGE end
+            if a1 == "on" or a1 == "off" then
+                Slots.SetEnabled(a1 == "on")
+            elseif a1 ~= nil and a1 ~= "" then
+                return Commands.USAGE
+            end
+            addon:Print(Title("group slots " .. (Slots.IsEnabled() and "on" or "off") .. "."))
         end },
         { word = "cadence", usage = "cadence <id|spellId> [on|off|set <0..1>|alpha <0..1>|mirror <y|off>]",
           help = "cadence lock record and probes", fn = cadence },

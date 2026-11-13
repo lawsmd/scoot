@@ -48,10 +48,11 @@ local OUTSIDE_ANCHORS = {
 --- Shape-driven element visibility, shared with the binding layer.
 function SAU.ResolveVisibility(tracker, db)
     local shape = tracker.shape or "icon"
-    if tracker.kind == "missingbuff" then
+    if SAU.KindIsReminder(tracker.kind) then
         -- The reminder is a Scoot-owned element set outside the engine button
         -- (missing.lua); these flags describe THAT set. Inside the button
         -- nothing may ever be visible, which BindForMode handles on `missing`.
+        -- A Weapon Buff reminder has no button at all.
         return {
             shape = shape,
             missing = true,

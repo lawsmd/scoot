@@ -113,6 +113,18 @@ local SAU_EVENTS = {
     "SPELL_UPDATE_COOLDOWN",
     "SPELL_UPDATE_CHARGES",
     "PLAYER_TALENT_UPDATE",
+    -- The Reactive Ability kind (cooldown.lua): the one signal that a spell
+    -- with no aura became castable or stopped being so. No payload
+    -- (SpellBookDocumentation.lua), so the handler re-reads each live
+    -- tracker's spell.
+    "SPELL_UPDATE_USABLE",
+    -- The Weapon Buff kind (weaponbuff.lua): a temporary enchantment applied
+    -- or removed, a weapon swapped, and any other slot change, which covers a
+    -- client that fires the general event for the off hand. None carries a
+    -- payload the handler reads; it re-reads the two weapon slots.
+    "WEAPON_ENCHANT_CHANGED",
+    "WEAPON_SLOT_CHANGED",
+    "PLAYER_EQUIPMENT_CHANGED",
 }
 
 local specResolvePending = false
@@ -144,8 +156,21 @@ local function onAuraEvent(event, arg1, arg2)
         if SAU.Cooldown then SAU.Cooldown.RequestRepaint() end
         return
     end
+    if event == "SPELL_UPDATE_USABLE" then
+        -- Arrives on every power tick; returns at once while no Reactive
+        -- Ability tracker is live.
+        if SAU.Cooldown then SAU.Cooldown.OnUsableChanged() end
+        return
+    end
     if event == "PLAYER_TALENT_UPDATE" then
         if SAU.Cooldown then SAU.Cooldown.RefreshKnown() end
+        return
+    end
+    if event == "WEAPON_ENCHANT_CHANGED" or event == "WEAPON_SLOT_CHANGED"
+        or event == "PLAYER_EQUIPMENT_CHANGED" then
+        -- Walks the live trackers and repaints only one whose verdict or
+        -- weapon moved, so an armor swap costs the walk and nothing else.
+        if SAU.WeaponBuff then SAU.WeaponBuff.Refresh() end
         return
     end
     if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW"

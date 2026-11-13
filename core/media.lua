@@ -162,6 +162,13 @@ local BAR_TEXTURE_ORDER = {
 local BAR_ATLASES = {
 	blizzardCooldownManager = {
 		fill = "UI-HUD-CoolDownManager-Bar",
+		-- The fill turned a quarter counter-clockwise, as a file, for a bar
+		-- that fills upward. The atlas is horizontal art and no turn of it at
+		-- draw time (SetRotatesTexture, turned texcoords, a frame turned by
+		-- animation) draws under an engine-bound bar in combat; a file on a
+		-- VERTICAL StatusBar does. Cut by docs/tools/cdmvertical.py; retail's
+		-- art and Forever's are the same pixels.
+		vertical = BAR_MEDIA_PREFIX .. "cooldown-manager-vertical.tga",
 		background = "UI-HUD-CoolDownManager-Bar-BG",
 		outset = { left = 2, top = 3, right = 6, bottom = 7 },
 		-- The member rows between the background's rims: the top rim is row 1,
@@ -194,10 +201,12 @@ end
 
 --- Paints a StatusBar's fill from a texture key: the atlas, the file, or
 --- `fallback` (a file path, white when nil) for a key that names neither.
-function addon.Media.ApplyBarFill(statusBar, key, fallback)
+--- `vertical` is true for a bar that fills upward: an atlas key then paints
+--- its turned file (BAR_ATLASES, `vertical`).
+function addon.Media.ApplyBarFill(statusBar, key, fallback, vertical)
 	local atlas = addon.Media.ResolveBarTextureAtlas(key)
 	if atlas then
-		statusBar:SetStatusBarTexture(atlas.fill)
+		statusBar:SetStatusBarTexture(vertical and atlas.vertical or atlas.fill)
 		return
 	end
 	statusBar:SetStatusBarTexture(addon.Media.ResolveBarTexturePath(key) or fallback or WHITE_TEXTURE)
@@ -205,11 +214,16 @@ end
 
 --- Paints a plain texture with a key's fill art across its current anchors,
 --- for a copy of the fill (the aura bar's cadence overlay, a picker swatch).
-function addon.Media.ApplyBarFillTexture(tex, key, fallback)
+--- `vertical` is true for a copy over a bar that fills upward (ApplyBarFill).
+function addon.Media.ApplyBarFillTexture(tex, key, fallback, vertical)
 	local atlas = addon.Media.ResolveBarTextureAtlas(key)
 	-- SetAtlas keeps the texture's old texcoords and applies them inside the
 	-- atlas rect, and a file keeps them too, so both start from the whole.
 	tex:SetTexCoord(0, 1, 0, 1)
+	if atlas and vertical and atlas.vertical then
+		tex:SetTexture(atlas.vertical)
+		return
+	end
 	if atlas then
 		tex:SetAtlas(atlas.fill)
 		return
@@ -272,6 +286,40 @@ function addon.Media.ApplyBarBackground(tex, key, rect, opts)
 	local path = addon.Media.ResolveBarTexturePath(key)
 	if not path then return false end
 	tex:SetTexture(path)
+	return true
+end
+
+--- Paints an atlas background along a vertical bar. The atlas is a horizontal
+--- nine-slice, so `tex` (a texture on `turnFrame`) is painted in the art's own
+--- geometry on `turnFrame`, sized `rect`'s height by its width and centred on
+--- it, and a Rotation animation holds the frame a quarter turn
+--- counter-clockwise while it plays (the mechanism the aura name's turn uses,
+--- scootauras/regions.lua). The art's left end stands at the bottom, where a
+--- vertical fill starts. Returns false, with the turn stopped and the frame
+--- hidden, for a key with no atlas: the caller paints its own texture.
+--- `w` and `h` are the rect's size from the caller's settings, since a
+--- rect's own may read secret or zero before layout.
+function addon.Media.ApplyBarBackgroundTurned(tex, turnFrame, key, rect, w, h)
+	local spin = turnFrame._barTurn
+	if not addon.Media.ResolveBarTextureAtlas(key) then
+		if spin then spin:Stop() end
+		turnFrame:Hide()
+		return false
+	end
+	if not spin then
+		spin = turnFrame:CreateAnimationGroup()
+		local turn = spin:CreateAnimation("Rotation")
+		turn:SetDegrees(90)
+		turn:SetDuration(0)
+		turn:SetEndDelay(2147483647)
+		turnFrame._barTurn = spin
+	end
+	turnFrame:ClearAllPoints()
+	turnFrame:SetPoint("CENTER", rect, "CENTER", 0, 0)
+	turnFrame:SetSize(math.max(1, h or 1), math.max(1, w or 1))
+	addon.Media.ApplyBarBackground(tex, key, turnFrame)
+	turnFrame:Show()
+	if not spin:IsPlaying() then spin:Play() end
 	return true
 end
 

@@ -3,7 +3,7 @@
 -- One panel serves every tracker row, group member cell, and group box. A
 -- tracker gets a three-row menu (Rename, Duplicate, Export); a group gets
 -- Duplicate and Export and then the layout controls (Spacing, Group Scale,
--- Grow Direction) while the group is loaded. Export swaps the panel to a
+-- Alignment) while the group is loaded. Export swaps the panel to a
 -- page holding the string, selected for Ctrl+C; Rename swaps it to a page
 -- holding the name in an input box, focused. A group renames on its box. The lifecycle is the spec fly-out's: OpenFor
 -- re-targets the one instance, and RenderList brackets its rebuild with
@@ -29,9 +29,6 @@ local MSG_H = 28                   -- two wrapped lines at LABEL 10
 local MSG_BOX_GAP = 4
 local EXPORT_BOX_H = 80
 local ERROR_R, ERROR_G, ERROR_B = 1, 0.35, 0.35
-
-local GROW_LABELS = { RIGHT = "Right", LEFT = "Left", DOWN = "Down", UP = "Up" }
-local GROW_ORDER = { "RIGHT", "LEFT", "DOWN", "UP" }
 
 local panel                        -- the one live fly-out
 
@@ -255,7 +252,7 @@ local function CurrentGroup()
 end
 
 -- Built once and refreshed per open: the get and set closures read the open
--- group, so one Spacing, one Group Scale, and one Grow Direction serve every
+-- group, so one Spacing, one Group Scale, and one Alignment serve every
 -- box. Settings apply live with no list re-render.
 local function EnsureLayoutControls()
     if panel._layout then return panel._layout end
@@ -313,9 +310,10 @@ local function EnsureLayoutControls()
 
     local grow = Controls:CreateSelector({
         parent = menu,
-        label = "Grow Direction",
-        values = GROW_LABELS,
-        order = GROW_ORDER,
+        label = "Alignment",
+        -- The Edit Mode dialog's selector reads the same catalog (groups.lua).
+        values = addon.Catalogs.GrowDirection.values,
+        order = addon.Catalogs.GrowDirection.order,
         width = 130,
         get = function()
             local group = CurrentGroup()

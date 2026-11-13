@@ -44,6 +44,7 @@ Navigation.NavModel = {
             { key = "damageMeterV2", label = "Damage Meters", module = "damageMeter", moduleSubId = "damageMeterV2",
                 variant = "Y",
                 versionBadge = { label = "Y", title = "Damage Meters Y", text = "Custom frames that replace Blizzard's meter entirely. Multi-column and multi-window support." } },
+            { key = "bags", label = "Bags", module = "bags", betaBadge = true },
             { key = "groupFinder", label = "Group Finder", module = "groupfinder", betaBadge = true },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
             { key = "objectiveTracker", label = "Objective Tracker", module = "objectiveTracker" },
@@ -99,6 +100,12 @@ Navigation.NavModel = {
         collapsible = true,
         children = {
             { key = "auraList", label = "Aura List", module = "scootAuras", betaBadge = true },
+            -- Shown once a bonus aura can run here (bonus.lua); none can yet.
+            { key = "bonusAuras", label = "BonusAuras", module = "scootAuras",
+              isVisible = function()
+                  local Bonus = addon.ScootAuras and addon.ScootAuras.Bonus
+                  return Bonus ~= nil and Bonus.AnyAvailable()
+              end },
         },
     },
     {

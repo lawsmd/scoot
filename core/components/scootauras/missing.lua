@@ -50,6 +50,11 @@
 -- "Only in Combat", the enable state and the blink drive clip/content from
 -- plain state only. Everything here except the container is Scoot-owned, so
 -- styling edits apply mid-combat.
+--
+-- A Weapon Buff tracker is the same reminder with no container at all: whether
+-- a wielded weapon carries a temporary enchantment is a plain read
+-- (weaponbuff.lua), so its verdict takes the anchor path the group signal
+-- uses. Lit, the content sits on the visual; dark, the clip hides.
 local addonName, addon = ...
 
 local SAU = addon.ScootAuras
@@ -211,7 +216,7 @@ function Missing.ApplyContentAnchor(entry, trackerId)
     local ok, err, how
     if m.forced then
         ok, err = pcall(m.content.SetPoint, m.content, "LEFT", entry.visual, "LEFT", 0, 0)
-        how = "anchored (group)"
+        how = m.plain and "anchored (plain read)" or "anchored (group)"
     elseif m.container then
         ok, err = pcall(m.content.SetPoint, m.content, "LEFT", m.container, "RIGHT", 0, 0)
         how = m.templated and "anchored" or "anchored (plain frame; template missing)"
@@ -262,6 +267,7 @@ end
 -- keeps showing, everything else hides until the next build re-anchors.
 function Missing.OnRetire(entry)
     entry.gateGroupKey = nil
+    if SAU.MissingCast then SAU.MissingCast.Release(entry) end
     local m = entry.missing
     if not m then return end
     m.container = nil
@@ -273,9 +279,11 @@ end
 -- matches, without ever calling OnBuilt again. Only the forced state resets,
 -- so the anchor goes back to the container it still has.
 function Missing.OnEntryReleased(entry)
+    if SAU.MissingCast then SAU.MissingCast.Release(entry) end
     local m = entry.missing
     if not m then return end
     m.clip:Hide()
+    m.lit = false
     if m.forced then
         m.forced = false
         Missing.ApplyContentAnchor(entry)
@@ -290,9 +298,15 @@ end
 --------------------------------------------------------------------------------
 
 --- The reminder text: the aura's name as the player knows the spell, with the
--- optional suffix.
+-- optional suffix. A Weapon Buff tracker has no spell to name it, so it reads
+-- the tracker's own name, which its owner can set to the buff they use.
 function Missing.ReminderText(tracker, db)
-    local name = SAU.DescribeSpell(tracker.spellId)
+    local name
+    if tracker.kind == "weaponbuff" then
+        name = SAU.DisplayName(tracker)
+    else
+        name = SAU.DescribeSpell(tracker.spellId)
+    end
     if db and db.missingSuffix == true then
         return name .. " missing!"
     end
@@ -368,7 +382,7 @@ function Missing.Restyle(trackerId, tracker, state)
             m.repaintPending = false
             local live = SAU.GetTracker(trackerId)
             local st = SAU._activeStates[trackerId]
-            if live and live.kind == "missingbuff" and st and st.entry == entry then
+            if live and SAU.KindIsReminder(live.kind) and st and st.entry == entry then
                 PaintLive(trackerId, live, entry, m)
             end
         end)
@@ -484,6 +498,12 @@ local function RangeSpellId(set)
         end
     end
     return set.rangeId or nil
+end
+
+--- Whether the tracked spell is a targeted buff (Earth Shield and its like),
+-- for the click-to-cast unit (missingcast.lua).
+function Missing.HasRangeSpell(trackerId, tracker)
+    return RangeSpellId(IdSet(trackerId, tracker)) ~= nil
 end
 
 --- "scan" when the engine hands plain aura data for this spell on other units,
@@ -821,11 +841,14 @@ function Missing.SyncOverrideTicker()
     end
 end
 
---- Both polls, synced together. Every site that used to call SyncGroupTicker
--- calls this instead, so neither can be missed.
+--- Every poll a reminder runs on, synced together: the group scan, the
+-- substituted-spell watch, and the Weapon Buff read (weaponbuff.lua). Every
+-- site that used to call SyncGroupTicker calls this instead, so none can be
+-- missed.
 function Missing.SyncTickers()
     Missing.SyncGroupTicker()
     Missing.SyncOverrideTicker()
+    if SAU.WeaponBuff then SAU.WeaponBuff.SyncTicker() end
 end
 
 --------------------------------------------------------------------------------
@@ -861,71 +884,124 @@ function Missing.UpdateGate(trackerId)
     local tracker = SAU.GetTracker(trackerId)
     local db = SAU.GetDB(trackerId)
     local show = tracker ~= nil
-        and tracker.kind == "missingbuff"
+        and SAU.KindIsReminder(tracker.kind)
         and SAU.IsTrackerActive(trackerId, tracker)
         and SAU.IsModuleActive()
-    if show and tracker.onlyInCombat ~= false and not InCombatLockdown() then
-        show = false
-    end
-    -- Reads `== true`, not `~= false`: this gate defaults OFF, so a tracker that
-    -- predates the field (nil) keeps showing everywhere, as it always has.
-    if show and tracker.onlyInInstances == true and not PlayerInInstance() then
-        show = false
-    end
-    if show and SAU._isEditModeActive and SAU._isEditModeActive() then
-        -- The Edit Mode preview stands in for the live reminder.
-        show = false
+    -- A Weapon Buff reminder: no container, the verdict a plain read.
+    local plain = tracker ~= nil and tracker.kind == "weaponbuff"
+    local editing = (SAU._isEditModeActive and SAU._isEditModeActive()) and true or false
+    -- With no container there is no preview set either (regions.lua): in Edit
+    -- Mode the live reminder shows as it would while lit, whatever its gates
+    -- and the weapons say, so there is something to see and to drag.
+    local selfPreview = show and plain and editing
+    if not selfPreview then
+        if show and tracker.onlyInCombat ~= false and not InCombatLockdown() then
+            show = false
+        end
+        -- Reads `== true`, not `~= false`: this gate defaults OFF, so a tracker that
+        -- predates the field (nil) keeps showing everywhere, as it always has.
+        if show and tracker.onlyInInstances == true and not PlayerInInstance() then
+            show = false
+        end
+        if show and editing then
+            -- The Edit Mode preview stands in for the live reminder.
+            show = false
+        end
     end
 
-    -- The player's own half, and nothing else. The container answers "does the
-    -- player have it" by geometry, but its candidate filter matches exact ids:
-    -- a spell the game has substituted is invisible to it, so the aura group
-    -- stays empty, the container stays 1 x 1, and the geometry reads "missing"
-    -- for a buff the player plainly has. Hide it here instead. `show` itself
-    -- stays untouched: it is the permission gate and it governs both halves.
-    local escaping = show and tracker and SAU.EscapingOverrideFor(tracker.spellId) or nil
+    local escaping, forced
+    if plain then
+        -- The whole verdict. It rides the anchor the group half uses: lit, the
+        -- content sits on the visual; dark, the clip below hides it.
+        forced = show and (selfPreview
+            or (SAU.WeaponBuff ~= nil and SAU.WeaponBuff.Missing(tracker))) or false
+    else
+        -- The player's own half, and nothing else. The container answers "does
+        -- the player have it" by geometry, but its candidate filter matches
+        -- exact ids: a spell the game has substituted is invisible to it, so
+        -- the aura group stays empty, the container stays 1 x 1, and the
+        -- geometry reads "missing" for a buff the player plainly has. Hide it
+        -- here instead. `show` itself stays untouched: it is the permission
+        -- gate and it governs both halves.
+        escaping = show and tracker and SAU.EscapingOverrideFor(tracker.spellId) or nil
 
-    -- The group half. Plain throughout, so it may be branched on, and it only
-    -- ever forces the reminder on: the anchor moves, the clip and the blink
-    -- stay on plain state. Derived from the permission gate, never from the
-    -- self half above.
-    local forced = show and Missing.GroupSignalActive(trackerId, tracker) or false
-    if m.forced ~= forced then
+        -- The group half. Plain throughout, so it may be branched on, and it
+        -- only ever forces the reminder on: the anchor moves, the clip and the
+        -- blink stay on plain state. Derived from the permission gate, never
+        -- from the self half above.
+        forced = show and Missing.GroupSignalActive(trackerId, tracker) or false
+    end
+    -- `plain` is part of the test: a pool entry passes between the two kinds
+    -- of reminder, and one that changes hands with `forced` unmoved would keep
+    -- the anchor its last occupant left.
+    if m.forced ~= forced or m.plain ~= plain then
         m.forced = forced
+        m.plain = plain
         Missing.ApplyContentAnchor(entry, trackerId)
     end
 
     -- Forced wins: the group's verdict is a separate question and outranks the
-    -- player's own satisfied state, exactly as it outranks the container.
-    local lit = show and (forced or not escaping) or false
+    -- player's own satisfied state, exactly as it outranks the container. A
+    -- plain reminder has no container to fall back on, so forced is all of it.
+    local lit
+    if plain then
+        lit = forced
+    else
+        lit = show and (forced or not escaping) or false
+    end
     m.clip:SetShown(lit)
+    if m.lit ~= lit then
+        m.lit = lit
+        -- A grouped Weapon Buff reminder gives up its slot while dark
+        -- (HoldsSlot below), so the group lays out again when it flips.
+        if plain and entry.grouped and SAU.Groups then SAU.Groups.RequestReflow() end
+    end
 
     if Engine._SetResult then
         Engine._SetResult("gatereason.t" .. trackerId,
             (not show and "gated off")
+            or (selfPreview and "edit mode (its own preview)")
+            or (plain and (forced and "weapon bare" or "weapons buffed"))
             or (escaping and not forced and ("override " .. tostring(escaping)))
             or (forced and "group forced")
             or "container")
     end
 
-    local wantBlink = lit and db ~= nil and db.blinkWhenShown == true
+    local wantBlink = lit and not selfPreview and db ~= nil and db.blinkWhenShown == true
     if wantBlink then
         if not m.blink:IsPlaying() then m.blink:Play() end
     else
         if m.blink:IsPlaying() then m.blink:Stop() end
         m.content:SetAlpha(1)
     end
+
+    -- The click target follows the same verdicts. Out of combat only; it
+    -- returns at once in lockdown.
+    if SAU.MissingCast then SAU.MissingCast.Sync(trackerId, tracker, entry, lit, forced) end
 end
 
 --- Regen and zone events: re-evaluate every live reminder's gate.
 function Missing.RefreshGates()
     for trackerId in pairs(SAU._activeStates) do
         local tracker = SAU.GetTracker(trackerId)
-        if tracker and tracker.kind == "missingbuff" then
+        if tracker and SAU.KindIsReminder(tracker.kind) then
             Missing.UpdateGate(trackerId)
         end
     end
     Missing.SyncTickers()
+end
+
+--- Whether a grouped tracker holds its slot in the group's plain layout
+-- (groups.lua). A Weapon Buff reminder gives its slot up while dark: its
+-- verdict is plain, so the layout may branch on it. A missing-buff reminder
+-- always holds one, since its own state is the container's secret size.
+function Missing.HoldsSlot(trackerId)
+    local tracker = SAU.GetTracker(trackerId)
+    if not tracker or tracker.kind ~= "weaponbuff" then return true end
+    local state = SAU._activeStates[trackerId]
+    local m = state and state.entry and state.entry.missing
+    if not m then return true end
+    return m.lit == true
 end
 
 --------------------------------------------------------------------------------
@@ -1007,8 +1083,8 @@ function Missing.DebugInfo(trackerId)
         return lines
     end
     local db = SAU.GetDB(trackerId)
-    add("t%d spell=%d kind=%s shape=%s onlyInCombat=%s onlyInInstances=%s enabled=%s",
-        trackerId, tracker.spellId, tostring(tracker.kind), tostring(tracker.shape),
+    add("t%d spell=%s kind=%s shape=%s onlyInCombat=%s onlyInInstances=%s enabled=%s",
+        trackerId, tostring(tracker.spellId), tostring(tracker.kind), tostring(tracker.shape),
         tostring(tracker.onlyInCombat), tostring(tracker.onlyInInstances),
         tostring(tracker.enabled))
     add("unit=%s engine=%s", tostring(tracker.unit), tostring(SAU.EngineUnitFor(tracker)))
@@ -1027,33 +1103,47 @@ function Missing.DebugInfo(trackerId)
     add("inInstance=%s instanceType=%s", tostring(PlayerInInstance()),
         iok and tostring(instanceType) or "error")
 
-    local sok, secrecy = pcall(function()
-        return C_Secrets and C_Secrets.GetSpellAuraSecrecy and C_Secrets.GetSpellAuraSecrecy(tracker.spellId)
-    end)
-    add("GetSpellAuraSecrecy=%s", sok and SecrecyName(secrecy) or "error")
+    -- A Weapon Buff reminder has no spell, no include set and no container:
+    -- its rows are the weapon read, and the aura rows below would format nil.
+    local weapon = tracker.kind == "weaponbuff"
+    if weapon then
+        add("gatereason=%s", tostring(Engine._results and Engine._results["gatereason.t" .. trackerId]))
+        if SAU.WeaponBuff then SAU.WeaponBuff.AddDebug(add, tracker) end
+        add("")
+    else
+        local sok, secrecy = pcall(function()
+            return C_Secrets and C_Secrets.GetSpellAuraSecrecy and C_Secrets.GetSpellAuraSecrecy(tracker.spellId)
+        end)
+        add("GetSpellAuraSecrecy=%s", sok and SecrecyName(secrecy) or "error")
 
-    -- The substitution test. `escaping` non-nil means the game has swapped this
-    -- spell for one the container's filter cannot match, so the reminder is
-    -- held dark in Lua rather than by the container's geometry. A spell that
-    -- reads escaping forever has a talent override no Cooldown Manager entry
-    -- carries: its container could never match either aura, and the reminder
-    -- is dark for that reason rather than because the buff is up.
-    local escaping = SAU.EscapingOverrideFor(tracker.spellId)
-    local ook, rawOverride = pcall(C_Spell.GetOverrideSpell, tracker.spellId)
-    add("escaping=%s resolvedTo=%s displayedAs=%d GetOverrideSpell=%s idSetVersion=%s",
-        escaping and tostring(escaping) or "none",
-        tostring(SAU.ResolvedSpellFor(tracker.spellId)),
-        SAU.DisplaySpellFor(tracker.spellId),
-        ook and tostring(rawOverride) or "error",
-        tostring(addon.AuraIds.GetVersion and addon.AuraIds.GetVersion()))
-    add("gatereason=%s", tostring(Engine._results and Engine._results["gatereason.t" .. trackerId]))
-    if tracker.unit ~= "group" then
-        -- The group branch prints this per id with its own secrecy verdicts.
-        add("includeSpellIDs=%s", table.concat(Missing.SpellIds(trackerId, tracker), ","))
-    end
+        -- The substitution test. `escaping` non-nil means the game has swapped
+        -- this spell for one the container's filter cannot match, so the
+        -- reminder is held dark in Lua rather than by the container's
+        -- geometry. A spell that reads escaping forever has a talent override
+        -- no Cooldown Manager entry carries: its container could never match
+        -- either aura, and the reminder is dark for that reason rather than
+        -- because the buff is up.
+        local escaping = SAU.EscapingOverrideFor(tracker.spellId)
+        local ook, rawOverride = pcall(C_Spell.GetOverrideSpell, tracker.spellId)
+        add("escaping=%s resolvedTo=%s displayedAs=%d GetOverrideSpell=%s idSetVersion=%s",
+            escaping and tostring(escaping) or "none",
+            tostring(SAU.ResolvedSpellFor(tracker.spellId)),
+            SAU.DisplaySpellFor(tracker.spellId),
+            ook and tostring(rawOverride) or "error",
+            tostring(addon.AuraIds.GetVersion and addon.AuraIds.GetVersion()))
+        add("gatereason=%s", tostring(Engine._results and Engine._results["gatereason.t" .. trackerId]))
+        if SAU.MissingCast then
+            local st = SAU._activeStates[trackerId]
+            add("%s", SAU.MissingCast.DebugLine(trackerId, tracker, st and st.entry))
+        end
+        if tracker.unit ~= "group" then
+            -- The group branch prints this per id with its own secrecy verdicts.
+            add("includeSpellIDs=%s", table.concat(Missing.SpellIds(trackerId, tracker), ","))
+        end
 
-    if tracker.unit == "group" then
-        Missing.AddGroupDebug(add, trackerId, tracker)
+        if tracker.unit == "group" then
+            Missing.AddGroupDebug(add, trackerId, tracker)
+        end
     end
 
     local state = SAU._activeStates[trackerId]
@@ -1084,14 +1174,16 @@ function Missing.DebugInfo(trackerId)
     add("clip shown=%s content shown=%s wired=%s templated=%s blink=%s host=%sx%s",
         tostring(m.clip:IsShown()), tostring(m.content:IsShown()), tostring(m.wired),
         tostring(m.templated), tostring(m.blink:IsPlaying()), tostring(entry.hostW), tostring(entry.hostH))
+    add("forced=%s plain=%s lit=%s", tostring(m.forced), tostring(m.plain), tostring(m.lit))
     -- The content's position follows the secret-sized container once anchored,
     -- so a secret here means the gate is live; a plain number means it is not.
+    -- A Weapon Buff reminder sits on the visual and always reads plain.
     local lok, left = pcall(m.content.GetLeft, m.content)
     add("content:GetLeft()=%s", lok and Describe(left) or ("error: " .. tostring(left)))
 
     -- Plain reads for cross-checking; never throw (RequiresNonSecretAura
     -- returns nothing instead).
-    if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
+    if not weapon and C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
         local aok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, tracker.spellId)
         add("GetPlayerAuraBySpellID(%d)=%s", tracker.spellId, aok and Describe(aura) or ("error: " .. tostring(aura)))
     end

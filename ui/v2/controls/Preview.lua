@@ -161,6 +161,8 @@ end
 --                            swipe's edge; nil draws none.
 --   iconCooldown    bool     Animate a dark cooldown swipe over a default icon, running
 --                            forward (the action button look), on the same cycle.
+--   procGlow        bool     Run the proc glow's loop around the icon (core/procglow.lua),
+--                            over the border and under the text.
 --   noBottomBorder  bool     Read by SettingsBuilder: skips the divider under the row.
 --   noHover         bool     Skip the accent hover highlight on the row.
 --   noLabel         bool     Skip the "Preview:" label (caller draws its own).
@@ -467,6 +469,19 @@ function Controls:CreatePreview(options)
             contentHalfH = contentHalfH + math.max(0, reachY or PREVIEW_BORDER_SLACK)
         end
 
+        -- The proc glow's loop (core/procglow.lua), over the border and under
+        -- the text as on the live tracker. Its reach past the icon joins the
+        -- measured box, so the clip leaves it whole.
+        if options.procGlow and addon.ProcGlow.HasArt() then
+            local glow = addon.ProcGlow.Create(previewIcon)
+            glow:SetFrameLevel(previewIcon:GetFrameLevel() + 3)
+            glow:Fit(previewIcon, iconW, iconH)
+            glow:Start(false)
+            local reach = 0.5 + addon.ProcGlow.OVERHANG
+            contentHalfW = math.max(contentHalfW, iconW * reach)
+            contentHalfH = math.max(contentHalfH, iconH * reach)
+        end
+
         -- Text elements (CDM-style: CD, Stacks, Keybind)
         if showCDMText then
             local textFrame = CreateFrame("Frame", nil, previewIcon)
@@ -592,9 +607,19 @@ function Controls:CreatePreview(options)
         previewBar:SetScale(barScale)
 
         -- Background (sublevel -1, matching the live bar)
-        local barBg = previewBar:CreateTexture(nil, "BACKGROUND", nil, -1)
-        if not addon.Media.ApplyBarBackground(barBg, barBGTexKey, previewBar) then
-            barBg:SetColorTexture(0, 0, 0, 1)
+        -- A vertical bar's atlas background stands on a turned frame, as the
+        -- live bar's does (addon.Media.ApplyBarBackgroundTurned).
+        local barBg
+        if barVertical and addon.Media.ResolveBarTextureAtlas(barBGTexKey) then
+            local bgTurn = CreateFrame("Frame", nil, previewBar)
+            bgTurn:SetFrameLevel(previewBar:GetFrameLevel())
+            barBg = bgTurn:CreateTexture(nil, "BACKGROUND", nil, -1)
+            addon.Media.ApplyBarBackgroundTurned(barBg, bgTurn, barBGTexKey, previewBar, barWidth, barHeight)
+        else
+            barBg = previewBar:CreateTexture(nil, "BACKGROUND", nil, -1)
+            if not addon.Media.ApplyBarBackground(barBg, barBGTexKey, previewBar) then
+                barBg:SetColorTexture(0, 0, 0, 1)
+            end
         end
 
         local bgColorMode = readSetting("barBackgroundColorMode", "custom")
@@ -611,7 +636,8 @@ function Controls:CreatePreview(options)
         if barVertical then barFill:SetOrientation("VERTICAL") end
         barFill:SetMinMaxValues(0, 1)
         barFill:SetValue(options.fillFraction or 0.5)
-        addon.Media.ApplyBarFill(barFill, barFGTexKey, "Interface\\TargetingFrame\\UI-StatusBar")
+        -- A vertical bar's atlas fill is its turned file, as on the live bar.
+        addon.Media.ApplyBarFill(barFill, barFGTexKey, "Interface\\TargetingFrame\\UI-StatusBar", barVertical)
 
         local fgColorMode = readSetting("barForegroundColorMode", "class")
         if fgColorMode == "custom" then
@@ -1101,11 +1127,11 @@ function Controls:CreatePreview(options)
     -- Anchor CA text for non-text-only modes (icon must be positioned first)
     if caTextFS and not showTextOnly then
         local cfg = container._caTextConfig
-        -- Boost frame level so text renders above the icon texture and the
-        -- swipe's border frame (bar-hosted text was already leveled above the
-        -- bar fill at creation)
+        -- Boost frame level so text renders above the icon texture, the
+        -- swipe's border frame and the proc glow at + 3 (bar-hosted text was
+        -- already leveled above the bar fill at creation)
         if caTextFrame and previewIcon and not (cfg and cfg.onBar) then
-            caTextFrame:SetFrameLevel(previewIcon:GetFrameLevel() + 3)
+            caTextFrame:SetFrameLevel(previewIcon:GetFrameLevel() + 4)
         end
         if cfg and cfg.onBar and previewBar then
             -- Bar-hosted text: anchor to the bar itself (raw offsets; the text

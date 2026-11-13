@@ -44,7 +44,22 @@ local TITLE_ICON_GAP = 8
 -- Kept off addon.UI.Controls.Metrics: the editor's only template-only geometry.
 -- lift -1 centers the capitals, since a line's descender room is below them;
 -- iconDrop lowers the icon row off the box's bottom edge to clear the name.
-local TITLE_BOX = { height = 32, y = -4, padX = 16, lift = -1, iconDrop = 3, renameW = 236, icon = 14, iconGap = 6, fontSize = 18, fontStyle = "SHADOWTHICKOUTLINESLUG" }
+local TITLE_BOX = { height = 32, y = -4, padX = 16, lift = -1, iconDrop = 3, renameW = 236, icon = 16, iconGap = 6, fontSize = 18, fontStyle = "SHADOWTHICKOUTLINESLUG" }
+-- On the box's rim every title icon is the quest tracker's filter button:
+-- its rimmed box, the filter glyph covered by a stretched glyph-free column
+-- of the same interior, and the icon's own glyph on top. Pixel rects are in
+-- the atlas's own 18x19 art, the same on both atlas sets.
+local ICON_BOX = {
+    atlas = "ui-questtrackerbutton-filter",
+    interior = { 4, 4, 14, 14 },   -- left, top, right, bottom (exclusive)
+    column = { 4, 4, 5, 14 },      -- glyph-free strip stretched over the interior
+    glyph = 0.5,                   -- a bare glyph's size, as a share of the box
+}
+-- Pencil-Icon is a pencil on a dark square with a beveled edge of its own.
+-- This rect of its 30x29 art holds the pencil alone, inside the bevel; it is
+-- drawn additively over the cover, so the dark square behind the strokes
+-- barely lifts the box and its bevel never shows as a second rim.
+local PENCIL_GLYPH = { 8, 6, 24, 22 }
 -- Icon names: the flat glyphs the Aura List uses for the same actions. The
 -- delete art falls back to the gold X where the client has no lone trash can.
 local SPEC_ATLAS = "ui-questtrackerbutton-filter"
@@ -139,7 +154,8 @@ function ctx.missingVisual()
     return SAU().CoerceMissingVisual(c.kind, c.shape, c.missingVisual) or "none"
 end
 
--- The "Show it..." rule on the Spell Cooldown kind, "always" when unset.
+-- The "Show it..." rule on the Spell Cooldown and Reactive Ability kinds,
+-- the kind's own fallback when unset.
 function ctx.showWhen()
     local tracker = CurrentTracker()
     if tracker then return SAU().ShowWhenFor(tracker) end
@@ -518,8 +534,99 @@ local function InitializeFrame()
     widgets.iconRow = iconRow
 
     local restAlpha = onTemplate and 1 or 0.35
-    local function TitleIcon(atlas, tooltip, glyphScale)
-        local btn = CreateFrame("Button", nil, boxed and iconRow or titleBar)
+
+    -- A rect of an atlas's art, in its own pixels, drawn on tex through the
+    -- sheet's texcoords. False where the client has no such atlas.
+    local function SetAtlasRect(tex, atlas, rect)
+        local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
+        local file = info and (info.file or info.filename)
+        if not (file and info.width and info.width > 0 and info.height and info.height > 0) then
+            return false
+        end
+        local l, r = info.leftTexCoord, info.rightTexCoord
+        local t, b = info.topTexCoord, info.bottomTexCoord
+        tex:SetTexture(file)
+        tex:SetTexCoord(l + (r - l) * rect[1] / info.width, l + (r - l) * rect[3] / info.width,
+            t + (b - t) * rect[2] / info.height, t + (b - t) * rect[4] / info.height)
+        return true
+    end
+
+    -- The boxed title icon (ICON_BOX). glyph is an atlas name or a fallback
+    -- list; "box" keeps the filter button whole, "pencil" lays Pencil-Icon's
+    -- square over the interior.
+    local function BoxedTitleIcon(glyph, tooltip)
+        local btn = CreateFrame("Button", nil, iconRow)
+        btn:SetSize(iconSize, iconSize)
+        btn:SetFrameLevel(titleBar:GetFrameLevel() + 6)
+        local layers = {}
+        local function Layer(sublevel)
+            local t = btn:CreateTexture(nil, "ARTWORK", nil, sublevel)
+            t:SetDesaturated(true)
+            t:SetVertexColor(ar, ag, ab)
+            layers[#layers + 1] = t
+            return t
+        end
+
+        local box = Layer(0)
+        box:SetAllPoints(btn)
+        box:SetAtlas(ICON_BOX.atlas)
+        -- A black outline round the box: eight black copies a pixel out.
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                if dx ~= 0 or dy ~= 0 then
+                    local edge = btn:CreateTexture(nil, "ARTWORK", nil, -1)
+                    edge:SetAtlas(ICON_BOX.atlas)
+                    edge:SetSize(iconSize, iconSize)
+                    edge:SetPoint("CENTER", btn, "CENTER", dx, dy)
+                    edge:SetDesaturated(true)
+                    edge:SetVertexColor(0, 0, 0, 1)
+                end
+            end
+        end
+
+        if glyph ~= "box" then
+            -- The interior's rect on the button, scaled from the art's 18x19.
+            local info = C_Texture.GetAtlasInfo(ICON_BOX.atlas)
+            local aw, ah = (info and info.width) or 18, (info and info.height) or 19
+            local ir = ICON_BOX.interior
+            local cover = Layer(1)
+            cover:SetPoint("TOPLEFT", btn, "TOPLEFT", iconSize * ir[1] / aw, -iconSize * ir[2] / ah)
+            cover:SetPoint("BOTTOMRIGHT", btn, "TOPLEFT", iconSize * ir[3] / aw, -iconSize * ir[4] / ah)
+            SetAtlasRect(cover, ICON_BOX.atlas, ICON_BOX.column)
+            local tex = Layer(2)
+            local size = math.floor(iconSize * ICON_BOX.glyph + 0.5)
+            tex:SetSize(size, size)
+            tex:SetPoint("CENTER", cover, "CENTER", 0, 0)
+            if glyph == "pencil" then
+                SetAtlasRect(tex, "Pencil-Icon", PENCIL_GLYPH)
+                tex:SetBlendMode("ADD")
+            else
+                for _, name in ipairs(type(glyph) == "table" and glyph or { glyph }) do
+                    if pcall(tex.SetAtlas, tex, name) and tex:GetAtlas() then break end
+                end
+            end
+        end
+
+        local function Tint(r, g, b)
+            for _, t in ipairs(layers) do t:SetVertexColor(r, g, b) end
+        end
+        btn._tint = Tint
+        btn:SetScript("OnEnter", function(self)
+            Tint(1, 1, 1)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(tooltip, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function()
+            Tint(ar, ag, ab)
+            GameTooltip:Hide()
+        end)
+        return btn
+    end
+
+    local function TitleIcon(atlas, tooltip, glyphScale, boxedGlyph)
+        if boxed then return BoxedTitleIcon(boxedGlyph or atlas, tooltip) end
+        local btn = CreateFrame("Button", nil, titleBar)
         btn:SetSize(iconSize, iconSize)
         btn:SetFrameLevel(titleBar:GetFrameLevel() + 6)
         local tex = btn:CreateTexture(nil, "ARTWORK")
@@ -533,23 +640,6 @@ local function InitializeFrame()
         tex:SetVertexColor(ar, ag, ab)
         tex:SetAlpha(restAlpha)
         btn._tex = tex
-        -- On the box's rim each glyph wears a black outline: eight black
-        -- copies of its own atlas, a pixel out in each direction, behind it.
-        local used = boxed and tex:GetAtlas()
-        if used then
-            for dx = -1, 1 do
-                for dy = -1, 1 do
-                    if dx ~= 0 or dy ~= 0 then
-                        local edge = btn:CreateTexture(nil, "ARTWORK", nil, -1)
-                        edge:SetAtlas(used)
-                        edge:SetSize(glyph, glyph)
-                        edge:SetPoint("CENTER", btn, "CENTER", dx, dy)
-                        edge:SetDesaturated(true)
-                        edge:SetVertexColor(0, 0, 0, 1)
-                    end
-                end
-            end
-        end
         btn:SetScript("OnEnter", function(self)
             if onTemplate then
                 tex:SetVertexColor(1, 1, 1)
@@ -568,9 +658,9 @@ local function InitializeFrame()
         return btn
     end
 
-    local renameBtn = TitleIcon("Pencil-Icon", "Rename", 1.25)
+    local renameBtn = TitleIcon("Pencil-Icon", "Rename", 1.25, "pencil")
     local duplicateBtn = TitleIcon("friends-icon-battlenet-copy", "Duplicate into this group")
-    local specBtn = TitleIcon(SPEC_ATLAS, "Load on...")
+    local specBtn = TitleIcon(SPEC_ATLAS, "Load on...", nil, "box")
     local deleteBtn = TitleIcon(DELETE_ATLAS, "Delete")
     local titleIcons = { renameBtn, duplicateBtn, specBtn, deleteBtn }
 
@@ -1000,7 +1090,9 @@ local function InitializeFrame()
     -- the shared Controls registry already; this covers the rest.
     theme:Subscribe("ScootAuraEditor", function(r, g, b)
         titleText:SetTextColor(r, g, b, 1)
-        for _, btn in ipairs(titleIcons) do btn._tex:SetVertexColor(r, g, b) end
+        for _, btn in ipairs(titleIcons) do
+            if btn._tint then btn._tint(r, g, b) else btn._tex:SetVertexColor(r, g, b) end
+        end
         previewLabel:SetTextColor(r, g, b, 1)
         -- The house X is black under the pointer; OnLeave picks up the new
         -- color. A template's X is the client's own art.
@@ -1028,16 +1120,19 @@ end
 --------------------------------------------------------------------------------
 
 -- The duration kinds and the stacks kinds read as two measures of one aura.
--- The cooldown leads the list.
+-- The cooldown leads the list, and the Reactive Ability kind, which is the
+-- same spell read for whether it can be cast, follows it.
 local KIND_LABELS = {
     cooldown = "a Spell's Cooldown",
+    reactive = "a Reactive Ability",
     buff = "a Buff's duration", debuff = "a Debuff's duration",
     buffstacks = "the stacks of a Buff", debuffstacks = "the stacks of a Debuff",
-    missingbuff = "a Missing Buff", classpower = "my Class Power",
+    missingbuff = "a Missing Buff", weaponbuff = "a Weapon Buff", classpower = "my Class Power",
     classresource = "my Class Resource",
 }
 local KIND_ORDER = {
-    "cooldown", "buff", "debuff", "buffstacks", "debuffstacks", "missingbuff", "classpower", "classresource",
+    "cooldown", "reactive", "buff", "debuff", "buffstacks", "debuffstacks", "missingbuff", "weaponbuff",
+    "classpower", "classresource",
 }
 -- What the spell region says for a kind that tracks no spell.
 local KIND_NOTES = {
@@ -1048,10 +1143,16 @@ local KIND_NOTES = {
         .. "Rogue or a Druid in Cat Form, Runes, Arcane Charges, Holy Power, Chi, Soul Shards or Essence. It "
         .. "follows your specialization and form, so there is nothing to pick. A character whose spec has no "
         .. "such resource shows nothing.",
+    weaponbuff = "Weapon Buff reads the temporary buff on your weapons: a poison, a sharpening stone, an oil. "
+        .. "The tracker shows while a weapon you are wielding has none, and any such buff counts. A shield or "
+        .. "an item held in the off hand is left out. There is no spell to pick.",
 }
+-- A Weapon Buff tracker's units are the hands it watches.
 local UNIT_LABELS = {
     player = "Myself", group = "My Group", target = "My Target", focus = "My Focus",
+    weapons = "Either Weapon", mainhand = "My Main Hand", offhand = "My Off Hand",
 }
+local UNIT_ORDER = { "player", "group", "target", "focus", "weapons", "mainhand", "offhand" }
 -- Units listed for a kind but not yet offered: shown dimmed and inert.
 local COMING_SOON_UNITS = {}
 -- The two bars share every setting and tab; "vbar" stands the bar on its
@@ -1071,6 +1172,10 @@ local CLASS_RESOURCE_SHAPE_ORDER = { "bar", "icons" }
 -- A Spell Cooldown tracker is the icon with the swipe, or the bar with the fill.
 local COOLDOWN_SHAPE_LABELS = { icon = "an Icon", bar = "a Horizontal Bar", vbar = "a Vertical Bar" }
 local COOLDOWN_SHAPE_ORDER = { "icon", "bar", "vbar" }
+-- A Reactive Ability tracker is the icon: the game reports no length for the
+-- usable window, so a bar has nothing to fill.
+local REACTIVE_SHAPE_LABELS = { icon = "an Icon" }
+local REACTIVE_SHAPE_ORDER = { "icon" }
 -- A stacks tracker is the icon carrying the count, the segmented bar, one
 -- shape per stack (stacks.lua), or the count alone.
 local STACK_SHAPE_LABELS = {
@@ -1080,11 +1185,18 @@ local STACK_SHAPE_ORDER = { "icon", "bar", "icons", "text" }
 -- Shared by both missing-buff gate rows.
 local YES_NO_LABELS = { yes = "Yes", no = "No" }
 local YES_NO_ORDER = { "yes", "no" }
--- "Show it..." on the Spell Cooldown kind (the tokens live in core.lua).
-local SHOW_WHEN_LABELS = {
-    always = "Always", oncooldown = "Only while on Cooldown", ready = "Only while Ready",
+-- "Show it..." per kind that carries the rule (the tokens live in core.lua).
+-- On a Reactive Ability tracker, usable means castable and off cooldown.
+local SHOW_WHEN_BY_KIND = {
+    cooldown = {
+        labels = { always = "Always", oncooldown = "Only while on Cooldown", ready = "Only while Ready" },
+        order = { "always", "oncooldown", "ready" },
+    },
+    reactive = {
+        labels = { usable = "Only while Usable", always = "Always" },
+        order = { "usable", "always" },
+    },
 }
-local SHOW_WHEN_ORDER = { "always", "oncooldown", "ready" }
 -- "When it's missing, show..." per shape (buff and debuff; the tokens and their
 -- per-shape validity live in core.lua). Every visual is a reveal: art beneath
 -- the engine button, uncovered when the slot empties.
@@ -1317,6 +1429,7 @@ local function SetContent(field, value)
         RefreshList()
     else
         local c = session.draft.content
+        local previous = c[field]
         c[field] = value
         -- A raid buff goes up between pulls, so a reminder that only shows in
         -- combat would arrive after the moment to act on it. Myself keeps the
@@ -1356,12 +1469,25 @@ local function SetContent(field, value)
             if c.shape and not (shapes and shapes[c.shape]) then
                 c.shape = nil
             end
+            -- A kind with one shape (Reactive Ability: the icon) seeds it as
+            -- the sole unit is seeded, and a flip away takes the seed back.
+            if c.shapeSeeded then
+                c.shape = nil
+                c.shapeSeeded = nil
+            end
+            local soleShape = SAU().SoleShapeForKind(value)
+            if soleShape and not c.shape then
+                c.shape = soleShape
+                c.shapeSeeded = true
+            end
             if not SAU().KindTracksStacks(value) then
                 c.maxStacks = nil
             end
-            -- "Show it..." belongs to the Spell Cooldown kind: seeded so the
-            -- row carries a value, cleared on a flip away.
-            c.showWhen = SAU().CoerceShowWhen(value, c.showWhen)
+            -- "Show it..." belongs to the kinds that carry it: seeded so the
+            -- row carries a value, cleared on a flip away. The tokens read
+            -- differently on each kind, so a flip starts from the new kind's
+            -- fallback.
+            c.showWhen = SAU().CoerceShowWhen(value, (previous == value) and c.showWhen or nil)
         end
         -- The missing-state token follows the write path's rule (core.lua
         -- CoerceMissingVisual): "Nothing" is absence on a duration kind and
@@ -1382,7 +1508,7 @@ end
 
 local function UnitOptions(kind)
     local values, order, disabled = {}, {}, nil
-    for _, unit in ipairs({ "player", "group", "target", "focus" }) do
+    for _, unit in ipairs(UNIT_ORDER) do
         if SAU().VALID_UNITS[kind] and SAU().VALID_UNITS[kind][unit] then
             values[unit] = UNIT_LABELS[unit]
             table.insert(order, unit)
@@ -1400,7 +1526,7 @@ end
 local function ShapeOptions(kind)
     if SAU().KindTracksStacks(kind) then
         return STACK_SHAPE_LABELS, STACK_SHAPE_ORDER
-    elseif kind == "missingbuff" then
+    elseif SAU().KindIsReminder(kind) then
         return MISSING_SHAPE_LABELS, MISSING_SHAPE_ORDER
     elseif kind == "classpower" then
         return CLASS_POWER_SHAPE_LABELS, CLASS_POWER_SHAPE_ORDER
@@ -1408,6 +1534,8 @@ local function ShapeOptions(kind)
         return CLASS_RESOURCE_SHAPE_LABELS, CLASS_RESOURCE_SHAPE_ORDER
     elseif kind == "cooldown" then
         return COOLDOWN_SHAPE_LABELS, COOLDOWN_SHAPE_ORDER
+    elseif kind == "reactive" then
+        return REACTIVE_SHAPE_LABELS, REACTIVE_SHAPE_ORDER
     end
     return SHAPE_LABELS, SHAPE_ORDER
 end
@@ -1540,11 +1668,13 @@ local function RenderSelectors()
     end
 
     -- "Show it..." on the Spell Cooldown kind: always, only while the spell
-    -- is on cooldown, or only while it is ready. The row always carries a
-    -- value (core.lua CoerceShowWhen), so it never sits on "Choose".
-    if kind and unit and shape and SAU().KindHasShowWhen(kind) then
+    -- is on cooldown, or only while it is ready. On the Reactive Ability
+    -- kind: only while usable, or always. The row always carries a value
+    -- (core.lua CoerceShowWhen), so it never sits on "Choose".
+    local showWhen = kind and SHOW_WHEN_BY_KIND[kind]
+    if showWhen and unit and shape and SAU().KindHasShowWhen(kind) then
         AddChoiceSelector(selBuilder, "Show it...",
-            SHOW_WHEN_LABELS, SHOW_WHEN_ORDER, ctx.showWhen(),
+            showWhen.labels, showWhen.order, ctx.showWhen(),
             function(v) SetContent("showWhen", v) end)
     end
 
@@ -1565,7 +1695,7 @@ local function RenderSelectors()
             function(v) SetContent("onlyInCombat", v == "yes") end)
     end
 
-    if kind == "missingbuff" and unit and shape then
+    if SAU().KindIsReminder(kind) and unit and shape then
         -- Dungeons, raids, delves, scenarios, battlegrounds and arenas. Unlike
         -- the combat gate this one defaults to No, so an existing reminder
         -- keeps showing everywhere until the user asks for otherwise.
@@ -1638,6 +1768,16 @@ local CLASS_POWER_TEXT_COLOR_OPTS = { classPowerMode = true, lightenMana = true,
 -- the option builders below need, for the open tracker, the draft, or a
 -- neighbour in the open tracker's group. The strip builds one member from
 -- one view.
+-- A view's icon: the spell's, or for a Weapon Buff tracker the weapon in the
+-- hand it watches, which is what the reminder shows.
+local function ViewIcon(kind, unit, spellTexture)
+    if kind == "weaponbuff" then
+        local weaponBuff = SAU().WeaponBuff
+        return weaponBuff and weaponBuff.Icon(unit) or nil
+    end
+    return spellTexture
+end
+
 local function TrackerView(trackerId)
     local tracker = SAU().GetTracker(trackerId)
     if not tracker then return nil end
@@ -1647,6 +1787,7 @@ local function TrackerView(trackerId)
         componentId = componentId,
         kind = tracker.kind,
         shape = tracker.shape,
+        unit = tracker.unit,
         spellId = tracker.spellId,
         get = function(key)
             local v = Helpers().getSetting(componentId, key)
@@ -1655,7 +1796,8 @@ local function TrackerView(trackerId)
         end,
         missingVisual = SAU().MissingVisualFor(tracker),
         name = SAU().DisplayName(tracker),
-        iconTexture = tracker.spellId and PlainSpellTexture(tracker.spellId) or nil,
+        iconTexture = ViewIcon(tracker.kind, tracker.unit,
+            tracker.spellId and PlainSpellTexture(tracker.spellId) or nil),
         stackTracker = tracker,
     }
 end
@@ -1668,20 +1810,22 @@ local function SessionView()
         local view = TrackerView(session.trackerId)
         if view and session.validated then
             view.spellId = session.validated.spellId
-            view.iconTexture = session.validated.icon
+            view.iconTexture = ViewIcon(view.kind, view.unit, session.validated.icon)
         end
         return view
     end
     local validated = session.validated
+    local draftUnit = session.draft and session.draft.content.unit or nil
     return {
         componentId = "scootAuraDraft",
         kind = ctx.kind(),
         shape = ctx.shape(),
+        unit = draftUnit,
         spellId = validated and validated.spellId or nil,
         get = ctx.get,
         missingVisual = ctx.missingVisual(),
         name = CurrentName(),
-        iconTexture = validated and validated.icon or nil,
+        iconTexture = ViewIcon(ctx.kind(), draftUnit, validated and validated.icon or nil),
         stackTracker = StackTrackerView(),
     }
 end
@@ -2022,8 +2166,9 @@ local function StacksPreviewOptions(view)
     }
 end
 
--- The Spell Cooldown kind: the generic preview (the 15 s countdown and the
--- bar fill) with the template's dark swipe over the icon.
+-- The Spell Cooldown kind, and the Reactive Ability kind on the same art:
+-- the generic preview (the 15 s countdown and the bar fill) with the
+-- template's dark swipe over the icon.
 local function CooldownPreviewOptions(view)
     local shape = view.shape
     local mode = "icon"
@@ -2042,6 +2187,7 @@ local function CooldownPreviewOptions(view)
         maxRowHeight = 340,
         getSetting = view.get,
         iconCooldown = not SAU().IsBarShape(shape),
+        procGlow = SAU().KindWatchesUsable(view.kind) and view.get("procGlow") == true,
         barVertical = (shape == "vbar"),
         noHover = true,
         noLabel = true,
@@ -2054,7 +2200,10 @@ end
 -- onto nameText* and pin the position outside the icon.
 local function MissingBuffPreviewOptions(view)
     local get, shape = view.get, view.shape
-    local nameText = view.spellId and SAU().DescribeSpell(view.spellId) or view.name
+    -- A Weapon Buff reminder reads the tracker's name; a spell id left on its
+    -- record by a kind flip names nothing it shows.
+    local spellNamed = view.spellId and view.kind ~= "weaponbuff"
+    local nameText = spellNamed and SAU().DescribeSpell(view.spellId) or view.name
     if get("missingSuffix") == true then
         nameText = nameText .. " missing!"
     end
@@ -2156,7 +2305,9 @@ local KIND_PREVIEWS = {
     buffstacks = StacksPreviewOptions,
     debuffstacks = StacksPreviewOptions,
     cooldown = CooldownPreviewOptions,
+    reactive = CooldownPreviewOptions,
     missingbuff = MissingBuffPreviewOptions,
+    weaponbuff = MissingBuffPreviewOptions,
 }
 
 -- The preview options for one view, or nil while a kind that needs a spell

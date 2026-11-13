@@ -142,10 +142,12 @@ local function EnsureVisual(entry)
     local set = Engine.BuildElementSet(root)
 
     -- Text ruler on a hidden holder: the number's host is measured from a
-    -- fixed sample, never from the live string.
+    -- fixed sample, never from the live string. Anchored to the screen: a
+    -- grouped visual can hang off an engine-sized spacer (slots.lua), and a
+    -- string under a secret anchor measures secret.
     local holder = CreateFrame("Frame", nil, visual)
     holder:SetSize(1, 1)
-    holder:SetPoint("CENTER", visual, "CENTER", 0, 0)
+    holder:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     holder:Hide()
     local ruler = holder:CreateFontString(nil, "OVERLAY")
     ruler:SetPoint("CENTER", holder, "CENTER", 0, 0)

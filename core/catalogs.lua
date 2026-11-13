@@ -96,6 +96,18 @@ Catalogs.Orientation = make(
     { "H", "V" }
 )
 
+-- Where a group of frames starts and which way it runs, keyed by the way it
+-- grows. The menus label the control Alignment, so each label names both
+-- ends: under that word a bare "Right" reads as the edge the group sits on.
+-- CENTER is a left-to-right row held on its center (scootauras/groups.lua).
+Catalogs.GrowDirection = make(
+    {
+        RIGHT = "Left to Right", LEFT = "Right to Left", CENTER = "Centered",
+        DOWN = "Top to Bottom", UP = "Bottom to Top",
+    },
+    { "RIGHT", "LEFT", "CENTER", "DOWN", "UP" }
+)
+
 Catalogs.Visibility = make(
     { always = "Always", combat = "Only in Combat", never = "Hidden" },
     { "always", "combat", "never" }
@@ -193,6 +205,13 @@ ColorMode.PortraitBorder = make(
 Catalogs.ShowText = make(
     { always = "Always", hover = "On Mouseover", never = "Never" },
     { "always", "hover", "never" }
+)
+
+-- How a bar's value text writes its number: with thousands separators
+-- (BreakUpLargeNumbers) or abbreviated (AbbreviateNumbers).
+Catalogs.NumberFormat = make(
+    { full = "Full (1,100)", abbreviated = "Abbreviated (1.1K)" },
+    { "full", "abbreviated" }
 )
 
 ColorMode.DefaultCustom = make(

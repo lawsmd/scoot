@@ -22,10 +22,12 @@
 -- StartingValues gives a new tracker Camelot's look: an icon drawn as an
 -- action button (its frame, the countdown's Friz Quadrata, the count's Arial
 -- Narrow) and a bar drawn as the Personal Resource Display's (the Cooldown
--- Manager bar atlas, its framed background, TextStatusBarText's face). These
--- are starting values, written once into keys the player has not set, and
--- taken back off a shape change while still untouched, as the tracker's own
--- stamps are (SAU.StartingValueStamps).
+-- Manager bar atlas, its framed background, TextStatusBarText's face). A
+-- vertical bar takes the same art turned a quarter
+-- (addon.Media.ApplyBarBackgroundTurned) and the action button frame on its
+-- icon. These are starting values, written once into keys the player has not
+-- set, and taken back off a shape change while still untouched, as the
+-- tracker's own stamps are (SAU.StartingValueStamps).
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -68,10 +70,30 @@ local BAR_LOOK = {
     nameTextStyle          = "OUTLINE",
 }
 
+-- A vertical bar: the bar look's art and faces, with no size of its own (the
+-- tracker's 30 by 200 stamp stands, SAU.VerticalBarShapeStartingValues), no
+-- border, since the atlas carries its frame and this stamp leads the
+-- tracker's square, and the icon under the bar in the action button frame.
+local VBAR_LOOK = {
+    barForegroundTexture   = "blizzardCooldownManager",
+    barBackgroundTexture   = "blizzardCooldownManager",
+    barBackgroundColorMode = "original",
+    barBackgroundOpacity   = 100,
+    barBorderStyle         = "none",
+    borderStyle            = "blizzard",
+    textFont               = "FRIZQT__",
+    textStyle              = "OUTLINE",
+    stackTextFont          = "FRIZQT__",
+    stackTextStyle         = "OUTLINE",
+    nameTextFont           = "FRIZQT__",
+    nameTextStyle          = "OUTLINE",
+}
+
 -- The lists are built once: the restamp on a shape change matches stamps by
 -- table, so each look must be the same table every time it is asked for.
 local ICON_STAMPS = { ICON_LOOK }
 local BAR_STAMPS = { BAR_LOOK }
+local VBAR_STAMPS = { VBAR_LOOK }
 local NO_STAMPS = {}
 
 addon.AurasHost = {
@@ -110,9 +132,7 @@ addon.AurasHost = {
     StartingValues = function(_, shape)
         if shape == "icon" then return ICON_STAMPS end
         if shape == "bar" then return BAR_STAMPS end
-        -- A vertical bar ("vbar") takes no host look: the Cooldown Manager
-        -- atlas is a horizontal nine-slice, so it opens on Scoot's own
-        -- SAU.VerticalBarShapeStartingValues on both hosts.
+        if shape == "vbar" then return VBAR_STAMPS end
         return NO_STAMPS
     end,
 }

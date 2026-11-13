@@ -380,6 +380,40 @@ end
 -- which has no cooldown to show.
 SAU.CharacterKnowsSpell = CharacterKnowsSpell
 
+--- Every active, castable spell in the class's skill lines, appended to
+-- `out` by its base id (a read on a spell resolves the override). A later
+-- entry under a name takes the earlier one's place, so the highest rank
+-- stands for the spell. Throws where the spellbook is absent or mid-load;
+-- a caller runs it under pcall and keeps what it had. The All Cooldowns
+-- group (bonus.lua) and the Reactive Ability picker both list from this.
+function SAU.WalkSpellbook(out)
+    local book = C_SpellBook
+    local general = Enum.SpellBookSkillLineIndex and Enum.SpellBookSkillLineIndex.General or 1
+    local bank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+    local spell = Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or 1
+    local slotOf = {}
+    for line = 1, book.GetNumSpellBookSkillLines() do
+        local info = line ~= general and book.GetSpellBookSkillLineInfo(line) or nil
+        if info and not info.isGuild and not info.shouldHide and info.offSpecID == nil then
+            local first = (info.itemIndexOffset or 0) + 1
+            for slot = first, first + (info.numSpellBookItems or 0) - 1 do
+                local item = book.GetSpellBookItemInfo(slot, bank)
+                if item and item.itemType == spell and not item.isPassive and not item.isOffSpec
+                    and type(item.actionID) == "number" then
+                    local name = item.name
+                    local at = type(name) == "string" and slotOf[name] or nil
+                    if at then
+                        out[at] = item.actionID
+                    else
+                        out[#out + 1] = item.actionID
+                        if type(name) == "string" then slotOf[name] = #out end
+                    end
+                end
+            end
+        end
+    end
+end
+
 --- Whether this character has a spell: known, in its spellbook, or listed by
 -- its Cooldown Manager, which carries the current spec's talents taken or not.
 -- These are the sources the spell picker offers. The game has no call naming
@@ -544,9 +578,14 @@ end
 -- classpower: the player's display power as a bar or a number (classpower.lua).
 -- classresource: the player's point resource as pips (classresource.lua).
 -- cooldown: one spell's cooldown as an icon or a bar (cooldown.lua).
+-- reactive: one spell's usability as an icon, for an ability with no aura
+-- that the game unlocks on a trigger (cooldown.lua draws it).
+-- weaponbuff: the reminder while a wielded weapon carries no temporary
+-- enchant, a poison or a stone (weaponbuff.lua reads it, missing.lua draws it).
 SAU.VALID_KINDS = {
     buff = true, debuff = true, buffstacks = true, debuffstacks = true,
     missingbuff = true, classpower = true, classresource = true, cooldown = true,
+    reactive = true, weaponbuff = true,
 }
 
 -- Shapes per kind. Buff/debuff trackers display the aura; a missing-buff
@@ -556,7 +595,10 @@ SAU.VALID_KINDS = {
 -- or one shape per point (the "icons" token). A stacks tracker is the icon
 -- with the count on it, the segmented bar, one shape per stack, or the count
 -- alone (the Floating Number, on the "text" token). A Spell Cooldown tracker
--- is the icon with the swipe, or the bar with the fill.
+-- is the icon with the swipe, or the bar with the fill. A Reactive Ability
+-- tracker is the icon: no API reports how long the ability stays usable, so
+-- there is nothing for a bar to fill. A Weapon Buff tracker is the same
+-- reminder a missing-buff tracker is, so it offers the same three.
 SAU.VALID_SHAPES_BY_KIND = {
     buff        = { icon = true, bar = true, vbar = true, shape = true },
     debuff      = { icon = true, bar = true, vbar = true, shape = true },
@@ -566,6 +608,8 @@ SAU.VALID_SHAPES_BY_KIND = {
     classpower  = { bar = true, text = true },
     classresource = { bar = true, icons = true },
     cooldown    = { icon = true, bar = true, vbar = true },
+    reactive    = { icon = true },
+    weaponbuff  = { icon = true, text = true, icontext = true },
 }
 -- Union, for callers that only need "is this a shape at all".
 SAU.VALID_SHAPES = { icon = true, bar = true, vbar = true, shape = true, text = true, icontext = true, icons = true }
@@ -606,7 +650,9 @@ end
 -- trackers offer the player and "group", which is the whole party or raid
 -- rather than one token (missing.lua resolves it). Class Power is the
 -- player's own resource, so it offers one unit and the editor skips the row,
--- and so is a spell's cooldown.
+-- and so are a spell's cooldown and its usability. A Weapon Buff tracker's
+-- "unit" is the hand it watches: "weapons" is either hand, and the other two
+-- name one (weaponbuff.lua maps them to inventory slots).
 SAU.VALID_UNITS = {
     buff        = { player = true, target = true, focus = true },
     debuff      = { target = true, focus = true },
@@ -616,6 +662,8 @@ SAU.VALID_UNITS = {
     classpower  = { player = true },
     classresource = { player = true },
     cooldown    = { player = true },
+    reactive    = { player = true },
+    weaponbuff  = { weapons = true, mainhand = true, offhand = true },
 }
 
 -- Per-kind traits the engine and the editor branch on, so no site outside
@@ -629,15 +677,23 @@ SAU.VALID_UNITS = {
 -- state (the reminder, the two resource kinds, the cooldown). `showWhen`:
 -- the record carries the "Show it..." rule (cooldown.lua). A kind with a
 -- spell and no container is Scoot-owned art fed by duration objects.
+-- `cooldownArt`: cooldown.lua draws the kind, the icon with the swipe.
+-- `usable`: the kind's gate also reads whether the spell can be cast now.
+-- `reminder`: missing.lua draws the kind, the icon and text that show while
+-- something is absent. The missing-buff kind gates it by an engine-sized
+-- container; the Weapon Buff kind by a plain read, with no container at all.
 local KIND_TRAITS = {
     buff        = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL", measure = "duration" },
     debuff      = { spell = true,  container = true,  gated = true,  polarity = "HARMFUL", measure = "duration" },
     buffstacks  = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL", measure = "stacks" },
     debuffstacks = { spell = true, container = true,  gated = true,  polarity = "HARMFUL", measure = "stacks" },
-    missingbuff = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL" },
+    missingbuff = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL", reminder = true },
     classpower  = { spell = false, container = false, gated = false },
     classresource = { spell = false, container = false, gated = false },
-    cooldown    = { spell = true,  container = false, gated = false, showWhen = true },
+    cooldown    = { spell = true,  container = false, gated = false, showWhen = true, cooldownArt = true },
+    reactive    = { spell = true,  container = false, gated = false, showWhen = true, cooldownArt = true,
+                    usable = true },
+    weaponbuff  = { spell = false, container = false, gated = false, reminder = true },
 }
 
 -- Auto names for the kinds with no spell to name them after: a string, or a
@@ -653,6 +709,7 @@ local KIND_AUTO_NAMES = {
         local CR = SAU.ClassResource
         return CR and CR.NameForSpecs(specs, homeSpec) or "Class Resource"
     end,
+    weaponbuff = "Weapon Buff",
 }
 -- What those kinds stored before they were named live; dropped at load.
 local LEGACY_AUTO_NAMES = { classpower = "Class Power", classresource = "Class Resource" }
@@ -676,6 +733,26 @@ end
 function SAU.KindHasShowWhen(kind)
     local traits = KIND_TRAITS[kind]
     return traits ~= nil and traits.showWhen == true
+end
+
+--- The kinds cooldown.lua draws: a spell's icon with its cooldown swipe.
+function SAU.KindUsesCooldownArt(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits ~= nil and traits.cooldownArt == true
+end
+
+--- The kinds whose gate reads whether the spell can be cast right now.
+function SAU.KindWatchesUsable(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits ~= nil and traits.usable == true
+end
+
+--- The kinds missing.lua draws: the reminder that shows while something is
+-- absent. A site that needs the aura behind a missing-buff reminder (its
+-- container, its include set, the group scan) tests the kind by name.
+function SAU.KindIsReminder(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits ~= nil and traits.reminder == true
 end
 
 --- "HELPFUL" or "HARMFUL" for a kind that watches one aura slot, nil for
@@ -710,10 +787,27 @@ function SAU.SoleUnitForKind(kind)
     return (count == 1) and only or nil
 end
 
+--- The one shape a kind offers, or nil when it offers a choice. The editor
+-- seeds it on the kind pick, as it seeds a sole unit.
+function SAU.SoleShapeForKind(kind)
+    local shapes = SAU.VALID_SHAPES_BY_KIND[kind]
+    if not shapes then return nil end
+    local only, count = nil, 0
+    for shape in pairs(shapes) do
+        only = shape
+        count = count + 1
+    end
+    return (count == 1) and only or nil
+end
+
+-- Kinds whose fallback unit is neither the player nor the target.
+local DEFAULT_UNIT_BY_KIND = { weaponbuff = "weapons" }
+
 --- The unit a kind falls back to when the chosen one is invalid for it: the
 -- target for a harmful aura, since the player cannot carry one that is
--- trackable, the player otherwise.
+-- trackable, either hand for a Weapon Buff, the player otherwise.
 function SAU.DefaultUnitForKind(kind)
+    if DEFAULT_UNIT_BY_KIND[kind] then return DEFAULT_UNIT_BY_KIND[kind] end
     return (SAU.KindPolarity(kind) == "HARMFUL") and "target" or "player"
 end
 
@@ -733,7 +827,7 @@ end
 
 function SAU.ValidateContent(spellId, kind, unit, shape)
     if not SAU.VALID_KINDS[kind] then
-        return nil, "kind must be buff, debuff, buffstacks, debuffstacks, missingbuff, classpower, classresource, or cooldown"
+        return nil, "kind must be buff, debuff, buffstacks, debuffstacks, missingbuff, classpower, classresource, cooldown, reactive, or weaponbuff"
     end
     if SAU.KindNeedsSpell(kind) and (type(spellId) ~= "number" or spellId <= 0) then
         return nil, "invalid spell ID"
@@ -864,25 +958,56 @@ end
 -- "Show it..." on the Spell Cooldown kind: always, only while the spell is
 -- on cooldown, or only while it is ready. cooldown.lua applies it as the
 -- root's alpha from the duration object's IsZero, so it holds in every
--- secrecy state. Stored explicitly on the kind, so the editor row always
--- carries a value; nil reads as always. Every other kind stores nil.
-SAU.VALID_SHOW_WHEN = { always = true, oncooldown = true, ready = true }
+-- secrecy state. On the Reactive Ability kind: only while the spell is
+-- usable and off cooldown, or always. Stored explicitly on both kinds, so
+-- the editor row always carries a value; nil reads as the kind's fallback.
+-- Every other kind stores nil.
+local SHOW_WHEN_BY_KIND = {
+    cooldown = { fallback = "always", always = true, oncooldown = true, ready = true },
+    reactive = { fallback = "usable", usable = true, always = true },
+}
 
---- The stored value for a chosen or carried-over "Show it..." token: the
--- token when the kind carries the field and offers it, "always" for anything
--- else on that kind, nil on every other kind. Every write path runs its
--- token through this.
-function SAU.CoerceShowWhen(kind, token)
-    if not SAU.KindHasShowWhen(kind) then return nil end
-    if SAU.VALID_SHOW_WHEN[token] then return token end
-    return "always"
+--- Whether a kind offers a "Show it..." token.
+function SAU.KindOffersShowWhen(kind, token)
+    local offered = SHOW_WHEN_BY_KIND[kind]
+    return offered ~= nil and token ~= "fallback" and offered[token] == true
 end
 
---- Resolves a tracker's "Show it..." rule: "always", "oncooldown" or
--- "ready".
+--- The stored value for a chosen or carried-over "Show it..." token: the
+-- token when the kind carries the field and offers it, the kind's fallback
+-- for anything else on that kind, nil on every other kind. Every write path
+-- runs its token through this.
+function SAU.CoerceShowWhen(kind, token)
+    if not SAU.KindHasShowWhen(kind) then return nil end
+    if SAU.KindOffersShowWhen(kind, token) then return token end
+    local offered = SHOW_WHEN_BY_KIND[kind]
+    return offered and offered.fallback or "always"
+end
+
+--- Resolves a tracker's "Show it..." rule: "always", "oncooldown", "ready"
+-- or "usable".
 function SAU.ShowWhenFor(tracker)
     local token = tracker and SAU.CoerceShowWhen(tracker.kind, tracker.showWhen)
     return token or "always"
+end
+
+--- What decides whether a grouped tracker is showing anything, from its
+-- content alone, for the group's slots (slots.lua). "fixed": it always shows
+-- something and always holds its slot. "aura": an aura kind with no
+-- missing-state visual, showing while the aura is up. "bool": a kind whose
+-- "Show it..." rule hides one state, showing by its ready or usable state.
+-- "missing": the reminder, showing while the aura or the weapon buff is absent.
+function SAU.SlotSource(tracker)
+    if not tracker then return "fixed" end
+    local kind = tracker.kind
+    if SAU.KindIsReminder(kind) then return "missing" end
+    if SAU.KindHasShowWhen(kind) then
+        return SAU.ShowWhenFor(tracker) == "always" and "fixed" or "bool"
+    end
+    if SAU.KindOwnsContainer(kind) and SAU.MissingVisualFor(tracker) == "none" then
+        return "aura"
+    end
+    return "fixed"
 end
 
 -- Own-cast filtering: a debuff tracker watches the player's own aura on the
@@ -1073,9 +1198,11 @@ function SAU.DefaultSettings()
         -- child of the visual, so this multiplies with the tracker's own
         -- opacity rather than replacing it.
         missingVisualOpacity    = { type = "addon", default = 100 },
-        -- Missing-buff kind (missing.lua): text suffix and blink.
+        -- Missing-buff kind (missing.lua): text suffix and blink; and
+        -- whether a click casts the buff out of combat (missingcast.lua).
         missingSuffix           = { type = "addon", default = false },
         blinkWhenShown          = { type = "addon", default = false },
+        clickToCast             = { type = "addon", default = true },
         -- Class Power kind (classpower.lua): the number as a percentage, the
         -- bar's interpolation, and the number's color mode (default is white,
         -- power the class power color, custom the textColor tint; the aura
@@ -1109,6 +1236,10 @@ function SAU.DefaultSettings()
         cooldownOpacityMode     = { type = "addon", default = "onCooldown" },
         opacityOnCooldown       = { type = "addon", default = 100 },
         opacityOnCooldownText   = { type = "addon", default = 100 },
+        -- Reactive Ability kind, Animations tab (cooldown.lua, LayoutGlow):
+        -- the action button's proc glow on the icon while the spell is
+        -- usable and off cooldown.
+        procGlow                = { type = "addon", default = false },
     }
 end
 
@@ -1266,7 +1397,7 @@ function SAU.StartingValueStamps(kind, shape)
     elseif shape == "vbar" then
         stamps[#stamps + 1] = SAU.VerticalBarShapeStartingValues
     end
-    if kind == "missingbuff" then
+    if SAU.KindIsReminder(kind) then
         stamps[#stamps + 1] = SAU.MissingKindStartingValues
     elseif kind == "classpower" then
         stamps[#stamps + 1] = SAU.ClassPowerStartingValues
@@ -1534,11 +1665,27 @@ function SAU._SpellIcon(spellId)
     return icon
 end
 
+--- The texture a tracker's icon element starts on, before any engine binding
+-- stamps a matched aura's own: the spell's icon, or for a Weapon Buff tracker
+-- the weapon it is about (nil with nothing in that hand).
+function SAU.StaticIcon(tracker)
+    if tracker and tracker.kind == "weaponbuff" then
+        return SAU.WeaponBuff and SAU.WeaponBuff.Icon(tracker.unit) or nil
+    end
+    return SAU._SpellIcon(tracker and tracker.spellId)
+end
+
 --- The art the Aura List row, a group member badge, and the drag ghosts show
--- for a tracker: the spell's icon, or for a kind with no spell the crest of
--- the class its naming spec belongs to (the player's own class when the list
--- is empty). A number is a texture file id, a string an atlas name.
+-- for a tracker: the spell's icon, the wielded weapon for a Weapon Buff, or
+-- for any other kind with no spell the crest of the class its naming spec
+-- belongs to (the player's own class when the list is empty). A number is a
+-- texture file id, a string an atlas name.
 function SAU.TrackerIcon(tracker)
+    if tracker and tracker.kind == "weaponbuff" then
+        -- Falls through to the crest on a character with that hand empty.
+        local weapon = SAU.WeaponBuff and SAU.WeaponBuff.Icon(tracker.unit)
+        if weapon then return weapon end
+    end
     if tracker and not SAU.KindNeedsSpell(tracker.kind) then
         local token = SAU.ClassTokenForSpec(SAU.NamingSpec(tracker.specs, tracker.homeSpec))
             or (addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player")) or nil
@@ -1647,13 +1794,13 @@ function SAU.CreateTracker(spec)
     -- Yes unless the editor says otherwise (a My Group reminder passes false,
     -- since raid buffs go up between pulls); a kind that starts ungated (Class
     -- Power, watched between pulls as much as in them) starts on No. The
-    -- instance gate is a missing-buff field.
+    -- instance gate is a reminder field.
     if SAU.KindStartsGated(kind) then
         store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat ~= false)
     else
         store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat == true)
     end
-    if kind == "missingbuff" then
+    if SAU.KindIsReminder(kind) then
         store.trackers[trackerId].onlyInInstances = (spec.onlyInInstances == true)
     end
     -- nil on a duration kind, the shape's default on a stacks kind when the
@@ -1768,7 +1915,7 @@ function SAU.SetTrackerContent(trackerId, changes)
         -- what a flip to missingbuff wants.
         tracker.onlyInCombat = SAU.OnlyInCombat(tracker)
     end
-    if kind == "missingbuff" then
+    if SAU.KindIsReminder(kind) then
         -- Backfills to false, not true: this gate defaults off, so a tracker
         -- that predates it keeps showing outside instances as it always has.
         if changes.onlyInInstances ~= nil then
@@ -1789,10 +1936,14 @@ function SAU.SetTrackerContent(trackerId, changes)
     -- and a token the new shape does not offer both clear it on a duration
     -- kind, and fall to the shape's default on a stacks kind.
     tracker.missingVisual = SAU.CoerceMissingVisual(kind, shape, tracker.missingVisual)
-    -- "Show it..." on the Spell Cooldown kind: explicit write, then one
-    -- coercion clears it on a flip to any other kind.
+    -- "Show it..." on the kinds that carry it: explicit write, then one
+    -- coercion clears it on a flip to any other kind. The tokens read
+    -- differently on each kind, so a flip between two that carry it starts
+    -- from the new kind's fallback.
     if changes.showWhen ~= nil then
         tracker.showWhen = changes.showWhen
+    elseif kind ~= oldKind then
+        tracker.showWhen = nil
     end
     tracker.showWhen = SAU.CoerceShowWhen(kind, tracker.showWhen)
     -- The segment count override belongs to the spell it was set for; a new

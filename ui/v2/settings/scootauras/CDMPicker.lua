@@ -3,6 +3,10 @@
 -- The Cooldown Manager is a data source here: its category sets supply a
 -- browsable spell catalog so most users never type an ID. One flat grid,
 -- alphabetical. Off-catalog IDs stay welcome through the editor's ID box.
+-- The Reactive Ability kind adds the spellbook's castable spells to that
+-- grid: no API marks a spell as reactive, so the player picks it from
+-- everything the class can cast, and on a client whose Cooldown Manager
+-- lists none of the class's spells the spellbook is the whole grid.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -210,12 +214,13 @@ end
 -- Exposed for the debug dump (/scoot debug sa catalog).
 Picker.BuildCatalog = BuildCatalog
 
--- The catalog a kind draws from. The Spell Cooldown kind lists the cooldown
--- categories (the Essential and Utility viewers, and the spec-agnostic
--- essentials), keyed by the castable base spell; every other kind takes the
--- whole catalog.
+-- The catalog a kind draws from. The Spell Cooldown and Reactive Ability
+-- kinds list the cooldown categories (the Essential and Utility viewers, and
+-- the spec-agnostic essentials), keyed by the castable base spell; every
+-- other kind takes the whole catalog.
 local function CatalogScopeForKind(kind)
-    if kind ~= "cooldown" then return nil end
+    local SAU = addon.ScootAuras
+    if not (SAU and SAU.KindUsesCooldownArt(kind)) then return nil end
     local enum = Enum and Enum.CooldownViewerCategory
     if not enum then return nil end
     return {
@@ -294,15 +299,51 @@ local function MissingKindEntries(seen)
     return entries
 end
 
---- Cells prepended for a kind, deduped against the CDM catalog identities.
+-- The spellbook's cells for the Reactive Ability kind: every active,
+-- castable spell of the class by its base id (SAU.WalkSpellbook), which is
+-- the identity the catalog's cooldown scope keys on too. A walk that throws
+-- adds nothing and the catalog stands alone.
+local function SpellbookEntries(seen)
+    local SAU = addon.ScootAuras
+    local book = C_SpellBook
+    local entries = {}
+    if not (SAU and SAU.WalkSpellbook and book and book.GetNumSpellBookSkillLines
+        and book.GetSpellBookSkillLineInfo and book.GetSpellBookItemInfo) then
+        return entries
+    end
+    local ids = {}
+    if not pcall(SAU.WalkSpellbook, ids) then return entries end
+    for _, spellId in ipairs(ids) do
+        if type(spellId) == "number" and spellId > 0 and not seen[spellId] then
+            seen[spellId] = true
+            local name, icon, shownId = SAU.DescribeSpell(spellId)
+            table.insert(entries, {
+                spellId = spellId,
+                baseSpellId = spellId,
+                shownSpellId = shownId,
+                name = name,
+                icon = icon,
+            })
+        end
+    end
+    return entries
+end
+
+--- Cells added for a kind, deduped against the CDM catalog identities. The
+-- second return says where they go: true merges them into the catalog's one
+-- alphabetical grid (the spellbook's), anything else sets them above it
+-- under their own header (the reminder's buffs and forms).
 local function ExtraEntriesForKind(kind, catalog)
-    if kind ~= "missingbuff" then return {} end
+    local SAU = addon.ScootAuras
+    local spellbook = SAU ~= nil and SAU.KindWatchesUsable(kind)
+    if kind ~= "missingbuff" and not spellbook then return {} end
     local seen = {}
     for _, entry in ipairs(catalog) do
         seen[entry.spellId] = true
         if entry.baseSpellId then seen[entry.baseSpellId] = true end
         if entry.shownSpellId then seen[entry.shownSpellId] = true end
     end
+    if spellbook then return SpellbookEntries(seen), true end
     return MissingKindEntries(seen)
 end
 
@@ -442,7 +483,16 @@ function Picker.Attach(parent, opts)
         widgets = {}
 
         local catalog = BuildCatalog(CatalogScopeForKind(kind))
-        local extra = ExtraEntriesForKind(kind, catalog)
+        local extra, merge = ExtraEntriesForKind(kind, catalog)
+        if merge then
+            for _, entry in ipairs(extra) do
+                table.insert(catalog, entry)
+            end
+            table.sort(catalog, function(a, b)
+                return a.name:lower() < b.name:lower()
+            end)
+            extra = {}
+        end
         local width = child:GetWidth()
         if not width or width < CELL_W then width = parent:GetWidth() or 400 end
         local columns = math.max(3, math.floor(width / CELL_W))

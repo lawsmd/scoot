@@ -63,6 +63,8 @@ local SIDE = {
     DOWN  = { axis = "y", beforeWhenLess = false, beforeEdge = "TOP",    afterEdge = "BOTTOM" },
     UP    = { axis = "y", beforeWhenLess = true,  beforeEdge = "BOTTOM", afterEdge = "TOP"    },
 }
+-- A centered row runs left to right.
+SIDE.CENTER = SIDE.RIGHT
 
 --------------------------------------------------------------------------------
 -- Frames
@@ -107,8 +109,11 @@ local function EnsureFrames()
     end)
 end
 
+-- An overlay anchors to a member's visual, and the marker to an overlay. The
+-- visual carries the layout-script aspect (engine.lua), so both are created
+-- carrying it too, or the anchor is refused.
 local function CreateOverlay()
-    local ov = CreateFrame("Frame", nil, container)
+    local ov = SAU.Engine.CreateLayoutFrame("Frame", container)
     ov:SetFrameLevel(110)
     local wash = ov:CreateTexture(nil, "ARTWORK")
     wash:SetAllPoints(ov)
@@ -180,7 +185,7 @@ end
 
 local function EnsureMarker()
     if marker then return marker end
-    marker = CreateFrame("Frame", nil, UIParent)
+    marker = SAU.Engine.CreateLayoutFrame("Frame", UIParent)
     marker:SetFrameStrata("TOOLTIP")
     marker:SetFrameLevel(99)
     local tex = marker:CreateTexture(nil, "OVERLAY")

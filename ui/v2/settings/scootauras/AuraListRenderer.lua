@@ -133,12 +133,14 @@ local state = {
 local KIND_LABELS = {
     buff = "Buff Duration", debuff = "Debuff Duration",
     buffstacks = "Buff Stacks", debuffstacks = "Debuff Stacks",
-    missingbuff = "Missing Buff",
+    missingbuff = "Missing Buff", weaponbuff = "Weapon Buff",
     classpower = "Class Power", classresource = "Class Resource",
-    cooldown = "Spell Cooldown",
+    cooldown = "Spell Cooldown", reactive = "Reactive Ability",
 }
+-- A Weapon Buff tracker's units are the hands it watches.
 local UNIT_LABELS = {
     player = "Player", group = "Group", target = "Target", focus = "Focus",
+    weapons = "Either Weapon", mainhand = "Main Hand", offhand = "Off Hand",
 }
 local SHAPE_LABELS = {
     icon = "Icon", bar = "Horizontal Bar", vbar = "Vertical Bar", shape = "Shape",

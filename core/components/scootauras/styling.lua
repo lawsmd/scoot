@@ -26,8 +26,9 @@ local function ApplyIconMode(trackerId, tracker, state)
             else
                 -- The engine's SetIcon binding stamps the matched aura's real
                 -- icon; this static paint is the pre-match backdrop, drawn as
-                -- the Aura List and picker show the spell.
-                elem.widget:SetTexture(SAU._SpellIcon(tracker.spellId))
+                -- the Aura List and picker show the spell. A Weapon Buff
+                -- reminder paints the weapon it is about here and nowhere else.
+                elem.widget:SetTexture(SAU.StaticIcon(tracker) or 134400)
                 elem.widget:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 -- Undo any shape-mode tint from a prior binding of this element.
                 elem.widget:SetVertexColor(1, 1, 1, 1)
@@ -214,9 +215,12 @@ end
 -- icon in full color. SetSwipeTexture takes no secret file, so the swipe and
 -- the copy use the picked spell's icon rather than the matched aura's.
 --
--- The Cooldown takes the icon's rect and the icon's crop, so the swipe's art
--- sits on the live icon's. The edge line never leaves the circle inside the
--- Cooldown, so it stops short of the icon's corners.
+-- The edge line never leaves the circle inside its Cooldown, and
+-- SetEdgeScale does not change that. So the Cooldown is a square as wide as
+-- the icon's diagonal, centered on the icon, which puts every point of the
+-- icon's rim inside that circle, and its clip frame (regions.lua) cuts the
+-- overhang back to the icon. The swipe's crop scales out to match, so its
+-- art stays on the live icon's.
 --
 -- With a Desaturated missing visual (the token carrying the Opacity gear) the
 -- copy stays hidden and the Cooldown's transparent mask is added to the live
@@ -226,6 +230,65 @@ end
 
 local ICON_CROP_LOW = { x = 0.08, y = 0.08 }
 local ICON_CROP_HIGH = { x = 0.92, y = 0.92 }
+
+-- The icon crop spread across a side x side square on a w x h icon, the
+-- square's center dx right of and dy above the icon's. Coordinates past 0..1
+-- fall only in the overhang the clip hides.
+local function SwipeCropRange(w, h, side, dx, dy)
+    local spanU = ICON_CROP_HIGH.x - ICON_CROP_LOW.x
+    local spanV = ICON_CROP_HIGH.y - ICON_CROP_LOW.y
+    -- A square moved right or up takes its art from further right or up.
+    local cu = (ICON_CROP_LOW.x + ICON_CROP_HIGH.x) / 2 + (dx or 0) * spanU / w
+    local cv = (ICON_CROP_LOW.y + ICON_CROP_HIGH.y) / 2 - (dy or 0) * spanV / h
+    local su = spanU / 2 * side / w
+    local sv = spanV / 2 * side / h
+    return { x = cu - su, y = cv - sv }, { x = cu + su, y = cv + sv }
+end
+
+-- Distance from the origin to the segment (x1, y1)-(x2, y2).
+local function SegmentDistance(x1, y1, x2, y2)
+    local vx, vy = x2 - x1, y2 - y1
+    local len2 = vx * vx + vy * vy
+    local t = len2 > 0 and -(x1 * vx + y1 * vy) / len2 or 0
+    t = Clamp(t, 0, 1)
+    local px, py = x1 + t * vx, y1 + t * vy
+    return math.sqrt(px * px + py * py)
+end
+
+--- The swipe Cooldown's square on a w x h icon: its side, and its center's
+-- offset right of and above the icon's center. The edge line ends on the
+-- circle inside the square. With plain corners the side is the icon's
+-- diagonal, so the line reaches them. A border style whose frame art cuts its
+-- corners (cornerCut, core/iconborders.lua) centers the square on the frame,
+-- which the style's adjusts set off the icon's center, and sizes it to the
+-- cut, so the line ends under the corner stroke and never past it.
+local function SwipeSquare(db, w, h)
+    local diagonal = math.sqrt(w * w + h * h)
+    local style = db.borderStyle or "none"
+    local def = style ~= "none" and addon.IconBorders and addon.IconBorders.GetStyle
+        and addon.IconBorders.GetStyle(style)
+    local cut = def and def.type == "atlas" and tonumber(def.cornerCut)
+    if not cut or cut <= 0 then return diagonal, 0, 0 end
+
+    -- The frame art's rect around the icon, as ApplyBorders places it.
+    local ex = Clamp((def.expandX or 0) - (tonumber(db.borderInsetH) or 0),
+        -BORDER_EXPAND_CLAMP, BORDER_EXPAND_CLAMP)
+    local ey = Clamp((def.expandY or def.expandX or 0) - (tonumber(db.borderInsetV) or 0),
+        -BORDER_EXPAND_CLAMP, BORDER_EXPAND_CLAMP)
+    local adjL, adjR = def.adjustLeft or 0, def.adjustRight or 0
+    local adjT, adjB = def.adjustTop or 0, def.adjustBottom or 0
+    local fw, fh = w + 2 * ex + adjL + adjR, h + 2 * ey + adjT + adjB
+    if fw <= 0 or fh <= 0 then return diagonal, 0, 0 end
+    local dx, dy = (adjR - adjL) / 2, (adjT - adjB) / 2
+
+    local reach = SegmentDistance(fw / 2 - cut * fw, fh / 2, fw / 2, fh / 2 - cut * fh)
+    -- At least the icon, which the swipe has to cover, and at most the
+    -- icon's far corner.
+    local ax, ay = math.abs(dx), math.abs(dy)
+    local low = math.max(w + 2 * ax, h + 2 * ay)
+    local high = 2 * math.sqrt((w / 2 + ax) ^ 2 + (h / 2 + ay) ^ 2)
+    return Clamp(2 * reach, low, high), dx, dy
+end
 
 -- A white line from the texture's center to its top edge, widening from a
 -- point to full width at 55% of its length, then even out to the edge: a
@@ -303,6 +366,7 @@ local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
                 local icon = SAU._SpellIcon(tracker.spellId)
                 local w, h = SAU.IconDimensions(db, vis)
                 w, h = math.max(w, 1), math.max(h, 1)
+                local side, dx, dy = SwipeSquare(db, w, h)
                 if elem.clip then
                     -- The clip stops where the icon art does, at the Square
                     -- border's inner edge: the wedge, the gray half and the
@@ -313,10 +377,8 @@ local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
                     elem.clip:SetPoint("BOTTOMRIGHT", iconTex, "BOTTOMRIGHT", -r, b)
                 end
                 pcall(cd.ClearAllPoints, cd)
-                pcall(cd.SetPoint, cd, "CENTER", iconTex, "CENTER", 0, 0)
-                -- The icon's own rect and crop: Blizzard only ever passes a
-                -- Cooldown coordinates inside 0..1.
-                pcall(cd.SetSize, cd, w, h)
+                pcall(cd.SetPoint, cd, "CENTER", iconTex, "CENTER", dx, dy)
+                pcall(cd.SetSize, cd, side, side)
                 pcall(cd.SetReverse, cd, false)
                 -- Off, as Blizzard's aura button leaves it: the engine feeds a
                 -- duration object, which carries its own time base.
@@ -324,7 +386,7 @@ local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
                 pcall(cd.SetDrawSwipe, cd, true)
                 if icon then
                     pcall(cd.SetSwipeTexture, cd, icon, 1, 1, 1, 1)
-                    pcall(cd.SetTexCoordRange, cd, ICON_CROP_LOW, ICON_CROP_HIGH)
+                    pcall(cd.SetTexCoordRange, cd, SwipeCropRange(w, h, side, dx, dy))
                 end
                 pcall(cd.SetSwipeColor, cd, 1, 1, 1, 1)
 
@@ -347,7 +409,7 @@ local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
 
                 local dark = SAU.SwipeDarkness(db.iconSwipeDarkness)
                 if backdrop then
-                    -- On the icon, whose rect the clip may inset.
+                    -- On the icon, not the Cooldown: the Cooldown overhangs it.
                     backdrop:ClearAllPoints()
                     backdrop:SetAllPoints(iconTex)
                     if icon then backdrop:SetTexture(icon) end
@@ -384,7 +446,7 @@ SAU._ApplyIconSwipe = ApplyIconSwipe
 -- every other string natively, and a Deep Shadow companion copy (fed by
 -- SetText hooks) would never see that text.
 local function ScootWritesText(tracker, source)
-    if tracker.kind == "missingbuff" then return source == "name" end
+    if SAU.KindIsReminder(tracker.kind) then return source == "name" end
     if tracker.kind == "classpower" then return source == "duration" end
     return false
 end
@@ -656,6 +718,19 @@ local function ResolveBarFill(tracker, db, powerColor)
     return fgPath, fgR, fgG, fgB, fgA
 end
 
+-- The background's color and opacity, on whichever texture draws it (the bar's
+-- own, or a vertical bar's turned copy).
+local function ColorBarBackground(tex, db)
+    -- Kept off addon.ResolveColorRGBA: two-mode dialect, custom default with an original option the resolver lacks.
+    if (db.barBackgroundColorMode or "custom") == "original" then
+        tex:SetVertexColor(1, 1, 1, 1)
+    else
+        local c = db.barBackgroundTint or { 0, 0, 0, 1 }
+        tex:SetVertexColor(c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1)
+    end
+    tex:SetAlpha((db.barBackgroundOpacity or 50) / 100)
+end
+
 local function ApplyBarStyling(trackerId, tracker, state)
     local db = SAU.GetDB(trackerId)
     if not db then return end
@@ -665,14 +740,15 @@ local function ApplyBarStyling(trackerId, tracker, state)
             local w = tonumber(db.barWidth) or 120
             local h = tonumber(db.barHeight) or 12
             elem.widget:SetSize(w, h)
-            -- A vertical bar fills from the bottom: the StatusBar's own
-            -- orientation, so the engine's value writes need no translation.
             local vertical = tracker and tracker.shape == "vbar"
+            local fgKey = db.barForegroundTexture or "bevelled"
+            -- A vertical bar fills from the bottom by the StatusBar's own
+            -- orientation, so the engine's value writes need no translation.
+            -- An atlas fill (horizontal art) paints its turned file there.
             elem.barFill:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
 
-            local fgKey = db.barForegroundTexture or "bevelled"
             local _, fgR, fgG, fgB, fgA = ResolveBarFill(tracker, db, nil)
-            addon.Media.ApplyBarFill(elem.barFill, fgKey)
+            addon.Media.ApplyBarFill(elem.barFill, fgKey, nil, vertical)
             local fillTex = elem.barFill:GetStatusBarTexture()
             if fillTex then
                 fillTex:SetVertexColor(fgR, fgG, fgB, fgA)
@@ -680,23 +756,19 @@ local function ApplyBarStyling(trackerId, tracker, state)
             -- Fill-mode cadence overlay: same art as the fill (BindForMode
             -- shows/hides it).
             if elem.lockOverlay then
-                addon.Media.ApplyBarFillTexture(elem.lockOverlay, fgKey)
+                addon.Media.ApplyBarFillTexture(elem.lockOverlay, fgKey, nil, vertical)
                 elem.lockOverlay:SetVertexColor(fgR, fgG, fgB, fgA)
             end
 
             -- An atlas background draws past the inner rect by its own outset
-            -- (addon.Media.ApplyBarBackground), the frame it carries.
-            if not addon.Media.ApplyBarBackground(elem.barBg, db.barBackgroundTexture or "bevelled", elem.inner) then
+            -- (addon.Media.ApplyBarBackground), the frame it carries. On a
+            -- vertical bar it is painted on the turned background frame
+            -- further down, once the inner rect is known.
+            local bgKey = db.barBackgroundTexture or "bevelled"
+            if not addon.Media.ApplyBarBackground(elem.barBg, bgKey, elem.inner) then
                 elem.barBg:SetColorTexture(0.1, 0.1, 0.1, 1)
             end
-            -- Kept off addon.ResolveColorRGBA: two-mode dialect, custom default with an original option the resolver lacks.
-            if (db.barBackgroundColorMode or "custom") == "original" then
-                elem.barBg:SetVertexColor(1, 1, 1, 1)
-            else
-                local c = db.barBackgroundTint or { 0, 0, 0, 1 }
-                elem.barBg:SetVertexColor(c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1)
-            end
-            elem.barBg:SetAlpha((db.barBackgroundOpacity or 50) / 100)
+            ColorBarBackground(elem.barBg, db)
 
             local borderStyle = db.barBorderStyle or "none"
             local borderThickness = math.max(1, tonumber(db.barBorderThickness) or 1)
@@ -771,6 +843,21 @@ local function ApplyBarStyling(trackerId, tracker, state)
                 elem.inner:SetPoint("TOPLEFT", elem.widget, "TOPLEFT", l, -t)
                 elem.inner:SetPoint("BOTTOMRIGHT", elem.widget, "BOTTOMRIGHT", -r, b)
             end
+
+            -- A vertical bar carries an atlas background on its own turned
+            -- frame, since the atlas is a horizontal nine-slice. Every other
+            -- bar and key paints barBg.
+            if elem.bgTurn then
+                local bgTurned = vertical and addon.Media.ApplyBarBackgroundTurned(
+                    elem.barBgTurned, elem.bgTurn, bgKey, elem.inner, w - l - r, h - t - b)
+                if bgTurned then
+                    ColorBarBackground(elem.barBgTurned, db)
+                    elem.barBg:Hide()
+                else
+                    addon.Media.ApplyBarBackgroundTurned(elem.barBgTurned, elem.bgTurn, nil, elem.inner)
+                    elem.barBg:Show()
+                end
+            end
             -- Read by LayoutElements (the lock bar) and LayoutBarPips.
             elem.fillInset = { left = l, right = r, top = t, bottom = b }
         end
@@ -784,12 +871,13 @@ end
 -- Kinds whose "Only in Combat" verdict is applied by hiding the whole frame.
 -- A missing-buff reminder is not one of them: its own gate drives a clip window
 -- over the engine-sized container (missing.lua, Missing.UpdateGate), and that
--- mechanism stays its sole owner. A Class Power, Class Resource or Spell
--- Cooldown tracker has no container at all, so the frame is the only thing
--- there is to hide.
+-- mechanism stays its sole owner. A Weapon Buff reminder rides the same gate
+-- and the same clip, with no container behind it. A Class Power, Class Resource, Spell
+-- Cooldown or Reactive Ability tracker has no container at all, so the frame
+-- is the only thing there is to hide.
 local SHELL_GATED_KINDS = {
     buff = true, debuff = true, buffstacks = true, debuffstacks = true,
-    classpower = true, classresource = true, cooldown = true,
+    classpower = true, classresource = true, cooldown = true, reactive = true,
 }
 
 -- Grouped visuals live under the group frame; the shell stays hidden and
@@ -800,6 +888,38 @@ local function StyleTarget(state)
     local entry = state.entry
     local grouped = entry and entry.grouped
     return (grouped and state.container or state.shell), grouped
+end
+
+-- The state opacity on the styling target. A Deep Shadow copy tapers with
+-- the alpha it inherits, and nothing tells it the frame moved
+-- (core/fontpair.lua). With `gate`, a Spell Cooldown tracker's dim follows:
+-- it divides this alpha out of its own (cooldown.lua).
+local function WriteOpacity(trackerId, state, value, gate)
+    local target = StyleTarget(state)
+    target:SetAlpha(value)
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
+    if gate and SAU.Cooldown then
+        local tracker = SAU.GetTracker(trackerId)
+        if tracker and SAU.KindUsesCooldownArt(tracker.kind) then
+            SAU.Cooldown.UpdateGate(trackerId)
+        end
+    end
+end
+
+-- Resolve, then the state fade (core/opacity.lua): the value to write now,
+-- and the ticks of a fade through the same writer. The tracker's state record
+-- is the fade's key, so the value stays with the tracker when its visual
+-- moves between the shell and a group. Where no transition engine is loaded
+-- the fade answers the resolved alpha and this is the plain write it was.
+local function ApplyOpacity(trackerId, state, gate)
+    local alpha, playerState = addon.Opacity.Resolve(SAU.GetDB(trackerId), addon.Opacity.Keys.InCombat)
+    if not state.opacityTick then
+        state.opacityTick = function(value)
+            if SAU._activeStates[trackerId] ~= state or not state.shell then return end
+            WriteOpacity(trackerId, state, value, true)
+        end
+    end
+    WriteOpacity(trackerId, state, addon.Opacity.Fade(state, alpha, playerState, state.opacityTick), gate)
 end
 
 -- Whether this tracker's frame may be shown right now. Both frames are plain
@@ -828,10 +948,13 @@ local function ApplyStyling(trackerId, tracker)
     if not isEnabled then
         SAU.Engine.SetEnabledState(trackerId, false)
         target:Hide()
+        -- The next enable writes its opacity at once, whatever state passed
+        -- while the tracker was off.
+        addon.Opacity.FadeForget(state)
         -- A tracker switched off, or gated out by its spec (or its group's),
         -- keeps no Edit Mode preview and no ticking animation record.
         SAU.Engine.HideEditModePreview(state)
-        if tracker.kind == "missingbuff" and SAU.Missing then
+        if SAU.KindIsReminder(tracker.kind) and SAU.Missing then
             SAU.Missing.UpdateGate(trackerId)
         end
         -- Also stops a running blink; the Hide above already conceals it.
@@ -847,11 +970,8 @@ local function ApplyStyling(trackerId, tracker)
     local scale = ((db and db.scale) or 100) / 100
     target:SetScale(math.max(scale, 0.25))
 
-    local alpha = addon.Opacity.Resolve(db, addon.Opacity.Keys.InCombat)
-    target:SetAlpha(alpha)
-    -- A Deep Shadow copy tapers with the alpha it inherits, and nothing tells
-    -- it the frame moved (core/fontpair.lua).
-    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
+    -- The cooldown kind's Sync below runs its own gate.
+    ApplyOpacity(trackerId, state, false)
 
     -- A tracker set to "Only in Combat" is hidden outright out of combat. Edit
     -- Mode forces it back: the preview and the draggable frame live under this
@@ -867,13 +987,13 @@ local function ApplyStyling(trackerId, tracker)
     if SAU.KindOwnsContainer(tracker.kind) then
         SAU.Engine.SetEnabledState(trackerId, true)
     end
-    -- Missing-buff reminder: the visible set is Scoot-owned, so its styling,
-    -- layout, combat gate and blink apply here, outside the structural gate;
-    -- ApplyAll only carries the gate container build. Any other kind on an
-    -- entry that once hosted a reminder hides it (UpdateGate is a no-op when
-    -- the entry never built one).
+    -- Reminder (missing-buff, Weapon Buff): the visible set is Scoot-owned, so
+    -- its styling, layout, combat gate and blink apply here, outside the
+    -- structural gate; ApplyAll only carries the missing-buff kind's gate
+    -- container build. Any other kind on an entry that once hosted a reminder
+    -- hides it (UpdateGate is a no-op when the entry never built one).
     if SAU.Missing then
-        if tracker.kind == "missingbuff" then
+        if SAU.KindIsReminder(tracker.kind) then
             SAU.Missing.Restyle(trackerId, tracker, state)
         else
             SAU.Missing.UpdateGate(trackerId)
@@ -915,14 +1035,9 @@ local function RefreshOpacity(trackerId, tracker)
     local state = SAU._activeStates[trackerId]
     if not state or not state.shell then return end
     if not (SAU.IsTrackerActive(trackerId, tracker) and SAU.IsModuleActive()) then return end
-    local target = StyleTarget(state)
-    target:SetAlpha(addon.Opacity.Resolve(SAU.GetDB(trackerId), addon.Opacity.Keys.InCombat))
-    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
     -- A Spell Cooldown tracker's dim divides this alpha out of its own, so
-    -- it recomputes on the edge that moved it.
-    if tracker.kind == "cooldown" and SAU.Cooldown then
-        SAU.Cooldown.UpdateGate(trackerId)
-    end
+    -- it recomputes on the edge that moved it and on each tick of the fade.
+    ApplyOpacity(trackerId, state, true)
 end
 
 --- Both regen edges, Edit Mode enter, and the events.lua poll: re-apply the

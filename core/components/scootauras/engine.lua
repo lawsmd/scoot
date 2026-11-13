@@ -228,6 +228,50 @@ function Engine.UpdateEditModeName(trackerId)
 end
 
 --------------------------------------------------------------------------------
+-- Frames that may hang off an engine-sized container
+--------------------------------------------------------------------------------
+
+-- A container that owns an aura group is resized by the client and carries
+-- ForbiddenAspect.UntrustedLayoutScriptExecution. A frame may anchor to it,
+-- or to anything anchored to it, only when it carries the aspect too, and a
+-- Lua-created frame takes the aspect from this template alone
+-- (Blizzard_SharedXMLBase/ForbiddenAspectTemplates.xml).
+local LAYOUT_TEMPLATE = "DisableUntrustedLayoutScriptsTemplate"
+local layoutTemplateUsable
+
+--- Whether a frame created from the template can stand where a plain one
+-- did: its children, created plain, must still anchor to it, since every art
+-- frame and the engine container are children of a visual. Asked of the
+-- client once. Where the answer is no, every frame stays plain and a group
+-- lays out on its plain chain (slots.lua).
+local function LayoutTemplateUsable()
+    if layoutTemplateUsable ~= nil then return layoutTemplateUsable end
+    layoutTemplateUsable = false
+    local okParent, parent = pcall(CreateFrame, "Frame", nil, UIParent, LAYOUT_TEMPLATE)
+    if okParent and parent then
+        parent:SetSize(1, 1)
+        parent:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        parent:Hide()
+        local child = CreateFrame("Frame", nil, parent)
+        local okAnchor = pcall(child.SetPoint, child, "CENTER", parent, "CENTER", 0, 0)
+        local okCount, points = pcall(child.GetNumPoints, child)
+        layoutTemplateUsable = okAnchor and okCount and points == 1
+    end
+    SetResult("layoutTemplate", layoutTemplateUsable and "usable" or "refused")
+    return layoutTemplateUsable
+end
+
+--- A frame that may anchor to an engine-sized container or to a frame that
+-- does. Returns the frame and whether it carries the aspect.
+function Engine.CreateLayoutFrame(frameType, parent)
+    if LayoutTemplateUsable() then
+        local ok, frame = pcall(CreateFrame, frameType, nil, parent, LAYOUT_TEMPLATE)
+        if ok and frame then return frame, true end
+    end
+    return CreateFrame(frameType, nil, parent), false
+end
+
+--------------------------------------------------------------------------------
 -- Pool
 --------------------------------------------------------------------------------
 
@@ -241,13 +285,16 @@ local function CreateEntry()
     shell:Hide()
     addon.RegisterPetBattleFrame(shell)
 
-    local visual = CreateFrame("Frame", nil, shell)
+    -- A grouped visual can hang on a chain of engine-sized spacers
+    -- (slots.lua), so it is created able to.
+    local visual, slotReady = Engine.CreateLayoutFrame("Frame", shell)
     visual:SetAllPoints(shell)
 
     local entry = {
         index = index,
         shell = shell,
         visual = visual,
+        slotReady = slotReady,
         containers = {},   -- retired (parked) containers, kept dormant
         elements = {},
     }
@@ -413,7 +460,12 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
     entry.wiredUnit = engineUnit
     entry.wiredKind = tracker.kind
     entry.wiredFilterKey = filterKey
+    -- Kept for the group slot's spacer, which matches what this container
+    -- matches (slots.lua); rebuilding the set there would walk the catalog.
+    entry.wiredFilters = filters
     entry.filtersStale = nil
+    -- A grouped member's spacer is built by the layout pass after this.
+    if entry.grouped and SAU.Groups then SAU.Groups.RequestReflow() end
     SetResult("build.t" .. trackerId, "ok (" .. (isMissing and ("group=" .. tostring(entry.gateGroupKey))
         or ("slot=" .. slotKey)) .. " unit=" .. tostring(tracker.unit)
         .. " engine=" .. tostring(engineUnit) .. ")")
@@ -657,6 +709,8 @@ function Engine.ReleaseForTracker(trackerId)
     if state and Engine.HideEditModePreview then
         Engine.HideEditModePreview(state)
     end
+    -- The state record is the state fade's key (styling.lua).
+    if state then addon.Opacity.FadeForget(state) end
     -- After the preview hide, which re-evaluates the reminder's gate.
     if SAU.Missing then
         SAU.Missing.OnEntryReleased(entry)
@@ -734,6 +788,8 @@ function Engine.KickUnit(unitToken, reason)
             end
         end
     end
+    -- The group slots' spacer containers are bound to units as well.
+    if SAU.Slots then SAU.Slots.KickUnit(unitToken) end
 end
 
 --- Resyncs one tracker's container. A container processes only while shown, so
@@ -757,4 +813,5 @@ function Engine.KickAll(reason)
             end
         end
     end
+    if SAU.Slots then SAU.Slots.KickUnit(nil) end
 end

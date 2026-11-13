@@ -16,9 +16,10 @@
 --                                          not rebuilt under the cursor)
 --   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"|"icons"
 --   kind()                -> "buff"|"debuff"|"buffstacks"|"debuffstacks"|"missingbuff"|
---                            "classpower"|"classresource"|"cooldown"
+--                            "classpower"|"classresource"|"cooldown"|"reactive"
 --   missingVisual()       -> resolved missing-state token, "none" when unset
---   showWhen()            -> "always"|"oncooldown"|"ready" (the Spell Cooldown kind)
+--   showWhen()            -> "always"|"oncooldown"|"ready" (the Spell Cooldown kind),
+--                            "usable"|"always" (the Reactive Ability kind)
 -- }
 local addonName, addon = ...
 
@@ -136,7 +137,9 @@ local function IconTabKeys(ctx)
         keys[#keys + 1] = "barIconSide"
         keys[#keys + 1] = "barIconGap"
     end
-    if ctx.kind and ctx.kind() == "cooldown" then keys[#keys + 1] = "cooldownDesaturate" end
+    if ctx.kind and addon.ScootAuras.KindUsesCooldownArt(ctx.kind()) then
+        keys[#keys + 1] = "cooldownDesaturate"
+    end
     return keys
 end
 
@@ -144,13 +147,17 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
     local isBar = addon.ScootAuras.IsBarShape(ctx.shape())
 
-    if ctx.kind and ctx.kind() == "cooldown" then
+    if ctx.kind and addon.ScootAuras.KindUsesCooldownArt(ctx.kind()) then
         -- The Spell Cooldown kind: the icon grays while the spell cools, the
         -- Cooldown Manager look, through a boolean curve on the cooldown
-        -- object so it holds in combat.
+        -- object so it holds in combat. On the Reactive Ability kind the
+        -- same key also grays the icon while the spell cannot be cast, which
+        -- is what "Always" shows in place of hiding it.
+        local reactive = addon.ScootAuras.KindWatchesUsable(ctx.kind())
         tabBuilder:AddToggle({
-            label = "Desaturate while on Cooldown",
-            description = "Gray the icon while the spell is on cooldown.",
+            label = reactive and "Desaturate while not Ready" or "Desaturate while on Cooldown",
+            description = reactive and "Gray the icon while the ability is unusable or on cooldown."
+                or "Gray the icon while the spell is on cooldown.",
             get = function() return ctx.get("cooldownDesaturate") ~= false end,
             set = function(v) ctx.setAndApply("cooldownDesaturate", v and true or false) end,
         })
@@ -407,8 +414,14 @@ end
 -- Copy keys for the Aura Name tab: the reminder's suffix and placement on a
 -- missing buff, the name's placement on a bar; the hide toggle stays off it.
 local NAME_TEXT_STYLE_KEYS = { "nameTextFont", "nameTextStyle", "nameTextSize", "nameTextColor" }
+-- The reminder kinds: a missing buff and a Weapon Buff share every tab.
+local function IsReminder(ctx)
+    local SAU = addon.ScootAuras
+    return ctx.kind ~= nil and SAU ~= nil and SAU.KindIsReminder(ctx.kind())
+end
+
 local function AuraNameTabKeys(ctx)
-    if ctx.kind and ctx.kind() == "missingbuff" then
+    if IsReminder(ctx) then
         return Keys("missingSuffix", NAME_TEXT_STYLE_KEYS,
             ctx.shape() == "icontext" and { "nameTextOuterAnchor", "nameTextOffsetX", "nameTextOffsetY" } or nil)
     end
@@ -422,15 +435,19 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx, opts)
     local Helpers = addon.UI.Settings.Helpers
     local noun = (opts and opts.noun) or "Aura Name"
     local lowerNoun = noun:lower()
-    -- Missing-buff trackers: the name IS the reminder, so there is no hide
+    -- Reminder trackers: the name IS the reminder, so there is no hide
     -- toggle; instead the text can carry a "missing!" suffix. It sits beside
-    -- the icon (Icon & Text) or alone (Text), never on a bar.
-    local isMissing = (ctx.kind and ctx.kind() == "missingbuff")
+    -- the icon (Icon & Text) or alone (Text), never on a bar. A Weapon Buff
+    -- reminder has no aura to name it and reads the tracker's own name.
+    local isMissing = IsReminder(ctx)
+    local isWeapon = isMissing and ctx.kind() == "weaponbuff"
 
     if isMissing then
         tabBuilder:AddToggle({
             label = 'Add "___ missing!" to the text',
-            description = 'Show the reminder as "<Aura Name> missing!" instead of the name alone.',
+            description = isWeapon
+                and 'The text is the tracker\'s name, so renaming the tracker changes it. On, it reads "<name> missing!".'
+                or 'Show the reminder as "<Aura Name> missing!" instead of the name alone.',
             get = function() return ctx.get("missingSuffix") == true end,
             set = function(v) ctx.setAndApply("missingSuffix", v) ctx.refreshPreview() end,
         })
@@ -1300,7 +1317,9 @@ end
 -- Animations tab (missing-buff trackers)
 --------------------------------------------------------------------------------
 
-local MISSING_ANIMATIONS_TAB_KEYS = { "blinkWhenShown" }
+local MISSING_ANIMATIONS_TAB_KEYS = { "blinkWhenShown", "clickToCast" }
+-- A Weapon Buff's click applies a poison, stone or oil the player is holding.
+local WEAPON_ANIMATIONS_TAB_KEYS = { "blinkWhenShown", "clickToCast" }
 
 function Tabs.BuildAnimationsTab(tabBuilder, ctx)
     tabBuilder:AddToggle({
@@ -1308,6 +1327,14 @@ function Tabs.BuildAnimationsTab(tabBuilder, ctx)
         description = "Pulse the reminder while it is showing, so a missing buff is harder to overlook.",
         get = function() return ctx.get("blinkWhenShown") == true end,
         set = function(v) ctx.setAndApply("blinkWhenShown", v) ctx.refreshPreview() end,
+    })
+
+    local weapon = ctx.kind and ctx.kind() == "weaponbuff"
+    tabBuilder:AddToggle({
+        label = weapon and "Click to apply a held poison or oil out of combat"
+            or "Click to cast the buff out of combat",
+        get = function() return ctx.get("clickToCast") ~= false end,
+        set = function(v) ctx.setAndApply("clickToCast", v) end,
     })
 
     tabBuilder:Finalize()
@@ -1358,6 +1385,24 @@ function Tabs.BuildIconAnimationsTab(tabBuilder, ctx)
 end
 
 --------------------------------------------------------------------------------
+-- Animations tab (Reactive Ability trackers)
+--------------------------------------------------------------------------------
+
+local REACTIVE_ANIMATIONS_TAB_KEYS = { "procGlow" }
+
+function Tabs.BuildReactiveAnimationsTab(tabBuilder, ctx)
+    -- The action button's proc glow on the icon (cooldown.lua, LayoutGlow);
+    -- the preview draws its loop.
+    tabBuilder:AddToggle({
+        label = "Proc Glow",
+        get = function() return ctx.get("procGlow") == true end,
+        set = function(v) ctx.setAndApply("procGlow", v) ctx.refreshPreview() end,
+    })
+
+    tabBuilder:Finalize()
+end
+
+--------------------------------------------------------------------------------
 -- Misc tab (buff and debuff icon trackers)
 --------------------------------------------------------------------------------
 
@@ -1401,16 +1446,25 @@ function Tabs.BuildTabSet(ctx)
 
     add("sizing", "Sizing", Tabs.BuildSizingTab, SIZING_TAB_KEYS)
 
-    if kind == "missingbuff" then
+    if IsReminder(ctx) then
         -- A reminder has no duration or stacks. Icon and/or Aura Name follow
-        -- the shape; Animations carries the blink.
+        -- the shape; Animations carries the blink. A Weapon Buff's text is the
+        -- tracker's name and no aura's, so its tab is plain "Text".
+        local weapon = (kind == "weaponbuff")
         if shape ~= "text" then
             add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
         end
         if shape ~= "icon" then
-            add("auraName", "Aura Name", Tabs.BuildAuraNameTab, AuraNameTabKeys)
+            if weapon then
+                add("auraName", "Text", function(b, c)
+                    Tabs.BuildAuraNameTab(b, c, { noun = "Text" })
+                end, AuraNameTabKeys)
+            else
+                add("auraName", "Aura Name", Tabs.BuildAuraNameTab, AuraNameTabKeys)
+            end
         end
-        add("animations", "Animations", Tabs.BuildAnimationsTab, MISSING_ANIMATIONS_TAB_KEYS)
+        add("animations", "Animations", Tabs.BuildAnimationsTab,
+            weapon and WEAPON_ANIMATIONS_TAB_KEYS or MISSING_ANIMATIONS_TAB_KEYS)
         return tabs, buildContent, keySets
     end
 
@@ -1440,11 +1494,14 @@ function Tabs.BuildTabSet(ctx)
         return tabs, buildContent, keySets
     end
 
-    if kind == "cooldown" then
+    if addon.ScootAuras.KindUsesCooldownArt(kind) then
         -- One spell's cooldown: the icon with the swipe or the bar with the
         -- fill, the countdown, the charge count, then Visibility, since the
         -- frame is up whether or not the spell is cooling. The Stacks tab
-        -- styles the charge count and the Aura Name tab the spell name.
+        -- styles the charge count and the Aura Name tab the spell name. A
+        -- Reactive Ability tracker is the same icon and takes the same tabs,
+        -- with Animations for its proc glow; its Visibility tab has no
+        -- Priority System rows.
         if addon.ScootAuras.IsBarShape(shape) then
             add("bar", "Bar", Tabs.BuildCooldownBarTab, COOLDOWN_BAR_TAB_KEYS)
             add("icon", "Icon", Tabs.BuildIconTab, IconTabKeys)
@@ -1458,6 +1515,9 @@ function Tabs.BuildTabSet(ctx)
         add("charges", "Charges", function(b, c)
             Tabs.BuildStacksTab(b, c, { noun = "Charges", singular = "charge" })
         end, StacksTabKeys)
+        if addon.ScootAuras.KindWatchesUsable(kind) then
+            add("animations", "Animations", Tabs.BuildReactiveAnimationsTab, REACTIVE_ANIMATIONS_TAB_KEYS)
+        end
         add("visibility", "Visibility", Tabs.BuildVisibilityTab, VisibilityTabKeys)
         return tabs, buildContent, keySets
     end

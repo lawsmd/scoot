@@ -205,7 +205,7 @@ local function ValidateTrackerRecord(rec, label, exact, known)
         -- it ran on, the SetTrackerContent rule.
         clean.onlyInCombat = SAU.OnlyInCombat(clean)
     end
-    if kind == "missingbuff" then
+    if SAU.KindIsReminder(kind) then
         clean.onlyInInstances = rec.onlyInInstances == true
     end
     -- nil on a duration kind for Nothing or a stranded token; a stacks kind

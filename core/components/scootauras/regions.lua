@@ -89,6 +89,19 @@ local function CreateBarElement(parent, elemDef)
     local barBg = barRegion:CreateTexture(nil, "BACKGROUND", nil, -1)
     barBg:SetAllPoints(inner)
 
+    -- A vertical bar's atlas background, painted in the art's horizontal
+    -- geometry on a frame turned a quarter
+    -- (addon.Media.ApplyBarBackgroundTurned); barBg hides while it shows. The
+    -- fill is never turned this way: the engine's fill inside a turned frame
+    -- drained sideways in combat on the beta (12 November 2026), so a vertical
+    -- fill is a file that is already turned (addon.Media.ApplyBarFill).
+    -- Created before the clips at the same level, so it draws under the lock
+    -- overlay as barBg does.
+    local bgTurn = CreateFrame("Frame", nil, barRegion)
+    bgTurn:SetFrameLevel(barRegion:GetFrameLevel())
+    bgTurn:Hide()
+    local barBgTurned = bgTurn:CreateTexture(nil, "BACKGROUND", nil, -1)
+
     -- Cadence lock geometry (cadence.lua). Both clips are neutral here and are
     -- re-anchored by BindForMode (structural gate) to the lock bar, which
     -- lives outside the button tree and holds remaining / original as a
@@ -131,6 +144,8 @@ local function CreateBarElement(parent, elemDef)
         inner = inner,
         barFill = barFill,
         barBg = barBg,
+        bgTurn = bgTurn,
+        barBgTurned = barBgTurned,
         barClip = barClip,
         lockClip = lockClip,
         lockOverlay = lockOverlay,
@@ -151,9 +166,10 @@ local MASK_FULL = "Interface\\BUTTONS\\WHITE8X8"
 -- animation is C-side, so it keeps ticking while the button subtree is denied
 -- in combat. The Edit Mode preview reuses the same recipe on its own frame.
 --
--- The icon swipe (styling.lua ApplyIconSwipe) anchors the clip to the icon,
--- inset to a Square border's inner edge. A bound Cooldown cannot change
--- parent, so the clip exists from the start.
+-- The icon swipe (styling.lua ApplyIconSwipe) grows the Cooldown past the
+-- icon so its edge line reaches the icon's rim, and anchors the clip to the
+-- icon, inset to a Square border's inner edge, to cut the overhang. A bound
+-- Cooldown cannot change parent, so the clip exists from the start.
 --
 -- The icon swipe also adds three regions on the Cooldown. Regions on a
 -- Cooldown in its BACKGROUND layer draw under its swipe and hide when it hides, so the desaturated
@@ -715,9 +731,12 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
         -- earlier occupant hides. The missing-state underlay's gate reads the
         -- Edit Mode flag on its own, and so does the Class Resource gate,
         -- which shows an inapplicable resource as empty pips here, and the
-        -- Spell Cooldown gate, which shows an unknown or alpha-hidden spell.
+        -- Spell Cooldown gate, which shows an unknown or alpha-hidden spell,
+        -- and the Weapon Buff reminder's, which lights it whatever the
+        -- weapons carry.
         activePreviews[entry] = nil
         if entry.preview then entry.preview.root:Hide() end
+        if SAU.Missing then SAU.Missing.UpdateGate(trackerId) end
         if SAU.Underlay then SAU.Underlay.UpdateGate(trackerId) end
         if SAU.ClassResource then SAU.ClassResource.UpdateGate(trackerId) end
         if SAU.Cooldown then SAU.Cooldown.UpdateGate(trackerId) end
