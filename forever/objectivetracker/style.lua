@@ -157,6 +157,7 @@ do
     map[Style.Path("current", "enabled")] = true
     map[Style.Path("current", "onEnterArea")] = true
     map[Style.Path("current", "onProgress")] = true
+    map[Style.Path("current", "onDungeon")] = true
     map[Style.Path("current", "holdSeconds")] = 120
     map[Style.Path("current", "fadeSeconds")] = Style.FADE.default
     map[Style.Path("current", "flashProgress")] = true
@@ -527,37 +528,73 @@ end
 -- Instance combat
 --------------------------------------------------------------------------------
 
-local function inDungeonOrRaid()
+--- Whether the player is inside a dungeon or raid. The combat fade reads it,
+--- and the current pane's dungeon trigger (current.lua).
+function Style.InDungeonOrRaid()
     local inInstance, instanceType = IsInInstance()
     return inInstance == true and (instanceType == "party" or instanceType == "raid")
 end
+local inDungeonOrRaid = Style.InDungeonOrRaid
 
--- Kept off addon.Opacity.Resolve: two overrides with a compound gate (combat in a dungeon or raid, else combat on the main tracker), else 1, and core/opacity.lua is not on this TOC.
---- The alpha the combat fade holds a pane's headers and modules at now.
-function Style.CombatAlpha(pane)
-    if not UnitAffectingCombat("player") then return 1 end
+-- Kept off addon.Opacity.Resolve: two overrides with a compound gate (combat in a dungeon or raid, else combat on the main tracker), else 1.
+-- The alpha the combat fade asks of a pane now, and the state behind it,
+-- which is what the state fade (core/opacity.lua) times its travel by.
+local function combatAlpha(pane)
+    if not UnitAffectingCombat("player") then return 1, "ooc" end
     if inDungeonOrRaid() then
-        return clamp(Style.Get("opacityInInstanceCombat"), Style.OPACITY) / 100
+        return clamp(Style.Get("opacityInInstanceCombat"), Style.OPACITY) / 100, "combat"
     end
     if (pane or Style.MAIN) == Style.MAIN then
-        return clamp(Style.Get("opacityInCombat"), Style.OPACITY) / 100
+        return clamp(Style.Get("opacityInCombat"), Style.OPACITY) / 100, "combat"
     end
-    return 1
+    return 1, "combat"
 end
 
---- The fade in combat, on the header and on each module but the Scenario
---- module, so the dungeon's own progress stays readable. Never the
---- container itself: alpha multiplies down the tree.
+local combatFades = {} -- pane -> { write }: the state fade's key and its writer
+
+--- The alpha a pane's headers and modules stand at now: the combat value, or
+--- where the state fade has it on the way there. fade.lua multiplies its own
+--- factor over this.
+function Style.CombatAlpha(pane)
+    pane = pane or Style.MAIN
+    local entry = combatFades[pane]
+    local value = entry and addon.Opacity.FadeValue(entry)
+    if value ~= nil then return value end
+    return (combatAlpha(pane))
+end
+
+-- The header and each module but the Scenario module, so the dungeon's own
+-- progress stays readable. Never the container itself: alpha multiplies down
+-- the tree. A header the pane fade holds below its base stays that file's.
+local function writeCombatAlpha(c, alpha)
+    local Fade = OT.Fade
+    if c.Header then c.Header:SetAlpha(alpha) end
+    c:ForEachModule(function(module)
+        if module ~= ScenarioObjectiveTracker then
+            if module.Header and not (Fade and Fade.HoldsHeader(module)) then
+                module.Header:SetAlpha(alpha)
+            end
+            if module.ContentsFrame then module.ContentsFrame:SetAlpha(alpha) end
+        end
+    end)
+end
+
+--- The fade in combat, through the state fade: a combat edge travels over the
+--- dynamic layout's transition time, and a setting or a move into or out of
+--- an instance lands at once.
 function Style.ApplyCombatOpacity()
     eachPane(function(pane, c)
-        local alpha = Style.CombatAlpha(pane)
-        if c.Header then c.Header:SetAlpha(alpha) end
-        c:ForEachModule(function(module)
-            if module ~= ScenarioObjectiveTracker then
-                if module.Header then module.Header:SetAlpha(alpha) end
-                if module.ContentsFrame then module.ContentsFrame:SetAlpha(alpha) end
+        local entry = combatFades[pane]
+        if not entry then
+            entry = {}
+            entry.write = function(value)
+                local frame = frameOf(pane)
+                if frame then writeCombatAlpha(frame, value) end
             end
-        end)
+            combatFades[pane] = entry
+        end
+        local alpha, state = combatAlpha(pane)
+        writeCombatAlpha(c, addon.Opacity.Fade(entry, alpha, state, entry.write))
     end)
 end
 

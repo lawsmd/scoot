@@ -130,6 +130,9 @@ local function Render(panel, scrollContent)
             addToggle(inner, "Mark Current On Progress",
                 "A quest moves to the pane when one of its objectives advances, and stays for the hold below.",
                 "onProgress")
+            addToggle(inner, "Mark Current In Its Dungeon",
+                "Inside a dungeon or raid, its quests move to the pane and stay until you leave. Untracked ones are tracked while you are inside.",
+                "onDungeon")
             inner:AddSlider({ label = "Hold",
                 description = "How long a quest stays in the pane after progress on it, in seconds. Another advance restarts the hold.",
                 min = Style.HOLD.min, max = Style.HOLD.max, step = Style.HOLD.step,

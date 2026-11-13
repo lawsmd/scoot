@@ -497,8 +497,45 @@ function Card.Create(parent)
 
     card.rows = addon.Pool.NewIndexed(function() return createRow(card) end, hideRow)
     card.faded = {}
+
+    -- Clicks go through the tracker's quest click (quests.lua), with one
+    -- change: a left click opens the quest's details popup where a header
+    -- supertracks. A right click opens the menu, and nothing shows the world
+    -- map. The script goes on first, then the click flag, and motion stays
+    -- off so the card raises no tooltip.
+    card.skipGamepadRestore = true
+    card.opensDetailsOnClick = true
+    card:SetScript("OnMouseUp", function(self, button)
+        if self:IsMouseOver() then self:OnClick(button) end
+    end)
+    card:SetMouseClickEnabled(true)
+    card:SetMouseMotionEnabled(false)
+
     card:Hide()
     return card
+end
+
+local function editing()
+    local EM = addon.EditMode
+    return EM and EM.IsEditing and EM.IsEditing() or false
+end
+
+--- A click on the card. Edit Mode's sample cards and a card fading out take
+--- none, and in Edit Mode the click belongs to the drag.
+function CardMixin:OnClick(button)
+    local questID = self.questID
+    if type(questID) ~= "number" or questID <= 0 or editing() then return end
+    if self:GetAlpha() < 0.5 then return end
+    OT.Quests.Click(self, questID, button)
+end
+
+-- What quests.lua's click reads off its host.
+function CardMixin:GetContextMenuParent()
+    return self
+end
+
+function CardMixin:RemoveAutoQuestPopUp(questID)
+    OT.Quests.RemoveAutoQuestPopUp(questID)
 end
 
 --- The width from the setting. The height waits for Measure: cards.lua sets

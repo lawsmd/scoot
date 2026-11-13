@@ -54,6 +54,12 @@ local entries = {}     -- questID -> { inside, progressAt, token, objective, bef
 local snapshots = {}   -- questID -> { [objectiveIndex] = { fulfilled, required, finished, text } }
 local changes = {}     -- questID -> { index, before, after, fulfilled, required, rose, t }: the last objective change read
 local pendingRead = {} -- questID -> true: progress reported, no change read yet
+local dungeon = nil    -- { name, quests = { [questID] = "header" } } while inside a dungeon or raid
+local declined = {}    -- questID -> true: a watch this feature added that the player took off, this visit
+local unwatched = {}   -- questID -> "limit" | "refused": a dungeon quest the feature could not track, this visit
+local kept = {}        -- questID -> true: a swapped-out watch the player tracked again by hand, this visit
+local logCount = -1    -- the quest log's entry count at the last dungeon read
+local installed = false
 local log = {}
 local subscribers = {}
 
@@ -162,6 +168,249 @@ local function insideBlob(questID)
     return ok and inside == true
 end
 
+local function isWatched(questID)
+    local ok, watchType = pcall(C_QuestLog.GetQuestWatchType, questID)
+    return ok and watchType ~= nil
+end
+
+--------------------------------------------------------------------------------
+-- The dungeon
+--------------------------------------------------------------------------------
+
+-- Inside a dungeon or raid, every quest for it is current. No API names a
+-- quest's dungeon; the quest log files a dungeon quest under a header with
+-- the dungeon's name, and that header is the one read. isOnMap is not used:
+-- on Forever it read true inside the Drowned City for quests in other zones
+-- (beta, 12 November 2026).
+
+-- A name compared without case or a leading "The ".
+local function nameKey(name)
+    return (name:lower():gsub("^the%s+", ""))
+end
+
+-- The name keys a header may carry for the instance the player is in, or nil
+-- outside a dungeon or raid.
+local function instanceNames()
+    if not Style.InDungeonOrRaid() then return nil end
+    local names, first = {}, nil
+    local ok, name = pcall(GetInstanceInfo)
+    if ok and type(name) == "string" and isPlain(name) and name ~= "" then
+        names[nameKey(name)], first = true, name
+    end
+    local okZone, zone = pcall(GetRealZoneText)
+    if okZone and type(zone) == "string" and isPlain(zone) and zone ~= "" then
+        names[nameKey(zone)], first = true, first or zone
+    end
+    if not first then return nil end
+    return names, first
+end
+
+-- The quests in the log for the instance named, and the log's entry count.
+local function readDungeonQuests(names)
+    local quests = {}
+    local okN, n = pcall(C_QuestLog.GetNumQuestLogEntries)
+    if not okN or type(n) ~= "number" then return quests, -1 end
+    local header
+    for i = 1, n do
+        local ok, info = pcall(C_QuestLog.GetInfo, i)
+        if ok and type(info) == "table" then
+            if info.isHeader then
+                local title = info.title
+                header = (type(title) == "string" and isPlain(title)) and nameKey(title) or nil
+            elseif type(info.questID) == "number" and not info.isHidden and not info.isTask
+                and header and names[header] then
+                quests[info.questID] = "header"
+            end
+        end
+    end
+    return quests, n
+end
+
+local function sameQuests(a, b)
+    for questID, how in pairs(a) do
+        if b[questID] ~= how then return false end
+    end
+    for questID in pairs(b) do
+        if a[questID] == nil then return false end
+    end
+    return true
+end
+
+-- A set of quest ids per character in the account store, so a reload or a
+-- logout inside the dungeon still knows what to undo. create false returns
+-- nil when the character has none.
+local function charSet(key, create)
+    local db = addon.db and addon.db.global
+    if not db then return nil end
+    local ok, guid = pcall(UnitGUID, "player")
+    if not ok or type(guid) ~= "string" or not isPlain(guid) then return nil end
+    local all = db[key]
+    if not all then
+        if not create then return nil end
+        all = {}
+        db[key] = all
+    end
+    local list = all[guid]
+    if not list and create then
+        list = {}
+        all[guid] = list
+    end
+    return list, all, guid
+end
+
+-- The watches this feature added.
+local function addedWatches(create)
+    return charSet("currentDungeonWatches", create)
+end
+
+-- The player's watches this feature took off to make room under the limit.
+local function swappedWatches(create)
+    return charSet("currentDungeonSwapped", create)
+end
+
+-- Tracks again every quest swapped out, once the player leaves or the
+-- trigger goes off.
+local function restoreSwapped()
+    local list, all, guid = swappedWatches(false)
+    if not list then return end
+    for questID in pairs(list) do
+        list[questID] = nil
+        local okIndex, index = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
+        if okIndex and index and not isWatched(questID) then
+            pcall(C_QuestLog.AddQuestWatch, questID)
+            push("watch %s: %d %s", isWatched(questID) and "restored" or "not restored",
+                questID, questName(questID))
+        end
+    end
+    all[guid] = nil
+end
+
+-- The watch to swap out for a dungeon quest: the last on the watch list that
+-- is not a dungeon quest, not supertracked, and not one the player tracked
+-- again by hand this visit.
+local function swapCandidate()
+    local super
+    if C_SuperTrack then
+        local ok, id = pcall(C_SuperTrack.GetSuperTrackedQuestID)
+        if ok and type(id) == "number" then super = id end
+    end
+    local okN, n = pcall(C_QuestLog.GetNumQuestWatches)
+    if not okN or type(n) ~= "number" then return nil end
+    for i = n, 1, -1 do
+        local ok, questID = pcall(C_QuestLog.GetQuestIDForQuestWatchIndex, i)
+        if ok and type(questID) == "number" and not dungeon.quests[questID]
+            and questID ~= super and not kept[questID] then
+            return questID
+        end
+    end
+    return nil
+end
+
+-- Takes off every added watch outside the set given (nil: every one).
+local function releaseWatches(keep)
+    local list, all, guid = addedWatches(false)
+    if not list then return end
+    for questID in pairs(list) do
+        if not (keep and keep[questID]) then
+            -- Off the list before the call, so the watch-list event that
+            -- follows does not read as the player's untrack.
+            list[questID] = nil
+            if isWatched(questID) then
+                pcall(C_QuestLog.RemoveQuestWatch, questID)
+                push("watch removed: %d %s", questID, questName(questID))
+            end
+        end
+    end
+    if next(list) == nil then all[guid] = nil end
+end
+
+-- Watches the dungeon's untracked quests while the trigger is on, swapping
+-- out the player's last watches when the limit is reached, and undoes both
+-- once the player leaves or the trigger goes off.
+local function syncWatches()
+    if not (dungeon and Current.Enabled() and setting("onDungeon")) then
+        releaseWatches(nil)
+        restoreSwapped()
+        return
+    end
+    releaseWatches(dungeon.quests)
+    local list = addedWatches(true)
+    if not list then return end
+    local okCount, count = pcall(C_QuestLog.GetNumQuestWatches)
+    count = (okCount and type(count) == "number") and count or 0
+    local consts = Constants and Constants.QuestWatchConsts
+    local cap = consts and consts.MAX_QUEST_WATCHES or 25
+    for questID in pairs(dungeon.quests) do
+        if not list[questID] and not declined[questID] and not isWatched(questID) then
+            -- Room under the limit, unless the client already refused this
+            -- quest: a refused track would swap out a watch on every retry.
+            if count >= cap and unwatched[questID] ~= "refused" then
+                local out = swapCandidate()
+                if out then
+                    -- On the list before the call, so the watch-list event
+                    -- that follows does not read as the player's untrack.
+                    local swapped = swappedWatches(true)
+                    if swapped then swapped[out] = true end
+                    pcall(C_QuestLog.RemoveQuestWatch, out)
+                    if isWatched(out) then
+                        if swapped then swapped[out] = nil end
+                    else
+                        count = count - 1
+                        push("watch swapped out: %d %s, for %d", out, questName(out), questID)
+                    end
+                end
+            end
+            if count >= cap then
+                if not unwatched[questID] then
+                    unwatched[questID] = "limit"
+                    push("watch limit (%d of %d): %d %s not tracked", count, cap, questID, questName(questID))
+                end
+            else
+                local ok, err = pcall(C_QuestLog.AddQuestWatch, questID)
+                if isWatched(questID) then
+                    unwatched[questID] = nil
+                    list[questID] = true
+                    count = count + 1
+                    push("watch added: %d %s", questID, questName(questID))
+                elseif not unwatched[questID] then
+                    -- Retried on every log update; logged once a visit.
+                    unwatched[questID] = "refused"
+                    push("watch refused: %d %s%s", questID, questName(questID),
+                        ok and "" or (": " .. tostring(err)))
+                end
+            end
+        end
+    end
+end
+
+-- Recomputes the dungeon's quests; on a change, re-routes and syncs watches.
+local function readDungeon(reason)
+    local names, name = instanceNames()
+    local quests, n = {}, -1
+    if names then quests, n = readDungeonQuests(names) end
+    logCount = n
+    local was = dungeon
+    if names then
+        dungeon = { name = name, quests = quests }
+    else
+        dungeon = nil
+        wipe(declined)
+        wipe(unwatched)
+        wipe(kept)
+    end
+    if was and dungeon and was.name == dungeon.name and sameQuests(was.quests, quests) then return end
+    if not was and not dungeon then return end
+    if dungeon then
+        local count = 0
+        for _ in pairs(quests) do count = count + 1 end
+        push("dungeon (%s): %s, %d quests", reason, name, count)
+    else
+        push("dungeon (%s): left", reason)
+    end
+    syncWatches()
+    modulesDirty()
+end
+
 --------------------------------------------------------------------------------
 -- The current set
 --------------------------------------------------------------------------------
@@ -170,6 +419,7 @@ end
 --- predicates on every layout.
 function Current.IsCurrent(questID)
     if not Current.Enabled() then return false end
+    if dungeon and dungeon.quests[questID] and setting("onDungeon") then return true end
     local e = entries[questID]
     if not e then return false end
     if e.pinned then return true end
@@ -204,6 +454,8 @@ end
 -- Why a quest is in the pane, for the dump.
 local function reasons(questID, e)
     local parts = {}
+    local how = dungeon and dungeon.quests[questID]
+    if how then parts[#parts + 1] = "dungeon (" .. how .. ")" end
     if e.pinned then parts[#parts + 1] = "pinned" end
     if e.inside then parts[#parts + 1] = "inside" end
     if e.progressAt then
@@ -236,8 +488,10 @@ local function recordChange(questID, e, change)
     end
 end
 
---- Marks the three quest modules dirty: a setting changed.
+--- Marks the three quest modules dirty: a setting changed. Also brings the
+--- dungeon's added watches in line with the settings.
 function Current.Refresh()
+    if installed then syncWatches() end
     modulesDirty()
 end
 
@@ -317,6 +571,20 @@ end
 -- base, and settles a progress whose objective the watch update could not
 -- read yet.
 local function onLogUpdate()
+    -- The whole log is walked only when an entry came or went, or the player
+    -- crossed an instance's door without a zone event.
+    if (dungeon ~= nil) ~= Style.InDungeonOrRaid() then
+        readDungeon("log")
+    elseif dungeon then
+        local ok, n = pcall(C_QuestLog.GetNumQuestLogEntries)
+        if ok and type(n) == "number" and n ~= logCount then
+            readDungeon("log")
+        else
+            -- A track the client refused, or one the limit held back, is
+            -- tried again; a watch freed by the player makes room.
+            syncWatches()
+        end
+    end
     eachWatch(function(questID)
         local change = updateSnapshot(questID)
         if change and pendingRead[questID] and entries[questID] then
@@ -332,7 +600,24 @@ local function onWatchListChanged(_, questID, added)
     if added then
         snapshots[questID] = readObjectives(questID)
         if insideBlob(questID) then entryFor(questID).inside = true end
+        -- A swapped-out watch the player tracked again: theirs, and not
+        -- swapped out again this visit.
+        local swapped, all, guid = swappedWatches(false)
+        if swapped and swapped[questID] then
+            swapped[questID] = nil
+            if next(swapped) == nil then all[guid] = nil end
+            kept[questID] = true
+            push("watch kept: %d %s", questID, questName(questID))
+        end
     else
+        -- An added watch the player took off: theirs to keep off this visit.
+        local list, all, guid = addedWatches(false)
+        if list and list[questID] then
+            list[questID] = nil
+            if next(list) == nil then all[guid] = nil end
+            declined[questID] = true
+            push("watch declined: %d %s", questID, questName(questID))
+        end
         entries[questID] = nil
         snapshots[questID] = nil
         changes[questID] = nil
@@ -355,8 +640,6 @@ end
 --------------------------------------------------------------------------------
 -- Install
 --------------------------------------------------------------------------------
-
-local installed = false
 
 --- Once, from the tracker's setup, after the modules are in their containers
 --- and the style is on. Puts the three predicates on the module instances,
@@ -397,9 +680,17 @@ function Current.Install()
     addon.Events.On(OWNER, "QUEST_WATCH_LIST_CHANGED", onWatchListChanged)
     addon.Events.On(OWNER, "QUEST_REMOVED", onQuestGone)
     addon.Events.On(OWNER, "QUEST_TURNED_IN", onQuestGone)
-    addon.Events.On(OWNER, "PLAYER_ENTERING_WORLD", function() seed("world") end)
+    addon.Events.On(OWNER, "PLAYER_ENTERING_WORLD", function()
+        seed("world")
+        readDungeon("world")
+    end)
+    addon.Events.On(OWNER, "ZONE_CHANGED_NEW_AREA", function() readDungeon("zone") end)
 
     seed("install")
+    readDungeon("install")
+    -- Outside every dungeon at install, readDungeon saw no change; a list
+    -- left by a logout inside one is taken off here.
+    if not dungeon then syncWatches() end
 
     if OT.Fade then OT.Fade.Install() end
     if OT.Overflow then OT.Overflow.Install() end
@@ -414,6 +705,22 @@ function Current.Dump(push)
     push("current: installed %s, enabled %s, on entering area %s, on progress %s, hold %ss",
         tostring(installed), tostring(Current.Enabled()), tostring(setting("onEnterArea")),
         tostring(setting("onProgress")), tostring(Style.HoldSeconds()))
+    local added = 0
+    for _ in pairs(addedWatches(false) or {}) do added = added + 1 end
+    local swappedOut = 0
+    for _ in pairs(swappedWatches(false) or {}) do swappedOut = swappedOut + 1 end
+    if dungeon then
+        local count = 0
+        for _ in pairs(dungeon.quests) do count = count + 1 end
+        push("dungeon: %s, %d quests, in its dungeon %s, %d watches added, %d swapped out, log entries %d",
+            dungeon.name, count, tostring(setting("onDungeon")), added, swappedOut, logCount)
+        for questID, how in pairs(dungeon.quests) do
+            push("  %-6d %-40s %s%s", questID, questName(questID), how, isWatched(questID) and "" or string.format(" (not watched: %s)",
+                declined[questID] and "untracked by hand" or unwatched[questID] or "not tried"))
+        end
+    else
+        push("dungeon: outside, %d watches added, %d swapped out", added, swappedOut)
+    end
     local n = 0
     for questID, e in pairs(entries) do
         n = n + 1

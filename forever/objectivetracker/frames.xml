@@ -10,8 +10,11 @@
 	-->
 
 	<!-- Blizzard_ObjectiveTracker.xml: ObjectiveTrackerFrame, minus the two
-	templates that make it a right-managed frame and an Edit Mode system. -->
-	<Frame name="CamelotObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW">
+	templates that make it a right-managed frame and an Edit Mode system.
+	Hidden: the XML builds both containers whether or not the feature is on,
+	and the template's background draws an empty dark panel. With the feature
+	on, the manager's update shows a container once a module has content. -->
+	<Frame name="CamelotObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW" hidden="true">
 		<!-- Camelot's default from tracker.lua, so the frame has a rect from the
 		moment it exists; the Edit Mode restore there replaces it with the
 		stored position. -->
@@ -40,8 +43,8 @@
 	container from the same template, holding one module. It has no header of
 	its own; its module's header is the pane's title, so the first module sits
 	at the top. The anchor is tracker.lua's default, which the Edit Mode
-	restore replaces. -->
-	<Frame name="CamelotCurrentObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW">
+	restore replaces. Hidden for the same reason as the tracker above. -->
+	<Frame name="CamelotCurrentObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW" hidden="true">
 		<Anchors>
 			<Anchor point="RIGHT" x="-355" y="35"/>
 		</Anchors>

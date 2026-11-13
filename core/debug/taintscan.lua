@@ -12,7 +12,9 @@
 -- opens with the fields each stage of the game menu's Edit Mode path writes,
 -- in path order, so the first tainted one names the stage the taint entered
 -- at; a clean show or entry since rewrites them secure, so the scan runs
--- right after the error, before anything else is opened.
+-- right after the error, before anything else is opened. A second part reads
+-- the world map's quest pin path the same way, and keeps the blocked
+-- SetPassThroughButtons calls with the first tainted value at each.
 -- Usage: /<slash> debug taintscan
 local addonName, addon = ...
 
@@ -209,6 +211,258 @@ addon.Events.OnAddonLoaded("Blizzard_WorldMap", function()
     if WorldMapFrame then WorldMapFrame:HookScript("OnShow", onMapShow) end
 end)
 
+-- The world map's quest pin path. QuestDataProviderMixin:RegisterEvents
+-- registers a Supertracking.OnChanged callback on each show and
+-- UnregisterEvents leaves it, so once the map has been shown its quest pins
+-- are rebuilt on every supertrack change, shown or not. Each pin acquire
+-- calls SetPassThroughButtons, which insecure code may not call in combat:
+-- one tainted value on that path is a blocked action per pin, with a stack
+-- that is all Blizzard's. The values the path reads are the provider, the
+-- pin pool's slot, the pins, the highlight manager's quest, and the quest
+-- object QuestCache holds for each pin. POIButtonUtil.GetStyle asks for that
+-- object, QuestCache creates it on the first ask, and whoever asked first
+-- wrote it.
+local QUEST_PIN_TEMPLATE = "QuestPinTemplate"
+local BLOCKED_KEPT = 5
+local PINS_LISTED = 8
+local KEYS_LISTED = 6
+local CALLBACK_TYPE_FUNCTION = 2 -- CallbackRegistry.lua: MakeEnum("Closure", "Function")
+
+local function readable(t)
+    return type(t) == "table" and not (canaccesstable and not canaccesstable(t))
+end
+
+local function field(t, k)
+    if not readable(t) then return nil end
+    local ok, v = pcall(rawget, t, k)
+    if ok then return v end
+    return nil
+end
+
+-- Every string key of t that carries taint, as "key by addon", and the
+-- number of string keys t has.
+local function taintedKeys(t)
+    local marked, total = {}, 0
+    if not readable(t) then return marked, total end
+    pcall(function()
+        for k in next, t do
+            if type(k) == "string" then
+                total = total + 1
+                local by = taintOf(t, k)
+                if by then marked[#marked + 1] = k .. " by " .. by end
+            end
+        end
+    end)
+    table.sort(marked)
+    return marked, total
+end
+
+local function keyList(marked)
+    if #marked == 0 then return "none" end
+    local shown = {}
+    for i = 1, math.min(#marked, KEYS_LISTED) do shown[i] = marked[i] end
+    local text = table.concat(shown, ", ")
+    if #marked > KEYS_LISTED then
+        text = text .. string.format(", and %d more", #marked - KEYS_LISTED)
+    end
+    return text
+end
+
+-- The map's quest provider: the entry of dataProviders built from
+-- QuestDataProviderMixin, found by its methods' identity.
+local function questProvider(map)
+    local providers = field(map, "dataProviders")
+    local mixin = _G.QuestDataProviderMixin
+    if not (providers and type(mixin) == "table") then return nil end
+    local found
+    pcall(function()
+        for provider in next, providers do
+            if type(provider) == "table"
+                and rawget(provider, "RefreshAllData") == mixin.RefreshAllData
+                and rawget(provider, "GetPinTemplate") == mixin.GetPinTemplate then
+                found = provider
+            end
+        end
+    end)
+    return found
+end
+
+-- Every quest pin the provider has ever placed, shown or pooled: AddQuest
+-- writes dataProvider on a pin and nothing clears it.
+local function questPins(map, provider)
+    local pins = {}
+    local canvas = field(field(map, "ScrollContainer"), "Child")
+    if not (canvas and provider) then return pins end
+    pcall(function()
+        for _, child in ipairs({ canvas:GetChildren() }) do
+            if rawget(child, "dataProvider") == provider then pins[#pins + 1] = child end
+        end
+    end)
+    return pins
+end
+
+-- The watched quests and the quests on the map's zone, in that order, each
+-- once: the quests the tracker asks QuestCache for and the ones the map does.
+local function questsOnPath(map)
+    local list, seen = {}, {}
+    local function add(questID, key)
+        if type(questID) ~= "number" then return end
+        local entry = seen[questID]
+        if not entry then
+            entry = { id = questID }
+            seen[questID] = entry
+            list[#list + 1] = entry
+        end
+        entry[key] = true
+    end
+    pcall(function()
+        for i = 1, C_QuestLog.GetNumQuestWatches() do
+            add(C_QuestLog.GetQuestIDForQuestWatchIndex(i), "watched")
+        end
+    end)
+    local mapID = field(map, "mapID")
+    if type(mapID) == "number" then
+        pcall(function()
+            for _, info in ipairs(C_QuestLog.GetQuestsOnMap(mapID) or {}) do
+                add(info.questID, "onMap")
+            end
+        end)
+    end
+    return list, mapID
+end
+
+local function questObject(questID)
+    return field(field(_G.QuestCache, "objects"), questID)
+end
+
+-- Whether the provider's leaked callback is in the registry: true from the
+-- first map show of the session on.
+local function supertrackCallbackHeld(provider)
+    local tables = field(_G.EventRegistry, "callbackTables")
+    local callbacks = field(field(tables, CALLBACK_TYPE_FUNCTION), "Supertracking.OnChanged")
+    return field(callbacks, provider) ~= nil
+end
+
+-- The path's rows in the order a pin refresh reads them, each { label,
+-- verdict }, verdict nil when the row is secure.
+local function questPinRows()
+    local map = _G.WorldMapFrame
+    local rows = {}
+    if type(map) ~= "table" then return rows, nil end
+    local provider = questProvider(map)
+
+    local marked = taintedKeys(provider)
+    rows[#rows + 1] = { "the quest provider's fields", #marked > 0 and keyList(marked) or nil }
+
+    local pools = field(map, "pinPools")
+    rows[#rows + 1] = { "the pin pool slot " .. QUEST_PIN_TEMPLATE,
+        readable(pools) and taintOf(pools, QUEST_PIN_TEMPLATE) or nil }
+
+    local pins = questPins(map, provider)
+    local markedPins = 0
+    for _, pin in ipairs(pins) do
+        local keys = taintedKeys(pin)
+        if #keys > 0 then
+            markedPins = markedPins + 1
+            if markedPins <= PINS_LISTED then
+                rows[#rows + 1] = { string.format("quest pin %d", markedPins), keyList(keys) }
+            end
+        end
+    end
+    rows[#rows + 1] = { string.format("quest pins: %d placed so far, %d with tainted fields", #pins, markedPins),
+        markedPins > PINS_LISTED and string.format("%d more not listed", markedPins - PINS_LISTED) or nil }
+
+    local quests, mapID = questsOnPath(map)
+    for _, entry in ipairs(quests) do
+        local object = questObject(entry.id)
+        local verdict
+        if readable(object) then
+            local creator = taintOf(object, "questID")
+            local keys, total = taintedKeys(object)
+            if creator then
+                verdict = string.format("created by %s, %d of %d fields tainted", creator, #keys, total)
+            elseif #keys > 0 then
+                verdict = "created secure, tainted since: " .. keyList(keys)
+            end
+        end
+        local ok, title = pcall(C_QuestLog.GetTitleForQuestID, entry.id)
+        rows[#rows + 1] = {
+            string.format("quest %d %s (%s%s%s), %s", entry.id, ok and title or "?",
+                entry.watched and "watched" or "", entry.watched and entry.onMap and ", " or "",
+                entry.onMap and "on the map" or "", readable(object) and "object in QuestCache" or "no object"),
+            verdict,
+        }
+    end
+
+    local manager = _G.POIButtonHighlightManager
+    rows[#rows + 1] = { "POIButtonHighlightManager.questID", readable(manager) and taintOf(manager, "questID") or nil }
+
+    return rows, { map = map, provider = provider, mapID = mapID }
+end
+
+local function firstTaintedRow()
+    local ok, rows = pcall(questPinRows)
+    if not ok then return "scan failed" end
+    for _, row in ipairs(rows) do
+        if row[2] then return row[1] .. ": " .. row[2] end
+    end
+    return "every row secure"
+end
+
+-- The blocked calls themselves, each with the first tainted row at that
+-- moment: the hop the taint entered at, read with no taint log running.
+local blockedPins = {}
+
+addon.Events.On("taintscan", "ADDON_ACTION_BLOCKED", function(_, blamed, action)
+    if type(action) ~= "string" or not action:find("SetPassThroughButtons", 1, true) then return end
+    local last = blockedPins[#blockedPins]
+    local now = GetTime()
+    -- One refresh blocks two calls per pin; they are one entry.
+    if last and now - last.at < 1 then
+        last.count = last.count + 1
+        return
+    end
+    local map = _G.WorldMapFrame
+    local shown = false
+    if type(map) == "table" then
+        local ok, value = pcall(map.IsShown, map)
+        shown = ok and value or false
+    end
+    local superTrack = _G.C_SuperTrack
+    blockedPins[#blockedPins + 1] = {
+        at = now,
+        when = date("%H:%M:%S"),
+        by = tostring(blamed),
+        count = 1,
+        combat = InCombatLockdown(),
+        mapShown = shown,
+        superTracked = superTrack and superTrack.GetSuperTrackedQuestID and superTrack.GetSuperTrackedQuestID() or nil,
+        first = firstTaintedRow(),
+    }
+    if #blockedPins > BLOCKED_KEPT then table.remove(blockedPins, 1) end
+end)
+
+-- Whether a supertrack change set from Lua dispatches SUPER_TRACKING_CHANGED
+-- inside the call. When it does, every handler runs as the caller, the map's
+-- pin refresh among them, so a set from addon code blocks the pins in combat
+-- and marks them out of it. The stack under this handler says which happened:
+-- the C function and its caller are in it when the dispatch is inside the
+-- call, and it ends at the event frame when the client dispatched it.
+local STACK_LINES_KEPT = 10
+local superTrackSeen = { client = 0, inCall = 0 }
+
+addon.Events.On("taintscan", "SUPER_TRACKING_CHANGED", function()
+    local stack = debugstack(2, 30, 0) or ""
+    if not stack:find("SuperTrack", 1, true) then
+        superTrackSeen.client = superTrackSeen.client + 1
+        return
+    end
+    superTrackSeen.inCall = superTrackSeen.inCall + 1
+    superTrackSeen.when = date("%H:%M:%S")
+    superTrackSeen.combat = InCombatLockdown()
+    superTrackSeen.stack = stack
+end)
+
 local function methodTable(frame)
     local mt = getmetatable(frame)
     local index = type(mt) == "table" and rawget(mt, "__index")
@@ -389,6 +643,47 @@ local function Scan()
         push("     pin pools marked before: %s", #show.poolsBefore > 0 and table.concat(show.poolsBefore, ", ") or "none")
         push("     pin pools marked after: %s", #show.poolsAfter > 0 and table.concat(show.poolsAfter, ", ") or "none")
         for line in show.stack:gmatch("[^\n]+") do push("     %s", line) end
+    end
+    push("")
+
+    push("Quest pin path: what the world map's quest pin refresh reads, in the order it reads it.")
+    local okRows, rows, context = pcall(questPinRows)
+    if not okRows then
+        push("  could not read: %s", tostring(rows))
+    elseif not context then
+        push("  no world map on this client")
+    else
+        local okShown, mapShown = pcall(context.map.IsShown, context.map)
+        push("  map id %s, shown %s; the provider's Supertracking.OnChanged callback held: %s",
+            tostring(context.mapID), tostring(okShown and mapShown),
+            context.provider and tostring(supertrackCallbackHeld(context.provider)) or "no quest provider found")
+        push("  held means the map rebuilds its quest pins on every supertrack change, shown or hidden")
+        for _, row in ipairs(rows) do
+            push("  %-78s %s", row[1], row[2] or "secure")
+        end
+    end
+    push("")
+
+    push("Blocked SetPassThroughButtons calls (%d kept):", #blockedPins)
+    if #blockedPins == 0 then push("  none") end
+    for i, entry in ipairs(blockedPins) do
+        push("  %d. %s by %s, %d call(s), in combat %s, map shown %s, supertracked quest %s", i, entry.when, entry.by,
+            entry.count, tostring(entry.combat), tostring(entry.mapShown), tostring(entry.superTracked))
+        push("     first tainted row then: %s", entry.first)
+    end
+    push("")
+
+    push("Supertrack changes seen: %d dispatched by the client, %d inside a Lua call",
+        superTrackSeen.client, superTrackSeen.inCall)
+    push("  inside a call, every handler runs as the caller, the map's pin refresh among them")
+    if superTrackSeen.stack then
+        push("  the last one, %s, in combat %s:", superTrackSeen.when, tostring(superTrackSeen.combat))
+        local shown = 0
+        for line in superTrackSeen.stack:gmatch("[^\n]+") do
+            shown = shown + 1
+            if shown > STACK_LINES_KEPT then break end
+            push("     %s", line)
+        end
     end
     push("")
 

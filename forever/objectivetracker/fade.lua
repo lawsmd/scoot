@@ -182,6 +182,16 @@ local function hold(maxByModule)
     end
 end
 
+--- Whether a module's header stands below its base here. The combat fade's
+--- writes leave such a header alone (style.lua): the next pass here lands it
+--- over the combat value, which Style.CombatAlpha answers mid-fade too.
+function Fade.HoldsHeader(module)
+    for name in pairs(held) do
+        if _G[name] == module then return true end
+    end
+    return false
+end
+
 local maxByModule = {}
 
 --- After every layout of either container, and every frame while a fade

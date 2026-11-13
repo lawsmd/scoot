@@ -181,6 +181,11 @@ local function Setup()
             modules[#modules + 1] = module
         end
     end
+    -- Before any module has a container: SetModuleContainer below is where a
+    -- module first runs, and its first layout must already read Camelot's
+    -- quest objects and POI buttons (quests.lua).
+    if OT.Quests then OT.Quests.Install(modules) end
+
     manager:AssignModulesOrder(modules)
     local current = _G[CURRENT_MODULE]
     for _, module in ipairs(modules) do
@@ -612,6 +617,9 @@ local function dumpTracker()
     end
     if OT.Items then
         OT.Items.Dump(push)
+    end
+    if OT.Quests then
+        OT.Quests.Dump(push)
     end
 
     local function pushSnapshot(indent, snap)
