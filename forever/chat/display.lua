@@ -610,6 +610,7 @@ function Display.Build()
     addon.RegisterPetBattleFrame(h)
 
     Display.CaptureDefault()
+    Style.SeedTimestamps()
     h.ScrollToBottomButton:SetScript("OnClick", function()
         PlaySound(SOUNDKIT.IG_CHAT_BOTTOM)
         local twin = selected and selected.twin

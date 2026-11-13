@@ -47,7 +47,8 @@ local store = {
 -- Attach
 --------------------------------------------------------------------------------
 -- A frame with its attach on hangs off the frame its descriptor names
--- (settings.lua, Settings.ATTACH) and holds no spot of its own: a drop
+-- (settings.lua, Settings.ATTACH: the target of target off the target) and
+-- holds no spot of its own: a drop
 -- springs back, the dialog's position row is absent, and the stored free
 -- position waits for the setting to go off. The anchor is live, so the frame
 -- follows its host through a drag and a scale change with no position math.
@@ -108,6 +109,71 @@ function EditMode.Reattach(key)
 end
 
 --------------------------------------------------------------------------------
+-- The legacy attach
+--------------------------------------------------------------------------------
+-- Until 4 November 2026 the target hung off the player frame (settings.lua,
+-- Settings.LEGACY_ATTACH). A profile whose switch still reads on gets the
+-- spot that anchor gave the target written out as the target's own position,
+-- once, so a target that followed a dragged or scaled player frame stays
+-- where it stood. The spot is worked out from the stored records and the two
+-- base scales, never from the frames on screen: Dynamic Layouts may hold
+-- either frame somewhere else at the time. A profile with nothing stored for
+-- either frame, both scales at 1 and no offset needs nothing written: the
+-- target's own default is that spot.
+
+local CARRIED_PATH = "unitFrames.legacyAttachCarried"
+
+local function round2(n)
+    return math.floor(n * 100 + 0.5) / 100
+end
+
+--- The record the legacy anchor resolves to for one frame, written to the
+--- store, or nil when there is nothing to carry or it cannot be worked out
+--- yet. Sets the profile's flag once every legacy row is settled.
+local function carryLegacyAttach(inst, layoutName)
+    local a = inst and Settings.LEGACY_ATTACH[inst.key]
+    if not a or DB.Get(CARRIED_PATH) == true then return nil end
+    if not layoutName then return nil end
+
+    local key = inst.key
+    local carried
+    if DB.Get(Settings.AttachPath(key, "attach")) == true and UF.IsEnabled(a.to) then
+        local host = UF.Frames[a.to]
+        -- The host builds first (UF.ORDER); until it has, wait for a later restore.
+        if not (host and host.spec and host.def) then return nil end
+
+        local hostRecord = store.get(a.to, layoutName)
+        local ax, ay = UF.AttachOffsets(key)
+        local hostScale, scale = UF.GetScale(a.to), UF.GetScale(key)
+        if hostRecord or store.get(key, layoutName)
+            or hostScale ~= 1 or scale ~= 1 or ax ~= 0 or ay ~= 0 then
+            hostRecord = hostRecord or host.def.default
+            local f = addon.EditMode.AnchorFraction(hostRecord.point)
+            local W, H = UIParent:GetSize()
+            local hw, hh = host.spec.width, host.spec.height
+            local w, h = inst.spec.width, inst.spec.height
+            if f and W and H and hw and hh and w and h then
+                -- The host's centre from the screen centre, in UI units
+                -- (core/editmode/positionables.lua, centerFromRecord).
+                local hcx = (hostRecord.x or 0) * hostScale + (f[1] - 0.5) * (W - hw * hostScale)
+                local hcy = (hostRecord.y or 0) * hostScale + (f[2] - 0.5) * (H - hh * hostScale)
+                -- The frame's LEFT on the host's RIGHT, offsets in its own units.
+                local cx = hcx + hw * hostScale / 2 + ax * scale + w * scale / 2
+                local cy = hcy + ay * scale
+                carried = {
+                    point = hostRecord.point,
+                    x = round2((cx - (f[1] - 0.5) * (W - w * scale)) / scale),
+                    y = round2((cy - (f[2] - 0.5) * (H - h * scale)) / scale),
+                }
+                store.set(key, layoutName, carried.point, carried.x, carried.y)
+            end
+        end
+    end
+    DB.Set(CARRIED_PATH, true)
+    return carried
+end
+
+--------------------------------------------------------------------------------
 -- Apply
 --------------------------------------------------------------------------------
 -- The secure click child makes the frame anchor-protected, so a move in combat
@@ -135,6 +201,12 @@ local function ApplyPosition(frame, point, x, y, reason)
     end
     if inst then
         refreshName(inst)
+        -- The one-time carry of the target's old attach: the restore lands
+        -- the record it writes.
+        if reason == "restore" and Settings.LEGACY_ATTACH[inst.key] then
+            local carried = carryLegacyAttach(inst, addon.EditMode.GetActiveLayoutName())
+            if carried then point, x, y = carried.point, carried.x, carried.y end
+        end
         -- An attached frame takes its host's anchor in place of the position.
         -- On a drop the true return also skips the persist, so the stored
         -- free spot keeps for the day the setting goes off.
@@ -162,6 +234,17 @@ function EditMode.ApplyAttach(key)
     local inst = UF.Frames[key]
     if not inst then return end
     addon.EditMode.RestorePositionable(inst.frame)
+end
+
+--- The carry's second chance, at the end of a UF.ApplyAll pass: a restore
+--- that ran before the host was built, or before a layout was active, left
+--- the carry owed, and this restore settles it.
+function EditMode.SettleLegacyAttach()
+    if DB.Get(CARRIED_PATH) == true then return end
+    for key in pairs(Settings.LEGACY_ATTACH) do
+        local inst = UF.Frames[key]
+        if inst then addon.EditMode.RestorePositionable(inst.frame) end
+    end
 end
 
 --- Every frame with an attach, at the end of a UF.ApplyAll pass: a host

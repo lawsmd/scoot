@@ -29,30 +29,102 @@ local function applyPowerSlot(inst)
     addon.UnitFrames.Values.ApplyBarTextShown(inst)
 end
 
--- The face is built only where the client still has the mechanic. It shows for
--- a pet that reports a happiness, which in vanilla is a hunter's.
-local function applyHappiness(inst)
+-- Forever reads happiness from C_PetInfo, as its PetHappiness.lua does; the
+-- global is vanilla's. Neither exists on a client without the mechanic.
+local readHappiness = (C_PetInfo and C_PetInfo.GetPetHappiness) or GetPetHappiness
+
+local function hideHappiness(inst)
+    inst.regions.happiness:Hide()
+    if inst.happinessHover then inst.happinessHover:Hide() end
+end
+
+local function isHunterPet()
+    local _, isHunter = HasPetUI()
+    return not issecretvalue(isHunter) and isHunter
+end
+
+-- The client's atlas for the mood, or the old sheet's cell where the client
+-- lacks the name. The reset comes first: the region is built on a cell, and
+-- SetAtlas applies coordinates it finds inside the atlas rect.
+local function setHappinessFace(inst, happiness)
     local face = inst.regions.happiness
-    if inst.previewStandIn or not GetPetHappiness then
-        face:Hide()
-        return
-    end
-    local ok, happiness = pcall(GetPetHappiness)
-    local coords = ok and not issecretvalue(happiness) and inst.spec.HappinessCoords[happiness]
-    if coords then
+    face:SetTexCoord(0, 1, 0, 1)
+    if not Art.SetAtlas(face, inst.spec.HappinessAtlas[happiness], false) then
+        local coords = inst.spec.HappinessCoords[happiness]
+        face:SetTexture(Art.Paths.petHappiness)
         face:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
-        face:Show()
-    else
-        face:Hide()
     end
 end
 
--- Registering an event the client does not know throws, and whether Forever
--- knows this one is the open question, so the registration is under pcall
--- and only where the client still has the mechanic.
+-- Shown for a hunter's pet that reports a mood, the client's own test
+-- (PetHappinessIndicatorMixin:ShouldShow).
+local function applyHappiness(inst)
+    if inst.previewStandIn or not readHappiness or not isHunterPet() then
+        hideHappiness(inst)
+        return
+    end
+    local ok, happiness, damagePercentage, loyaltyRate = pcall(readHappiness)
+    if not ok or issecretvalue(happiness) or not inst.spec.HappinessAtlas[happiness] then
+        hideHappiness(inst)
+        return
+    end
+    setHappinessFace(inst, happiness)
+    inst.regions.happiness:Show()
+    local hover = inst.happinessHover
+    if hover then
+        hover.happiness = happiness
+        hover.damagePercentage = not issecretvalue(damagePercentage) and damagePercentage or nil
+        hover.loyaltyRate = not issecretvalue(loyaltyRate) and loyaltyRate or nil
+        hover:Show()
+    end
+end
+
+local function addDietLine()
+    local getFoodTypes = C_PetInfo and C_PetInfo.GetPetFoodTypes
+    if not getFoodTypes then return end
+    local ok, diet = pcall(getFoodTypes)
+    if not ok or type(diet) ~= "table" then return end
+    local foods = #diet > 0 and table.concat(diet, PET_FOOD_DELIMIT) or NONE
+    GameTooltip_AddNormalLine(GameTooltip, PET_DIET_TEMPLATE:format(foods))
+end
+
+-- PetHappinessIndicatorMixin:OnEnter's lines in its order.
+local function showHappinessTooltip(hover)
+    GameTooltip:SetOwner(hover, "ANCHOR_RIGHT")
+    GameTooltip_SetTitle(GameTooltip, _G["PET_HAPPINESS" .. hover.happiness] or NONE)
+    if hover.damagePercentage then
+        GameTooltip_AddNormalLine(GameTooltip, PET_DAMAGE_PERCENTAGE:format(hover.damagePercentage))
+    end
+    local loyaltyRate = hover.loyaltyRate
+    if loyaltyRate and loyaltyRate < 0 then
+        GameTooltip_AddNormalLine(GameTooltip, LOSING_LOYALTY)
+    elseif loyaltyRate and loyaltyRate > 0 then
+        GameTooltip_AddNormalLine(GameTooltip, GAINING_LOYALTY)
+    end
+    addDietLine()
+    GameTooltip:Show()
+end
+
+-- The face is a texture, which takes no mouse, so a frame over it carries the
+-- tooltip. Motion only: the scripts turn clicks on, so they are set first.
+local function buildHappinessHover(inst)
+    local hover = CreateFrame("Frame", nil, inst.artFrame)
+    hover:SetAllPoints(inst.regions.happiness)
+    hover:SetScript("OnEnter", showHappinessTooltip)
+    hover:SetScript("OnLeave", GameTooltip_Hide)
+    hover:SetMouseClickEnabled(false)
+    hover:SetMouseMotionEnabled(true)
+    hover:Hide()
+    inst.happinessHover = hover
+end
+
+-- Registering an event the client does not know throws, and the addon also
+-- loads on clients without the mechanic, so the registration is under pcall
+-- and only where a read exists.
 local function watchHappiness(inst)
-    if GetPetHappiness then
+    if readHappiness then
         pcall(inst.frame.RegisterUnitEvent, inst.frame, "UNIT_HAPPINESS", inst.unit)
+        buildHappinessHover(inst)
     end
 end
 

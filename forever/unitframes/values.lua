@@ -105,21 +105,28 @@ function Values.ApplyHealthStyle(inst)
     fill:SetAlpha(Settings.Bar(inst.key, "health", "hideTextureOnly") == true and 0 or 1)
 end
 
--- UnitFrameHealthBar_Update: a disconnected unit's bar is grey and full, and
--- the colour goes back on at every update, as vanilla's does. Max first, then
--- value. A bar whose range is still (0, 1) when a large value arrives clamps
--- to full for one frame, which reads as a flash on login.
+-- UnitFrameHealthBar_Update, with one departure. Vanilla holds a disconnected
+-- unit's bar full and grey; here the bar takes the real value, since the bar
+-- number beside it reads UnitHealth and a link-dead player being killed
+-- showed a full bar over a falling number (the owner, 6 November 2026). The
+-- grey is vanilla's 0.5, and the fill is desaturated under it: a Modern fill
+-- is a green atlas drawn white, so the tint alone only darkens the green.
+-- Both the colour and the desaturation go back on at every update, as
+-- vanilla's colour does. Max first, then value. A bar whose range is still
+-- (0, 1) when a large value arrives clamps to full for one frame, which
+-- reads as a flash on login.
 function Values.ApplyHealth(inst)
     local bar = inst.healthBar
     if not bar then return end
     local unit = inst.unit
-    local max = UnitHealthMax(unit)
-    bar:SetMinMaxValues(0, max)
+    bar:SetMinMaxValues(0, UnitHealthMax(unit))
+    bar:SetValue(UnitHealth(unit))
+    local fill = bar:GetStatusBarTexture()
     if plain(UnitIsConnected, unit) == false then
+        fill:SetDesaturated(true)
         bar:SetStatusBarColor(0.5, 0.5, 0.5)
-        bar:SetValue(max)
     else
-        bar:SetValue(UnitHealth(unit))
+        fill:SetDesaturated(false)
         bar:SetStatusBarColor(Values.HealthColor(inst))
     end
 end
@@ -135,6 +142,82 @@ local function powerState(unit)
     return nil
 end
 
+-- The fill's own alpha, the one writer of it: 0 under Hide the Bar but not
+-- its Text, half for a dead player's atlas fill (ApplyPowerAtlas), else 1.
+-- The vertex alpha belongs to the colour, as on the health bar.
+local function powerFillAlpha(inst, dead)
+    if inst.key and addon.UnitFrames.Settings.Bar(inst.key, "power", "hideTextureOnly") == true then
+        return 0
+    end
+    return dead and 0.5 or 1
+end
+
+-- The stored colour mode where it replaces the power's own colour: "custom"
+-- or "texture", nil for Default and for a caller with no unit frame key.
+local function powerColorMode(inst)
+    if not inst.key then return nil end
+    local mode = addon.UnitFrames.Settings.Bar(inst.key, "power", "colorMode")
+    if mode == "custom" or mode == "texture" then return mode end
+    return nil
+end
+
+--- The colour of a power fill that is a plain file: the stored colour, white
+--- for the texture's own, or the power's colour. The resolver returns white
+--- when it cannot resolve the power, which on this frame would read as a
+--- bug, so an unresolved power falls back to the XML's own mana blue. The
+--- Edit Mode stand-in passes standIn and paints mana.
+function Values.PowerColor(inst, standIn)
+    local mode = powerColorMode(inst)
+    if mode then
+        local r, g, b = addon.ResolveColorRGBA(mode,
+            addon.UnitFrames.Settings.Bar(inst.key, "power", "color"))
+        return r, g, b
+    end
+    if standIn then return 0, 0, 1.0 end
+    local r, g, b = addon.GetPowerColorRGB(inst.unit)
+    if r == 1 and g == 1 and b == 1 then
+        r, g, b = 0, 0, 1.0
+    end
+    return r, g, b
+end
+
+--- The power bar's texture from its setting, Hide Power Bar, and then the
+--- colour. A Classic bar takes the file on its fill texture object. A Modern
+--- bar, whose spec names an atlasPrefix, takes a chosen file through
+--- SetStatusBarTexture, as the health bar does, and forgets which family
+--- member it wore, so the colour pass puts one back when the setting returns
+--- to Default. Hide Power Bar is the bar's alpha: Show and Hide belong to the
+--- minus mob and the powerless pet (target.lua, pet.lua), and the cost
+--- segment, a child, goes with it.
+function Values.ApplyPowerStyle(inst)
+    local bar = inst.powerBar
+    if not (bar and inst.key) then return end
+    local Settings = addon.UnitFrames.Settings
+    local path
+    local textureKey = Settings.Bar(inst.key, "power", "texture")
+    if textureKey and textureKey ~= "default" and addon.Media and addon.Media.ResolveBarTexturePath then
+        path = addon.Media.ResolveBarTexturePath(textureKey)
+    end
+    local spec = inst.spec.Bars.power
+    if spec.atlasPrefix then
+        if path then bar:SetStatusBarTexture(path) end
+        inst.powerFillAtlas = nil
+    else
+        bar:GetStatusBarTexture():SetTexture(path or spec.texture or addon.UnitFrames.Art.Paths.statusBar)
+    end
+    inst.powerFillFile = path
+    bar:SetAlpha(Settings.Bar(inst.key, "power", "hidden") == true and 0 or 1)
+    Values.ApplyPowerColor(inst)
+end
+
+--- Whether Hide Power Bar is on for the frame; the bar strings go with it.
+function Values.PowerHidden(inst)
+    return inst.key ~= nil and addon.UnitFrames.Settings.Bar(inst.key, "power", "hidden") == true
+end
+
+-- The bar takes the real value whatever the state, as the health bar does
+-- (ApplyHealth); vanilla holds an offline unit's full. The recolour runs on a
+-- change of state alone, which is what greys the bar on UNIT_CONNECTION.
 function Values.ApplyPower(inst)
     local bar = inst.powerBar
     if not bar then return end
@@ -144,22 +227,20 @@ function Values.ApplyPower(inst)
         inst.powerState = state
         Values.ApplyPowerColor(inst)
     end
-    local max = UnitPowerMax(unit)
-    bar:SetMinMaxValues(0, max)
-    if state == "offline" then
-        bar:SetValue(max)
-    else
-        bar:SetValue(UnitPower(unit))
-    end
+    bar:SetMinMaxValues(0, UnitPowerMax(unit))
+    bar:SetValue(UnitPower(unit))
 end
 
 --- UnitFrameManaBar_UpdateType's atlas branch, for a bar whose spec names an
 --- atlasPrefix: the fill is the power's own member of the frame's family,
 --- drawn white, since the colour is in the art. A power the table has no
 --- member for, or a member this client lacks, falls to the family's mana
---- fill. A disconnected unit's bar is grey as the Classic one is; a dead
---- player's fill is desaturated at half alpha. token stands in for the
---- unit's power when the Edit Mode stand-in paints.
+--- fill. A disconnected unit's bar is grey as the Classic one is, the member
+--- desaturated under the 0.5 tint, since the tint alone would only darken
+--- the art's colour; a dead player's fill is desaturated at half alpha. A
+--- custom colour desaturates the member first, so the tint is the colour
+--- picked and not a mix with the art's own. token stands in for the unit's
+--- power when the Edit Mode stand-in paints.
 function Values.ApplyPowerAtlas(inst, state, token)
     local bar = inst.powerBar
     local spec = inst.spec.Bars.power
@@ -183,31 +264,47 @@ function Values.ApplyPowerAtlas(inst, state, token)
         end
         inst.powerFillAtlas = name
     end
+    local custom = powerColorMode(inst) == "custom"
     if state == "offline" then
         bar:SetStatusBarColor(0.5, 0.5, 0.5, 1)
+    elseif custom then
+        local r, g, b = Values.PowerColor(inst)
+        bar:SetStatusBarColor(r, g, b, 1)
     else
         bar:SetStatusBarColor(1, 1, 1, 1)
     end
     local fill = bar:GetStatusBarTexture()
     local dead = state == "dead"
-    fill:SetDesaturated(dead)
-    fill:SetAlpha(dead and 0.5 or 1)
+    fill:SetDesaturated(dead or custom or state == "offline")
+    fill:SetAlpha(powerFillAlpha(inst, dead))
 end
 
--- The resolver handles the unit-to-token step and both lookup tables, and it is
--- the one place the colour tables are read. It returns white when it cannot
--- resolve, which on this frame would read as a bug, so an unresolved power
--- falls back to the XML's own mana blue instead. The two greys are vanilla's.
+-- Whether the bar's fill is a member of its spec's atlas family: a Modern
+-- bar with no texture chosen (ApplyPowerStyle).
+local function powerOnAtlas(inst)
+    local power = inst.spec.Bars and inst.spec.Bars.power
+    return power ~= nil and power.atlasPrefix ~= nil and not inst.powerFillFile
+end
+
+-- The colour of a bar whose fill is a plain file (PowerColor), or the atlas
+-- branch above. The two greys are vanilla's.
 function Values.ApplyPowerColor(inst)
     local bar = inst.powerBar
     if not bar then return end
 
     local state = powerState(inst.unit)
     inst.powerState = state
-    local power = inst.spec.Bars and inst.spec.Bars.power
-    if power and power.atlasPrefix then
+    if powerOnAtlas(inst) then
         Values.ApplyPowerAtlas(inst, state)
         return
+    end
+    -- A Modern bar that just left its atlas member may still carry these.
+    -- A unit frame's alone: the personal resource display, which has no
+    -- key, dresses its own fill.
+    if inst.key then
+        local fill = bar:GetStatusBarTexture()
+        fill:SetDesaturated(false)
+        fill:SetAlpha(powerFillAlpha(inst, false))
     end
     if state == "offline" then
         bar:SetStatusBarColor(0.5, 0.5, 0.5, 1)
@@ -217,11 +314,25 @@ function Values.ApplyPowerColor(inst)
         return
     end
 
-    local r, g, b = addon.GetPowerColorRGB(inst.unit)
-    if r == 1 and g == 1 and b == 1 then
-        r, g, b = 0, 0, 1.0
-    end
+    local r, g, b = Values.PowerColor(inst)
     bar:SetStatusBarColor(r, g, b, 1)
+end
+
+--- The Edit Mode stand-in's power bar: mana, in the look the settings give.
+--- The XML's blue on a file fill, the family's mana member on an atlas one.
+function Values.ApplyPowerStandIn(inst)
+    local bar = inst.powerBar
+    if not bar then return end
+    if powerOnAtlas(inst) then
+        Values.ApplyPowerAtlas(inst, nil, "MANA")
+    else
+        local fill = bar:GetStatusBarTexture()
+        fill:SetDesaturated(false)
+        fill:SetAlpha(powerFillAlpha(inst, false))
+        local r, g, b = Values.PowerColor(inst, true)
+        bar:SetStatusBarColor(r, g, b, 1)
+    end
+    inst.powerState = nil
 end
 
 -- TargetHealthCheck's portrait tint for a dead or ghost player, or nil. A
@@ -243,28 +354,45 @@ end
 --
 -- ClearText rather than SetText("") on the empty path. Only ClearText releases
 -- the Text secret aspect once a secret has been written to the string.
-local function feedNumber(fs, value)
+--
+-- format is an engine-side number formatter that takes a secret, nil for
+-- AbbreviateNumbers. A Number Format of Full ("1,100"), on a unit frame or
+-- the personal resource display, passes BreakUpLargeNumbers. A formatter that throws falls back to
+-- AbbreviateNumbers; the returned word says which one fed the string.
+local function formatText(format, value, max)
+    local fn = format or AbbreviateNumbers
+    local ok, text = pcall(function()
+        if max == nil then return fn(value) end
+        return fn(value) .. " / " .. fn(max)
+    end)
+    if ok and type(text) ~= "nil" then return text, format and "full" or "abbreviated" end
+    if not format then return nil, "failed" end
+    local text2, word = formatText(nil, value, max)
+    return text2, "full failed, " .. word
+end
+
+local function feedNumber(fs, value, format)
     if not fs then return end
-    local ok, text = pcall(AbbreviateNumbers, value)
-    if ok and text ~= nil then
+    local text, word = formatText(format, value)
+    if text ~= nil then
         pcall(fs.SetText, fs, text)
     else
         fs:ClearText()
     end
+    return word
 end
 
 -- TextStatusBar's "current / max". Concatenation is legal on a secret string,
 -- and the result stays secret, so the join runs inside the pcall too.
-local function feedPair(fs, value, max)
+local function feedPair(fs, value, max, format)
     if not fs then return end
-    local ok, text = pcall(function()
-        return AbbreviateNumbers(value) .. " / " .. AbbreviateNumbers(max)
-    end)
-    if ok and type(text) ~= "nil" then
+    local text, word = formatText(format, value, max)
+    if text ~= nil then
         pcall(fs.SetText, fs, text)
     else
         fs:ClearText()
     end
+    return word
 end
 
 -- TextStatusBar's percent: the engine's fraction as a secret string, and the
@@ -310,10 +438,11 @@ end
 
 --- Whether each bar string shows. target.lua sets inst.barTextDead, and
 --- target.lua and pet.lua set inst.noPowerText where there is no power bar
---- to label.
+--- to label; Hide Power Bar takes the power strings with the bar.
 function Values.ApplyBarTextShown(inst)
+    local powerHidden = Values.PowerHidden(inst)
     for bar, fields in pairs(BARS) do
-        local blocked = inst.barTextDead or (bar == "power" and inst.noPowerText)
+        local blocked = inst.barTextDead or (bar == "power" and (inst.noPowerText or powerHidden))
         for _, slot in ipairs({ "value", "percent" }) do
             local fs = (inst.key or slot == "value") and inst[fields[slot]]
             if fs then fs:SetShown(not blocked and stringUp(inst, bar, slot)) end
@@ -328,18 +457,34 @@ local function valueFormat(inst, bar)
     return addon.UnitFrames.Settings.Bar(inst.key, bar, "text", "value", "format")
 end
 
+-- The value's formatter: the instance's numberFormatter(bar) hook where it
+-- sets one (the personal resource display), else a unit frame's Number
+-- Format setting, else abbreviated. inst.lastNumberFormat records which
+-- formatter fed each bar, for the debug windows.
+local function numberFormatter(inst, bar)
+    local hook = inst.numberFormatter
+    if type(hook) == "function" then return hook(bar) end
+    if inst.key and addon.UnitFrames.Settings.Bar(inst.key, bar, "text", "value", "numberFormat") == "full" then
+        return BreakUpLargeNumbers
+    end
+    return nil
+end
+
 function Values.ApplyBarText(inst)
     local unit = inst.unit
     for bar, fields in pairs(BARS) do
         local valueFS = inst[fields.value]
         if valueFS then
+            local word
             if not stringUp(inst, bar, "value") then
                 valueFS:ClearText()
             elseif valueFormat(inst, bar) == "currentMax" then
-                feedPair(valueFS, fields.cur(unit), fields.max(unit))
+                word = feedPair(valueFS, fields.cur(unit), fields.max(unit), numberFormatter(inst, bar))
             else
-                feedNumber(valueFS, fields.cur(unit))
+                word = feedNumber(valueFS, fields.cur(unit), numberFormatter(inst, bar))
             end
+            inst.lastNumberFormat = inst.lastNumberFormat or {}
+            inst.lastNumberFormat[bar] = word or "off"
         end
         local percentFS = inst.key and inst[fields.percent]
         if percentFS then
@@ -546,4 +691,55 @@ function Values.ApplyPortrait(inst, unit)
     else
         pcall(SetPortraitTexture, inst.portrait, unit or inst.unit)
     end
+    -- A new face keeps the crop the Portrait settings ask for.
+    if inst.key then Values.ApplyPortraitZoom(inst) end
+end
+
+--- Portrait Zoom (settings.lua, "Portrait"): a crop of the face about its
+--- centre, 100 to 200 percent. A Classic portrait's round edge is baked in
+--- by SetPortraitTexture, and a crop would square it, so a zoomed one takes
+--- a circle mask of its own, built on first need and taken off again at
+--- 100, where the frame draws as it did before the setting. A Modern
+--- portrait wears its spec's mask at every zoom.
+function Values.ApplyPortraitZoom(inst)
+    local portrait = inst.portrait
+    if not (portrait and inst.key) then return end
+    local Settings = addon.UnitFrames.Settings
+    local zoom = math.max(100, math.min(200, tonumber(Settings.Portrait(inst.key, "zoom")) or 100))
+    local inset = (1 - 100 / zoom) / 2
+    portrait:SetTexCoord(inset, 1 - inset, inset, 1 - inset)
+    if portrait.camelotMask then return end
+
+    local mask = inst.portraitZoomMask
+    if zoom > 100 then
+        if not mask then
+            local Art = addon.UnitFrames.Art
+            mask = Art.BuildMask(portrait:GetParent(), portrait, { file = Art.Paths.circleMask })
+            inst.portraitZoomMask = mask
+        end
+        if mask and not inst.portraitZoomMasked then
+            portrait:AddMaskTexture(mask)
+            inst.portraitZoomMasked = true
+        end
+    elseif mask and inst.portraitZoomMasked then
+        portrait:RemoveMaskTexture(mask)
+        inst.portraitZoomMasked = nil
+    end
+end
+
+--- The Portrait section's settings on a built frame: the zoom, and the
+--- region's alpha, which nothing else writes: 0 under Hide Portrait, else
+--- Portrait Opacity where the page offers it. The tints (target.lua, tot.lua)
+--- are the vertex colour.
+function Values.ApplyPortraitStyle(inst)
+    local portrait = inst.portrait
+    if not (portrait and inst.key) then return end
+    Values.ApplyPortraitZoom(inst)
+    local Settings = addon.UnitFrames.Settings
+    local alpha = 0
+    if Settings.Portrait(inst.key, "hidden") ~= true then
+        local opacity = tonumber(Settings.Portrait(inst.key, "opacity")) or 100
+        alpha = math.max(1, math.min(100, opacity)) / 100
+    end
+    portrait:SetAlpha(alpha)
 end

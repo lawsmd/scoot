@@ -202,7 +202,9 @@ end
 local function paintCost(inst)
     local seg = inst.manaCost
     local cost = 0
-    if not inst.previewStandIn and inst.powerBar:IsShown() then
+    -- Hide Mana Cost Prediction, the page's switch (settings.lua).
+    local hidden = inst.key and UF.Settings.Bar(inst.key, "power", "hideCost") == true
+    if not hidden and not inst.previewStandIn and inst.powerBar:IsShown() then
         local ok, value = pcall(Segments.ReadCost, inst.unit)
         if ok and type(value) == "number" then cost = value end
     end

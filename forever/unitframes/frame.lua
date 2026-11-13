@@ -428,6 +428,8 @@ function Frame.Build(key, style)
     Text.ApplyBarTexts(inst)
     Text.ApplyBackdrop(inst)
     Values.ApplyHealthStyle(inst)
+    Values.ApplyPowerStyle(inst)
+    Values.ApplyPortraitStyle(inst)
 
     if def.build then def.build(inst) end
     Art.ApplyBorder(inst)
@@ -488,14 +490,9 @@ local function paintStandIn(inst, hold)
     inst.healthBar:SetValue(0.72)
     inst.powerBar:SetMinMaxValues(0, 1)
     inst.powerBar:SetValue(0.45)
-    -- Mana: the XML's blue on a Classic bar, the family's mana fill on a
-    -- Modern one.
-    if inst.spec.Bars.power.atlasPrefix then
-        Values.ApplyPowerAtlas(inst, nil, "MANA")
-    else
-        inst.powerBar:SetStatusBarColor(0, 0, 1.0, 1)
-    end
-    inst.powerState = nil
+    -- Mana, in the look the Power Bar settings give: the XML's blue on a
+    -- Classic bar, the family's mana fill on a Modern one.
+    Values.ApplyPowerStandIn(inst)
     inst.powerBar:Show()
     Text.ApplyBarTextColors(inst)
     for _, field in ipairs({ "healthText", "powerText", "healthPercentText", "powerPercentText" }) do
@@ -663,6 +660,9 @@ end
 function Frame.ShowPreview(inst)
     if not inst.enabled then return end
     inst.previewActive = true
+    -- Edit Mode's grab target at the dynamic value alone, with no state
+    -- opacity and no frame rule.
+    Frame.ApplyAlpha(inst)
     -- The watch first: a watched targetless frame would be hidden again by the
     -- manager's next scan. Both calls queue themselves in lockdown, and Edit
     -- Mode can be opened in combat.
@@ -685,6 +685,7 @@ end
 function Frame.EndPreview(inst)
     if not inst.previewActive then return end
     inst.previewActive = nil
+    Frame.ApplyAlpha(inst)
     local wasStandIn = inst.previewStandIn and true or false
     inst.previewStandIn = nil
     -- Repaint from the unit while still shown, then let the watch decide.
@@ -722,19 +723,48 @@ end
 -- The set
 --------------------------------------------------------------------------------
 
+-- The write itself: the dynamic value times the state opacity, then the
+-- definition's rule. The state fade's ticks come here directly, since
+-- ApplyAlpha would ask the fade again from inside its own tick.
+local function landAlpha(inst)
+    local alpha = inst.wantedAlpha or 1
+    -- The Visibility section's opacity for the player's state (settings.lua,
+    -- "State opacity"), under the dynamic value. Never on Edit Mode's grab
+    -- target.
+    if not inst.previewActive then alpha = alpha * (inst.stateAlpha or 1) end
+    local rule = inst.def.alphaRule
+    if rule and not inst.previewActive and rule(inst, alpha) then return end
+    inst.selfHidden = nil
+    inst.frame:SetAlpha(alpha)
+end
+
 --- The one writer of the outer frame's alpha. Dynamic Layouts' opacity
 --- channel (dynamic.lua) and the redress below call it with a value, which
 --- it keeps, so a definition's alphaRule(inst, alpha) can fold a rule of its
 --- own into the write (tot.lua: 0 while the target is the player) and
 --- re-apply it with no argument from its own events. A rule that writes the
 --- frame answers true. Edit Mode's grab target is never dimmed by a rule.
+---
+--- The state opacity goes through the state fade (core/opacity.lua) with the
+--- instance as its key: a change of state travels over the dynamic layout's
+--- transition time, each tick multiplied in here with whatever the dynamic
+--- channel holds, so the two fades run over each other without a jump. Edit
+--- Mode's grab target names no state, which lands at once on the way in and
+--- on the way out.
 function Frame.ApplyAlpha(inst, alpha)
     if alpha ~= nil then inst.wantedAlpha = alpha end
-    alpha = inst.wantedAlpha or 1
-    local rule = inst.def.alphaRule
-    if rule and not inst.previewActive and rule(inst, alpha) then return end
-    inst.selfHidden = nil
-    inst.frame:SetAlpha(alpha)
+    if UF.Settings.STATE_OPACITY[inst.key] then
+        if not inst.stateTick then
+            inst.stateTick = function(value)
+                inst.stateAlpha = value
+                landAlpha(inst)
+            end
+        end
+        local target, state = UF.StateAlpha(inst.key)
+        if inst.previewActive then state = nil end
+        inst.stateAlpha = addon.Opacity.Fade(inst, target, state, inst.stateTick)
+    end
+    landAlpha(inst)
 end
 
 --- Re-land every base an instance may have missed while parked: the
@@ -745,6 +775,8 @@ function Frame.Redress(inst)
     Text.ApplyBarTexts(inst)
     Text.ApplyBackdrop(inst)
     Values.ApplyHealthStyle(inst)
+    Values.ApplyPowerStyle(inst)
+    Values.ApplyPortraitStyle(inst)
     Frame.ApplyAlpha(inst, 1)
     inst.frame:SetScale(UF.GetScale(inst.key))
     if addon.EditMode.RestorePositionable then
@@ -769,6 +801,10 @@ local function activate(key, style)
         old.previewActive = nil
         old.previewStandIn = nil
         old.hovered = nil
+        -- A parked instance takes no state edge, so its fade would resume
+        -- from a stale value the next time the style comes back.
+        addon.Opacity.FadeForget(old)
+        old.stateAlpha = nil
         -- wantWatch needs enabled, so this unregisters the watch and hides.
         Harness.UpdateVisibility(old)
         if old.hoverFrame and GameTooltip:IsOwned(old.hoverFrame) then
@@ -827,12 +863,17 @@ function UF.ApplyAll()
             -- pass showed was already painted fresh by its OnShow; one it
             -- swapped in is a new subject.
             Frame.PaintAll(inst, swapped)
+            -- The state opacity, which no paint lands (settings.lua).
+            Frame.ApplyAlpha(inst)
         end
         swappedAny = swappedAny or swapped
     end
 
-    -- A frame hanging off another re-lands on the host this pass put up,
-    -- swapped, enabled or disabled (editmode.lua, "Attach").
+    -- The target's old attach, carried once into a position of its own
+    -- (editmode.lua, "The legacy attach"), before the frames that still hang
+    -- off another re-land on the host this pass put up, swapped, enabled or
+    -- disabled (editmode.lua, "Attach").
+    if UF.EditMode.SettleLegacyAttach then UF.EditMode.SettleLegacyAttach() end
     if UF.EditMode.ReapplyAttached then UF.EditMode.ReapplyAttached() end
     Suppression.Apply()
     -- A cast bar snapped to the retired frame re-anchors to the new one.
@@ -886,6 +927,22 @@ function UF.ApplyScale(key)
         land()
     end
 end
+
+-- The state opacity's edges (settings.lua, "State opacity"), as the action
+-- bars take theirs: the pull one frame late so the state reads settle, the
+-- regen a tenth of a second late, the target change at once. SetAlpha is
+-- unprotected, so the combat edge runs in combat.
+local function refreshStateAlpha()
+    for key in pairs(UF.Settings.STATE_OPACITY) do
+        local inst = UF.Frames[key]
+        if inst then Frame.ApplyAlpha(inst) end
+    end
+end
+
+local OPACITY_OWNER = "camelotUnitFrames:opacity"
+addon.Events.On(OPACITY_OWNER, "PLAYER_REGEN_DISABLED", function() C_Timer.After(0, refreshStateAlpha) end)
+addon.Events.On(OPACITY_OWNER, "PLAYER_REGEN_ENABLED", function() C_Timer.After(0.1, refreshStateAlpha) end)
+addon.Events.On(OPACITY_OWNER, "PLAYER_TARGET_CHANGED", refreshStateAlpha)
 
 -- The definitions register at file scope below this file on the TOC, and the
 -- database is read at ADDON_LOADED, so both are in place by the first world

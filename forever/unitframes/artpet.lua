@@ -22,7 +22,14 @@ local spec = {
 }
 Art.Frames.camelot.pet = spec
 
--- The happiness face's three cells on UI-PetHappiness, by GetPetHappiness value.
+-- The happiness face by the client's mood value: the client's three atlases
+-- (Blizzard_FrameXML/PetHappiness.lua), and the three cells on the old
+-- UI-PetHappiness sheet for a client without those names.
+spec.HappinessAtlas = {
+    [3] = "UI-PetHappiness",
+    [2] = "UI-PetNeutral",
+    [1] = "UI-PetMad",
+}
 spec.HappinessCoords = {
     [3] = { 0, 0.1875, 0, 0.359375 },
     [2] = { 0.1875, 0.375, 0, 0.359375 },

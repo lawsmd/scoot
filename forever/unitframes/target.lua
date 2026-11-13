@@ -153,6 +153,11 @@ local function applyFaction(inst)
     applyPortraitTint(inst)
 
     local icon = r.pvpIcon
+    -- Hide PvP Icons, the page's Misc switch (settings.lua).
+    if addon.UnitFrames.Settings.Misc(inst.key, "hidePvP") then
+        icon:Hide()
+        return
+    end
     local faction = plain(UnitFactionGroup, unit)
     if plain(UnitIsPVPFreeForAll, unit) == true then
         icon:SetTexture(PVP_ROOT .. "FFA")
@@ -254,7 +259,7 @@ local function define(key, unit, label, frameName, default, changeEvent)
     })
 end
 
--- The target's free spot, for the attach off, is where the attach puts it:
+-- The target's spot is where its old attach to the player frame put it:
 -- level with the player's default, against its right edge, rounded to 5.
 -- Vanilla's own spot, from the TargetFrame XML, is TOPLEFT 250, -4. The focus
 -- frame's is the owner's off the beta's saved profile, rounded to 5: on the

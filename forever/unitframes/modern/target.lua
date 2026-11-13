@@ -71,23 +71,21 @@ local function bossArtFor(inst, classification)
 end
 
 -- CheckClassification under the override. The frame art and the flash swap
--- for a rare or a minus mob and the power bar hides on a minus mob, as
--- retail has it; the health bar keeps the override's one shape. The boss
--- art shows at its offset, and the quest icon by UnitIsQuestBoss. The rare
--- star never shows.
+-- for a minus mob and the power bar hides on one, as retail has it; the
+-- health bar keeps the override's one shape. A rare or a rare elite keeps
+-- the plain frame art, a departure from the client: its swap names
+-- UI-HUD-UnitFrame-Target-Rare-PortraitOn, which the client's own art set
+-- lacks, so retail's silver frame draws with openings cut for retail's
+-- bars. The boss art shows at its offset, the winged silver marking the
+-- rare, and the quest icon by UnitIsQuestBoss. The rare star never shows.
 local function applyClassification(inst)
     local r = inst.regions
     local classification = not inst.previewStandIn and plain(UnitClassification, inst.unit) or nil
-    local state
-    if classification == "minus" then
-        state = "minus"
-    elseif classification == "rare" or classification == "rareelite" then
-        state = "rare"
-    end
+    local minus = classification == "minus"
+    local state = minus and "minus" or nil
     Art.ApplyRegionAtlas(inst, "frameTexture", state)
     Art.ApplyRegionAtlas(inst, "frameFlash", state)
 
-    local minus = classification == "minus"
     inst.minus = minus
     inst.powerBar:SetShown(not minus)
     -- The power value's shown state is applyDead's, which runs after this.

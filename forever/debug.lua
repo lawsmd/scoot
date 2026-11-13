@@ -112,6 +112,30 @@ function pushBuilt(push, key, inst)
     push("  preview:          %s, stand-in %s",
         tostring(inst.previewActive), tostring(inst.previewStandIn))
     push("  border file:      %s", tostring(inst.borderKey))
+    if UF.Settings and UF.Settings.SURFACE[key] and UF.Settings.SURFACE[key].barText then
+        for _, bar in ipairs(UF.Settings.TEXT_BARS) do
+            local fed = inst.lastNumberFormat and inst.lastNumberFormat[bar]
+            push("  %-6s numbers:   setting %s, last fed %s", bar,
+                tostring(UF.Settings.Bar(key, bar, "text", "value", "numberFormat")), tostring(fed or "not run"))
+        end
+    end
+    -- The read that greys both bars and takes them off vanilla's full bar
+    -- (values.lua, ApplyHealth). A link-dead player reads offline.
+    do
+        local okExists, exists = pcall(UnitExists, inst.unit)
+        local okConnected, connected = pcall(UnitIsConnected, inst.unit)
+        local word
+        if okExists and not issecretvalue(exists) and exists == false then
+            word = "no unit"
+        elseif not okConnected then
+            word = "error: " .. tostring(connected)
+        elseif issecretvalue(connected) then
+            word = "secret"
+        else
+            word = connected and "connected" or "offline"
+        end
+        push("  connection:       %s", word)
+    end
 
     -- The Modern art: each region's atlas and mask, and each bar's fill and
     -- mask, with whether this client has the name. A Classic instance names

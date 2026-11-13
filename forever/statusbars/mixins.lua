@@ -45,6 +45,16 @@ function CamelotStatusTrackingManagerMixin:RegisterBlizzardEvents()
     StatusTrackingManagerMixin.RegisterEvents(self)
 end
 
+-- Forever's constants rank experience lowest, so a watched faction took bar 1
+-- and pushed the experience bar to bar 2's spot. Experience ranks first here,
+-- retail's order, and keeps bar 1 while it can show.
+function CamelotStatusTrackingManagerMixin:GetBarPriority(barIndex)
+    if barIndex == StatusTrackingBarInfo.BarsEnum.Experience then
+        return math.huge
+    end
+    return StatusTrackingManagerMixin.GetBarPriority(self, barIndex)
+end
+
 CamelotStatusTrackingContainerMixin = {}
 
 function CamelotStatusTrackingContainerMixin:GetStatusTrackingManager()

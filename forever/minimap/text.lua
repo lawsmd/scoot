@@ -438,10 +438,9 @@ function Text.Build(holder)
     frames.coords = textFrame(holder)
     frames.systemData = textFrame(holder)
 
+    -- No OnClick: ToggleWorldMap from addon code taints the map's pin pool,
+    -- and a pin acquired in combat then trips SetPassThroughButtons.
     local zone = holder.ZoneTextButton
-    zone:SetScript("OnClick", function()
-        if _G.ToggleWorldMap then pcall(_G.ToggleWorldMap) end
-    end)
     zone:SetScript("OnEnter", zoneTooltip)
     zone:SetScript("OnLeave", function() GameTooltip:Hide() end)
 

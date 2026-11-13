@@ -431,6 +431,22 @@ function Style.SetTimestamps(format)
     pcall(SetCVar, Style.TIMESTAMP_CVAR, format or "none")
 end
 
+-- Camelot's timestamp, the owner's: 12-hour with AM/PM ("03:27 PM").
+-- Vanilla stamps no line. The CVar is the client's, so no registered default
+-- reaches it: the first build on an account writes it once, and only over
+-- Blizzard's "none", so a player who already picked a format keeps it and one
+-- who later picks None is not overridden.
+Style.TIMESTAMP_DEFAULT = _G.TIMESTAMP_FORMAT_HHMM_AMPM or "%I:%M %p "
+
+--- Called from the chat build, which runs on Forever alone; retail loads this
+--- file for the settings panel and must keep its own CVar.
+function Style.SeedTimestamps()
+    local global = addon.db and addon.db.global
+    if not global or global.chatTimestampsSeeded then return end
+    global.chatTimestampsSeeded = true
+    if Style.Timestamps() == "none" then Style.SetTimestamps(Style.TIMESTAMP_DEFAULT) end
+end
+
 --- The formats Blizzard's Social options offer, labelled as that page labels
 --- them: the format applied to one example time.
 function Style.TimestampOptions()

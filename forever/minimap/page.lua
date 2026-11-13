@@ -5,8 +5,8 @@
 -- Laid out after Scoot's page (ui/v2/settings/interface/MinimapRenderer.lua),
 -- so a setting both products have sits in the same section under the same
 -- label: Map Style, then Text with its Dock, Zone Text, Coordinates, Clock
--- and System Data tabs. Buttons and the node-hunting overlay follow with
--- phase 2. Loads on retail too, where no holder is built: the controls still
+-- and System Data tabs, then Buttons with its Tracking tab. Phase 2 adds
+-- tabs to Buttons and the node-hunting overlay's section. Loads on retail too, where no holder is built: the controls still
 -- draw and write.
 --------------------------------------------------------------------------------
 
@@ -379,6 +379,60 @@ local function Render(panel, scrollContent)
                                 description = "Where to position the system data relative to the minimap." },
                             offset = OFFSET,
                         })
+                        tab:Finalize()
+                    end,
+                },
+            })
+            inner:Finalize()
+        end,
+    })
+
+    ----------------------------------------------------------------------------
+    -- Buttons
+    ----------------------------------------------------------------------------
+    builder:AddCollapsibleSection({
+        title = "Buttons",
+        componentId = NAV_KEY,
+        sectionKey = "buttons",
+        defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddTabbedSection({
+                tabs = {
+                    { key = "tracking", label = "Tracking" },
+                },
+                componentId = NAV_KEY,
+                sectionKey = "buttonsTabs",
+                buildContent = {
+                    tracking = function(_, tab)
+                        tab:AddToggle({
+                            label = "Hide Tracking",
+                            get = function() return getSetting("trackingHide") == true end,
+                            set = function(v) setSetting("trackingHide", v and true or false) end,
+                        })
+                        tab:AddSelector({
+                            label = "Position",
+                            values = POSITION.values, order = POSITION.order,
+                            get = function() return getSetting("trackingPosition") or "dock" end,
+                            set = function(v)
+                                setSetting("trackingPosition", v)
+                                rerender()
+                            end,
+                        })
+                        tab:AddSlider({
+                            label = "Size",
+                            min = 12, max = 32, step = 1,
+                            get = function() return tonumber(getSetting("trackingSize")) or 17 end,
+                            set = function(v) setSetting("trackingSize", v) end,
+                            minLabel = "12", maxLabel = "32",
+                        })
+                        if (getSetting("trackingPosition") or "dock") ~= "dock" then
+                            tab:AddOffsetPair({
+                                range = OFFSET.range, minLabel = OFFSET.minLabel, maxLabel = OFFSET.maxLabel,
+                                get = function(axis) return getSetting(axis == "x" and "trackingOffsetX" or "trackingOffsetY") end,
+                                set = function(axis, v) Style.Set(axis == "x" and "trackingOffsetX" or "trackingOffsetY", v) end,
+                                apply = apply,
+                            })
+                        end
                         tab:Finalize()
                     end,
                 },

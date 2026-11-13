@@ -139,6 +139,35 @@ local function overrideMinimapShape(shape)
     end
 end
 
+-- LibDBIcon's ring (MiniMap-TrackingBorder) is bright gold; it is drawn
+-- desaturated and tinted to the bronze of the map's border, the tint the bag
+-- window gives its bag rings (core/components/bags/layout.lua). Existing
+-- buttons at build, later ones from LibDBIcon's IconCreated callback.
+local RING_TINT = { 0.93, 0.72, 0.46 }
+local ringOwner = {}
+local ringsHooked = false
+
+local function tintAddonRing(button)
+    local border = type(button) == "table" and button.border
+    if not (border and border.SetDesaturated) then return end
+    border:SetDesaturated(true)
+    border:SetVertexColor(RING_TINT[1], RING_TINT[2], RING_TINT[3])
+end
+
+local function tintAddonRings()
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if not lib then return end
+    for _, button in pairs(lib.objects or {}) do
+        tintAddonRing(button)
+    end
+    if not ringsHooked and lib.RegisterCallback then
+        ringsHooked = true
+        lib.RegisterCallback(ringOwner, "LibDBIcon_IconCreated", function(_, button)
+            tintAddonRing(button)
+        end)
+    end
+end
+
 -- LibDBIcon places each button on the map's edge by the shape it reads.
 local function refreshAddonButtons()
     local lib = LibStub and LibStub("LibDBIcon-1.0", true)
@@ -412,6 +441,7 @@ function Display.Build()
 
     Display.CaptureDefault()
     if MR.Text then MR.Text.Build(holder) end
+    if MR.Tracking then MR.Tracking.Build(holder) end
     wireEvents()
     built = true
 
@@ -422,6 +452,7 @@ function Display.Build()
     Display.Claim()
     holder:Show()
     Style.Apply()
+    tintAddonRings()
     if MR.EditMode then MR.EditMode.Register(holder) end
     if MR.Dynamic then MR.Dynamic.Register(holder) end
 end
@@ -508,6 +539,7 @@ function Display.Dump()
     existsLine(push, "HybridMinimap", _G.HybridMinimap)
     existsLine(push, "ExpansionLandingPageMinimapButton", _G.ExpansionLandingPageMinimapButton)
     if MR.Text then MR.Text.Describe(push) end
+    if MR.Tracking then MR.Tracking.Describe(push) end
     if MR.Dynamic then push("  dynamic layouts: %s", MR.Dynamic.Describe()) end
     push("  blocked actions naming the map (%d):", #blocked)
     for _, line in ipairs(blocked) do push("    %s", line) end

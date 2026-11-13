@@ -131,6 +131,8 @@ local function applyGroupIndicator(inst)
     local plate = inst.groupIndicator
     if not plate then return end
     plate:Hide()
+    -- Hide Group Number, the page's Misc switch (settings.lua).
+    if addon.UnitFrames.Settings.Misc(inst.key, "hideGroupNumber") then return end
     if inst.previewStandIn or plain(IsInRaid) ~= true then return end
 
     local count = plain(GetNumGroupMembers)

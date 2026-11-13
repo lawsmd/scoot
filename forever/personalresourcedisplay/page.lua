@@ -193,6 +193,15 @@ local function addTextTab(tab, key, slot)
             DB.Set(Style.Path(key, "text", slot, "show"), v)
             apply()
         end })
+    if slot == "value" then
+        tab:AddSelector({ label = "Number Format",
+            values = Style.NUMBER_FORMAT.values, order = Style.NUMBER_FORMAT.order,
+            get = function() return Style.NumberFormat(key) end,
+            set = function(v)
+                DB.Set(Style.Path(key, "text", "value", "numberFormat"), v)
+                apply()
+            end })
+    end
     local get, set = accessors(Style.Path(key, "text", slot), TEXT_MAP)
     local _, fontSize = Style.FontObjectFont()
     tab:AddTextStyleBlock({ get = get, set = set, apply = apply,

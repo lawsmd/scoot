@@ -124,10 +124,19 @@ local function addBarTextTab(tab, key, bar, slot)
             values = VALUE_FORMAT.values, order = VALUE_FORMAT.order,
             get = function() return DB.Get(formatPath) or "current" end,
             set = function(v) DB.Set(formatPath, v); apply() end })
+        local numberPath = Settings.BarPath(key, bar, "text", "value", "numberFormat")
+        local numbers = addon.Catalogs.NumberFormat
+        tab:AddSelector({ label = "Number Format",
+            values = numbers.values, order = numbers.order,
+            get = function() return DB.Get(numberPath) == "abbreviated" and "abbreviated" or "full" end,
+            set = function(v) DB.Set(numberPath, v); apply() end })
     end
     local get, set = barAccessors(key, BAR_TEXT_MAP, bar, "text", slot)
     local fontObject = _G.TextStatusBarText
     local size = fontObject and select(2, fontObject:GetFont())
+    -- A power string can also wear the power's own colour, as on Unit
+    -- Frames X's player page.
+    local colors = bar == "power" and addon.Catalogs.ColorMode.TextPower or addon.Catalogs.ColorMode.Text
     tab:AddTextStyleBlock({
         get = get, set = set, apply = apply,
         -- What the selectors show while nothing is stored: the
@@ -137,7 +146,7 @@ local function addBarTextTab(tab, key, bar, slot)
         -- own and fed through SetText, which the copy hooks.
         style = { order = Helpers.fontStyleOrderOutlineFirstPaired },
         size = { min = 6, max = 24, minLabel = "6", maxLabel = "24" },
-        color = { values = addon.Catalogs.ColorMode.Text.values, order = addon.Catalogs.ColorMode.Text.order },
+        color = { values = colors.values, order = colors.order },
         offset = { range = 50, minLabel = "-50", maxLabel = "+50" },
     })
     tab:Finalize()
@@ -202,6 +211,76 @@ local function buildHealthSection(builder, key, navKey)
                 tabs = tabs,
                 componentId = navKey,
                 sectionKey = "healthBar_tabs",
+                buildContent = content,
+            })
+            inner:Finalize()
+        end })
+end
+
+--------------------------------------------------------------------------------
+-- Power Bar
+--------------------------------------------------------------------------------
+-- Unit Frames X's tabs less Positioning, Sizing and Border: the bar sits in
+-- its slot in the frame art, which is also its border. The style has no
+-- background row, as on the health bar. The text tabs are the health bar's
+-- over the power strings.
+
+local function buildPowerSection(builder, key, navKey, style)
+    local surface = Settings.SURFACE[key]
+    local function apply() UF.RefreshBarStyle(key) end
+    local function toggle(tab, label, field)
+        local path = Settings.BarPath(key, "power", field)
+        tab:AddToggle({ label = label,
+            get = function() return DB.Get(path) == true end,
+            set = function(v)
+                DB.Set(path, v and true or false)
+                apply()
+            end })
+    end
+
+    local tabs = { { key = "style", label = "Style" }, { key = "visibility", label = "Visibility" } }
+    local content = {}
+
+    content.style = function(_, tab)
+        local get, set = barAccessors(key, BAR_STYLE_MAP, "power")
+        tab:AddBarStyleBlock({ get = get, set = set, apply = apply,
+            foreground = {
+                values = addon.Catalogs.ColorMode.Power.values,
+                order = addon.Catalogs.ColorMode.Power.order,
+                infoIcons = false,
+                colorDefault = { 0, 0, 1, 1 },
+            },
+            background = false, opacity = false })
+        tab:Finalize()
+    end
+
+    content.visibility = function(_, tab)
+        toggle(tab, "Hide Power Bar", "hidden")
+        if surface.barText then
+            toggle(tab, "Hide the Bar but not its Text", "hideTextureOnly")
+        end
+        -- The Modern player frame alone draws the cost of the spell being
+        -- cast on its power bar.
+        if surface.cost and style == "modern" then
+            toggle(tab, "Hide Mana Cost Prediction", "hideCost")
+        end
+        tab:Finalize()
+    end
+
+    if surface.barText then
+        tabs[#tabs + 1] = { key = "percentText", label = "% Text" }
+        tabs[#tabs + 1] = { key = "valueText", label = "Value Text" }
+        content.percentText = function(_, tab) addBarTextTab(tab, key, "power", "percent") end
+        content.valueText = function(_, tab) addBarTextTab(tab, key, "power", "value") end
+    end
+
+    builder:AddCollapsibleSection({ title = "Power Bar", componentId = navKey,
+        sectionKey = "powerBar", defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddTabbedSection({
+                tabs = tabs,
+                componentId = navKey,
+                sectionKey = "powerBar_tabs",
                 buildContent = content,
             })
             inner:Finalize()
@@ -342,6 +421,100 @@ local function buildAuraSection(builder, key, navKey)
         end })
 end
 
+--------------------------------------------------------------------------------
+-- Portrait, Visibility, Misc
+--------------------------------------------------------------------------------
+-- Unit Frames X's Portrait tabs less Positioning, Sizing and Border: the
+-- portrait sits in the ring the frame art draws around it. X's Personal
+-- Text tab styles the damage numbers over the portrait, which these frames
+-- do not draw.
+
+local function buildPortraitSection(builder, key, navKey)
+    local function apply() UF.RefreshPortrait(key) end
+    local zoomPath = Settings.PortraitPath(key, "zoom")
+    local hiddenPath = Settings.PortraitPath(key, "hidden")
+    local opacityPath = Settings.PortraitPath(key, "opacity")
+
+    local content = {}
+    content.mask = function(_, tab)
+        tab:AddSlider({ label = "Portrait Zoom", min = 100, max = 200, step = 1,
+            minLabel = "100%", maxLabel = "200%",
+            get = function() return tonumber(DB.Get(zoomPath)) or 100 end,
+            set = function(v) DB.Set(zoomPath, tonumber(v) or 100); apply() end })
+        tab:Finalize()
+    end
+    content.visibility = function(_, tab)
+        tab:AddToggle({ label = "Hide Portrait",
+            get = function() return DB.Get(hiddenPath) == true end,
+            set = function(v)
+                DB.Set(hiddenPath, v and true or false)
+                apply()
+                tab:RefreshControls()
+            end })
+        if Settings.PORTRAIT_OPACITY[key] then
+            tab:AddSlider({ label = "Portrait Opacity", min = 1, max = 100, step = 1,
+                minLabel = "1%", maxLabel = "100%",
+                disabled = function() return DB.Get(hiddenPath) == true end,
+                get = function() return tonumber(DB.Get(opacityPath)) or 100 end,
+                set = function(v) DB.Set(opacityPath, tonumber(v) or 100); apply() end })
+        end
+        tab:Finalize()
+    end
+
+    builder:AddCollapsibleSection({ title = "Portrait", componentId = navKey,
+        sectionKey = "portrait", defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddTabbedSection({
+                tabs = { { key = "mask", label = "Mask" }, { key = "visibility", label = "Visibility" } },
+                componentId = navKey,
+                sectionKey = "portrait_tabs",
+                buildContent = content,
+            })
+            inner:Finalize()
+        end })
+end
+
+-- The frame's opacity by the player's state, on the pages X gives the
+-- section. From 0, as X's runs: a frame can be hidden out of combat.
+local function buildVisibilitySection(builder, key, navKey)
+    if not Settings.STATE_OPACITY[key] then return end
+    builder:AddCollapsibleSection({ title = "Visibility", componentId = navKey,
+        sectionKey = "visibility", defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddStateOpacityBlock({
+                get = function(field) return DB.Get(Settings.OpacityPath(key, field)) end,
+                set = function(field, value) DB.Set(Settings.OpacityPath(key, field), value) end,
+                apply = function() UF.RefreshOpacity(key) end,
+                min = 0,
+            })
+            inner:Finalize()
+        end })
+end
+
+-- The switches for the pieces this frame draws on this style; no section
+-- where it draws none of them.
+local function buildMiscSection(builder, key, navKey, style)
+    local fields = {}
+    for _, field in ipairs(Settings.MISC_ORDER) do
+        if Settings.MiscOffered(key, style, field) then fields[#fields + 1] = field end
+    end
+    if #fields == 0 then return end
+    builder:AddCollapsibleSection({ title = "Misc", componentId = navKey,
+        sectionKey = "misc", defaultExpanded = false,
+        buildContent = function(_, inner)
+            for _, field in ipairs(fields) do
+                local path = Settings.MiscPath(key, field)
+                inner:AddToggle({ label = Settings.MISC[field].label,
+                    get = function() return DB.Get(path) == true end,
+                    set = function(v)
+                        DB.Set(path, v and true or false)
+                        UF.RefreshMisc(key)
+                    end })
+            end
+            inner:Finalize()
+        end })
+end
+
 local function Render(panel, scrollContent, key, navKey)
     panel:ClearContent()
     local builder = SettingsBuilder:CreateFor(scrollContent)
@@ -420,6 +593,7 @@ local function Render(panel, scrollContent, key, navKey)
     end
 
     buildHealthSection(builder, key, navKey)
+    buildPowerSection(builder, key, navKey, style)
     buildAuraSection(builder, key, navKey)
 
     local tabs, content = {}, {}
@@ -515,6 +689,10 @@ local function Render(panel, scrollContent, key, navKey)
             })
             inner:Finalize()
         end })
+
+    buildPortraitSection(builder, key, navKey)
+    buildVisibilitySection(builder, key, navKey)
+    buildMiscSection(builder, key, navKey, style)
 
     builder:Finalize()
 end

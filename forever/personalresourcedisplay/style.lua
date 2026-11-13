@@ -116,6 +116,11 @@ Style.SHOW_TEXT = {
     order = { "always", "hover", "never" },
 }
 
+-- How a bar's value text writes its number: whole with the locale's
+-- separators (BreakUpLargeNumbers) or abbreviated (AbbreviateNumbers). Both
+-- format a secret in the engine. The unit frames' pages offer the same list.
+Style.NUMBER_FORMAT = addon.Catalogs.NumberFormat
+
 -- Where the cast bar hangs off the frame (castbar.lua). `short` is for the
 -- Edit Mode dialog's narrow value field.
 Style.CAST_BAR_POSITION = {
@@ -190,6 +195,8 @@ do
         set(11, "text", "value", "size")
         set("CENTER", "text", "value", "alignment")
         set("never", "text", "percent", "show")
+        -- Whole numbers: on Forever's health and mana the hundreds matter.
+        set("full", "text", "value", "numberFormat")
     end
     map[Style.Path("power", "hideManaCostPrediction")] = false
     -- The cast bar, a Camelot addition Blizzard's PRD does not have, on by
@@ -234,6 +241,7 @@ do
         stock[Style.Path(bar, "text", "value", "size")] = false
         stock[Style.Path(bar, "text", "value", "alignment")] = Style.TEXT_ALIGN.value
         stock[Style.Path(bar, "text", "percent", "show")] = "always"
+        stock[Style.Path(bar, "text", "value", "numberFormat")] = "abbreviated"
     end
     stock[Style.Path("castBar", "enabled")] = false
     stock[Style.Path("castBar", "castTime")] = false
@@ -294,6 +302,12 @@ function Style.TextShow(bar, slot)
     local v = Style.Get(bar, "text", slot, "show")
     if v == "always" or v == "hover" then return v end
     return "never"
+end
+
+--- "full" or "abbreviated" for a bar's value text.
+function Style.NumberFormat(bar)
+    if Style.Get(bar, "text", "value", "numberFormat") == "abbreviated" then return "abbreviated" end
+    return "full"
 end
 
 --- The cast bar's switch, the setting alone; castbar.lua folds in the

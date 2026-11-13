@@ -9,7 +9,7 @@
 --
 -- The happiness face is the Classic frame's own read (pet.lua beside this
 -- folder, PetState), since both specs name the same region and carry the
--- same cells. Left out, as the Classic frame leaves them out: the vehicle
+-- same art. Left out, as the Classic frame leaves them out: the vehicle
 -- swap to the player unit, the hit indicator, and the threat flash, which
 -- is built hidden and nothing drives.
 --------------------------------------------------------------------------------

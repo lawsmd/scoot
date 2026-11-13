@@ -206,6 +206,14 @@ do
     set("systemDataOffsetX", 0)
     set("systemDataOffsetY", 0)
 
+    -- Tracking: the magnifying glass that opens Blizzard's tracking menu,
+    -- in the one free corner of the setup above
+    set("trackingHide", false)
+    set("trackingPosition", "TOPLEFT")    -- "dock" is Blizzard's spot left of the plate
+    set("trackingSize", 20)
+    set("trackingOffsetX", 0)
+    set("trackingOffsetY", 0)
+
     DB.RegisterDefaults(map)
 
     -- Blizzard Default: the round map at its own size and spot, the header
@@ -230,6 +238,8 @@ do
     blizzard("systemDataFontStyle", "SHADOW")
     blizzard("systemDataAnchor", "BOTTOM")
     blizzard("systemDataOffsetY", -18)
+    blizzard("trackingPosition", "dock")
+    blizzard("trackingSize", 17)
     DB.RegisterStock(stock)
 end
 
@@ -323,6 +333,7 @@ function Style.Apply()
         Text.ApplyClock()
         Text.ApplySystemData()
     end
+    if MR.Tracking then MR.Tracking.Apply() end
     if MR.Dynamic then MR.Dynamic.Reassert() end
 end
 

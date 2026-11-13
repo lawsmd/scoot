@@ -28,7 +28,11 @@
 --   TOPRIGHT -24, -65.
 -- The one health shape is the override's too: every classification keeps
 -- it, where live gives a minus mob a shorter bar. The frame art, the flash
--- and the power bar still change by classification (target.lua).
+-- and the power bar still change for a minus mob (target.lua). A rare keeps
+-- the plain frame art, where the client swaps in
+-- UI-HUD-UnitFrame-Target-Rare-PortraitOn: the client's own art set has no
+-- member for that name, so it draws retail's silver frame, whose openings
+-- are cut for retail's bars and stand wide of the bars here.
 --
 -- Host and layer follow the painter's three levels: TargetFrameContainer's
 -- regions (the portrait, the frame art, the flash, the boss art) and the
@@ -64,8 +68,9 @@ local function build(hitInsets)
         -- from its top and its right, as the XML anchors the mask; the
         -- engine's own round crop stays on (values.lua, ApplyPortrait). The
         -- frame art at its atlas size, unsnapped as the XML has it, swapped
-        -- for a rare or a minus mob. The reputation strip, the main child's,
-        -- coloured by reaction (target.lua).
+        -- for a minus mob and kept for a rare (the header above). The
+        -- reputation strip, the main child's, coloured by reaction
+        -- (target.lua).
         portrait = {
             layer = "BACKGROUND", sublevel = 1,
             w = 58, h = 58,
@@ -75,10 +80,7 @@ local function build(hitInsets)
         frameTexture = {
             layer = "BACKGROUND", sublevel = 2,
             atlas = FAMILY,
-            atlasByState = {
-                rare = "UI-HUD-UnitFrame-Target-Rare-PortraitOn",
-                minus = "UI-HUD-UnitFrame-Target-MinusMob-PortraitOn",
-            },
+            atlasByState = { minus = "UI-HUD-UnitFrame-Target-MinusMob-PortraitOn" },
             point = "CENTER", x = 0, y = 0,
             snap = false,
         },
@@ -280,7 +282,6 @@ Art.Frames.modern.focus = build({ left = 0, right = 5, top = 4, bottom = 9 })
 do
     local names = {
         FAMILY, FAMILY .. "-InCombat", FAMILY .. "-Type",
-        "UI-HUD-UnitFrame-Target-Rare-PortraitOn",
         "UI-HUD-UnitFrame-Target-MinusMob-PortraitOn",
         "UI-HUD-UnitFrame-Target-MinusMob-PortraitOn-InCombat",
         FAMILY .. "-Boss-Gold", FAMILY .. "-Boss-Gold-Winged", FAMILY .. "-Boss-Rare-Silver-Winged",

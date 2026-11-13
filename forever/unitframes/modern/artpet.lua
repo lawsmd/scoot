@@ -26,9 +26,9 @@
 --
 -- The happiness face is the one piece the client's Mainline XML adds to
 -- retail's: a frame of its own at LEFT to the frame's RIGHT 0, -4, which
--- the override leaves in place. Its template is the client's own and not
--- in the pulled files, so the face takes the vanilla frame's 24 by 23 and
--- the Classic spec's cells on the same sheet.
+-- the override leaves in place. Its template (Blizzard_FrameXML/PetHappiness.xml)
+-- is 24 by 23 and draws the client's three mood atlases, which the Classic
+-- spec names too.
 --
 -- Host and layer follow the painter's three levels: the portrait, the frame
 -- art, the flash and the wash on the base frame, the two bars one level up,
@@ -52,8 +52,9 @@ local spec = {
 }
 Art.Frames.modern.pet = spec
 
--- The face's three cells by GetPetHappiness value, the Classic spec's table
--- (artpet.lua beside this folder), since both styles draw the same sheet.
+-- The face's atlases and fallback cells by mood value, the Classic spec's
+-- tables (artpet.lua beside this folder), since both styles draw the same art.
+spec.HappinessAtlas = Art.Frames.camelot.pet.HappinessAtlas
 spec.HappinessCoords = Art.Frames.camelot.pet.HappinessCoords
 
 spec.Regions = {
@@ -120,7 +121,7 @@ spec.Bars = {
         atlas = FAMILY .. "-Bar-Health",
         predictionAtlas = FAMILY .. "-Bar-Health-Status",
         color = { 1, 1, 1 },
-        mask = { atlas = PARTY .. "-Bar-Health-Mask", point = "TOPLEFT", x = -26, y = 3 },
+        mask = Modern.PARTY_HEALTH_MASK,
     },
     power = {
         w = 74, h = 7,

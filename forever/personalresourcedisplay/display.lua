@@ -327,6 +327,12 @@ function Display.Build()
         show = function(field) return Style.Get("health", field) ~= false end,
         standIn = function() return false end,
     }
+    -- Values.ApplyBarText's formatter for each bar's value: Full writes the
+    -- whole number with separators, nil keeps the feed's abbreviation.
+    inst.numberFormatter = function(bar)
+        if Style.NumberFormat(bar) == "full" then return BreakUpLargeNumbers end
+        return nil
+    end
     PRD.inst = inst
 
     addon.Strata.ApplyHUD(frame, 30)
@@ -443,6 +449,8 @@ function Display.Dump()
             key, Style.Height(key), tostring(Style.Get(key, "hide")), tostring(Style.Get(key, "foregroundTexture")),
             tostring(Style.Get(key, "foregroundColorMode")), tostring(Style.Get(key, "borderStyle")),
             Style.TextShow(key, "value"), Style.TextShow(key, "percent"))
+        local fed = inst and inst.lastNumberFormat and inst.lastNumberFormat[key]
+        push("    number format: setting %s, last fed %s", Style.NumberFormat(key), tostring(fed or "not run"))
     end
     push("  percent chain: health %s, power %s", tostring(lastPercent.health), tostring(lastPercent.power))
     local HP = addon.UnitFrames and addon.UnitFrames.HealPrediction

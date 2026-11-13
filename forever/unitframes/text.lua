@@ -364,8 +364,13 @@ function Text.BarTextShow(key, bar, slot)
     return "never"
 end
 
+-- The resolver's options for a bar string. A scratch table: the paint calls
+-- this per string, and the resolver keeps nothing.
+local BAR_TEXT_COLOR_OPTS = { fbR = 1, fbG = 1, fbB = 1, fbA = 1, lightenMana = true }
+
 --- The colour a bar string takes: white by default, the class colour for a
---- player in class mode (white for anyone else), or the stored custom colour.
+--- player in class mode (white for anyone else), the power's own colour for
+--- a power string in class power mode, or the stored custom colour.
 function Text.BarTextColor(inst, bar, slot, unit)
     local colorMode = Text.Get(inst.key, bar, "text", slot, "colorMode")
     -- Kept off addon.ResolveColorRGBA: class on a non-player is white, which classMiss cannot express.
@@ -377,8 +382,10 @@ function Text.BarTextColor(inst, bar, slot, unit)
         end
         return 1, 1, 1
     end
-    local r, g, b = addon.ResolveColorRGBA(colorMode, Text.Get(inst.key, bar, "text", slot, "color"),
-        { fbR = 1, fbG = 1, fbB = 1, fbA = 1 })
+    local opts = BAR_TEXT_COLOR_OPTS
+    opts.classPowerMode = bar == "power"
+    opts.unitForPower = unit or inst.unit
+    local r, g, b = addon.ResolveColorRGBA(colorMode, Text.Get(inst.key, bar, "text", slot, "color"), opts)
     return r, g, b
 end
 

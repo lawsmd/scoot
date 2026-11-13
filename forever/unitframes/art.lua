@@ -227,18 +227,26 @@ end
 --- to anchorTo at the offset (the bar masks, which stand off their bar), and
 --- without one it covers anchorTo (a region's own mask). An atlas mask takes
 --- the member's size, then the def's own where it names one, since Blizzard's
---- Lua resizes the player's bar masks at load. Returns the mask, or nil when
---- an atlas does not resolve, so the texture draws unmasked rather than
---- behind a mask of nothing.
+--- Lua resizes the player's bar masks at load. `byFile = { [fileID] = { x,
+--- y } }` replaces the offset when the atlas resolves to that file: one
+--- member name can serve masks drawn with the window in different places.
+--- Returns the mask, or nil when an atlas does not resolve, so the texture
+--- draws unmasked rather than behind a mask of nothing.
 function Art.BuildMask(host, anchorTo, def)
     local mask = host:CreateMaskTexture()
+    local x, y = def.x or 0, def.y or 0
     if def.atlas then
         if not Art.SetAtlas(mask, def.atlas, true) then return nil end
+        if def.byFile then
+            local info = C_Texture.GetAtlasInfo(Art.ResolveAtlasName(def.atlas))
+            local alt = info and def.byFile[info.file]
+            if alt then x, y = alt.x or x, alt.y or y end
+        end
     else
         mask:SetTexture(def.file or def[1])
     end
     if def.point then
-        mask:SetPoint(def.point, anchorTo, def.relPoint or def.point, def.x or 0, def.y or 0)
+        mask:SetPoint(def.point, anchorTo, def.relPoint or def.point, x, y)
     else
         mask:SetAllPoints(anchorTo)
     end
@@ -314,8 +322,8 @@ end
 --- Swap a region's art by state, for a def that carries `atlasByState = {
 --- key = name }` beside its `atlas`: a key takes that state's member, nil
 --- the def's own. The size follows the member, since the states differ in
---- size (the Modern target's rare and minus frames). A name this client
---- lacks blanks the region, as at build.
+--- size (the Modern target's minus frame). A name this client lacks blanks
+--- the region, as at build.
 function Art.ApplyRegionAtlas(inst, region, stateKey)
     local tex = inst.regions and inst.regions[region]
     local def = inst.spec.Regions[region]

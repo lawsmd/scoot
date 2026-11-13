@@ -5,9 +5,11 @@
 --
 -- The shared profile engine records where each new layout came from
 -- (core/profiles/core.lua, "Where a new profile comes from") and calls the
--- create hook below. A layout made with "New Layout" starts as Camelot; a
--- layout copied from a preset, or saved from an edited one, starts as that
--- preset, and so does the preset's own profile. A preset start is two things:
+-- create hook below. A layout made with "New Layout" starts as Camelot, and
+-- so do the Modern and Classic presets' own profiles; a layout copied from
+-- one of them, or saved from an edited one, is a copy of the preset's own
+-- profile (the owner's call, 4 November 2026). The gamepad preset, and a
+-- layout made from it, starts as that preset. A preset start is two things:
 -- the preset's value set (DB.RegisterPreset beside each feature's defaults),
 -- written into the new profile once, and the preset's positions, which are
 -- never stored. Each frame's default position is read off Blizzard's preset
@@ -341,10 +343,38 @@ local function wipeProfile(profile)
     DB.EnsureContainers(profile)
 end
 
-Profiles.RegisterCreateHook("camelot", function(_, origin, profile)
+-- Modern and Classic start as Camelot (the owner's call, 4 November 2026); the
+-- gamepad preset keeps Classic's set and spots.
+local function presetStartsCamelot(name)
+    local gamepad = addon.Gamepad
+    return not (gamepad and gamepad.IsPresetGamepad and gamepad.IsPresetGamepad(name))
+end
+
+Profiles.RegisterCreateHook("camelot", function(name, origin, profile)
     if not origin then return end
     if origin.kind == "new" then
         wipeProfile(profile)
+        profile.pendingTooltip = true
+    elseif origin.kind == "preset" and presetStartsCamelot(origin.preset) then
+        wipeProfile(profile)
+        if origin.mirror then
+            -- Named, not absent: the login pass below seeds a preset's
+            -- profile that has no start. No tooltip mark: a preset layout
+            -- refuses the write.
+            profile.startingPoint = "camelot"
+            return
+        end
+        -- Saved from an edited preset or copied from one: a copy of the
+        -- preset's own profile, under the new layout's name.
+        local source = addon.db and addon.db.profiles and addon.db.profiles[origin.preset]
+        if type(source) == "table" then
+            for k, v in pairs(CopyTable(source)) do profile[k] = v end
+            profile.__preset = nil
+            Profiles._runRenameHooks(profile, origin.preset, name)
+        end
+        DB.EnsureContainers(profile)
+        profile.startingPoint = "camelot"
+        profile.startingPointSet = nil
         profile.pendingTooltip = true
     elseif origin.kind == "preset" then
         wipeProfile(profile)
@@ -373,7 +403,28 @@ addon.Events.On("StartingPoints", "PLAYER_ENTERING_WORLD", function()
     local profiles = addon.db and addon.db.profiles
     if not profiles then return end
     local seeded
-    for _, layout in ipairs(presetLayouts()) do
+    -- Once per account: v1.0.0 seeded the Modern and Classic presets' own
+    -- profiles with the preset's set. They move to Camelot; a value stored on
+    -- a path the set names goes back to Camelot's default, the rest stays.
+    local global = addon.db.global
+    local layouts = presetLayouts()
+    if global and not global.presetsStartCamelot and #layouts > 0 then
+        for _, layout in ipairs(layouts) do
+            local profile = profiles[layout.layoutName]
+            if type(profile) == "table" and presetStartsCamelot(layout.layoutName)
+                and type(profile.startingPoint) == "string" and DB.PresetSet(profile.startingPoint) then
+                DB.EnsureContainers(profile)
+                local old = profile.startingPointSet or DB.PresetSet(profile.startingPoint)
+                DB.EachPreset(old, function(path) profile.settings[path] = nil end)
+                DB.EachPresetDocument(old, function(key) profile.documents[key] = nil end)
+                profile.startingPoint = "camelot"
+                profile.startingPointSet = nil
+                seeded = seeded or profile == addon.db.profile
+            end
+        end
+        global.presetsStartCamelot = true
+    end
+    for _, layout in ipairs(layouts) do
         local profile = profiles[layout.layoutName]
         if type(profile) == "table" and profile.startingPoint == nil then
             StartingPoints.Seed(profile, layout.layoutName, false)

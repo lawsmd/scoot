@@ -80,7 +80,7 @@ spec.Bars = {
         point = "TOPLEFT", x = 45, y = -17.5,
         atlas = FAMILY .. "-Bar-Health",
         color = { 1, 1, 1 },
-        mask = { atlas = PARTY .. "-Bar-Health-Mask", point = "TOPLEFT", x = -26, y = 3 },
+        mask = Modern.PARTY_HEALTH_MASK,
     },
     power = {
         w = 74, h = 7,

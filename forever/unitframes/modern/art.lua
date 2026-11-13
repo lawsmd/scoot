@@ -37,6 +37,18 @@ Modern.FAMILY = {
     Party = "UI-HUD-UnitFrame-Party-PortraitOn",
 }
 
+-- The health bar mask the target of target and the pet share, the party
+-- frame's member. The override puts it at the bar's TOPLEFT -26, 3, which
+-- fits the redrawn file (8539831) whose window starts 26 in and 4 down. The
+-- live client of 11-11 served retail's file (4737301) under the same name,
+-- whose window starts 29 in and 3 down, and at -26 it cut 3 off the fill's
+-- left and 1 off its foot; that file takes the XML's own -29.
+Modern.PARTY_HEALTH_MASK = {
+    atlas = Modern.FAMILY.Party .. "-Bar-Health-Mask",
+    point = "TOPLEFT", x = -26, y = 3,
+    byFile = { [4737301] = { x = -29, y = 3 } },
+}
+
 -- The names the state code writes at runtime, the same on every frame type.
 -- The level sits in a small circle on this client's frames, and the PvP
 -- badge is that circle with a faction crest, at four fifths; the free-for-all
@@ -140,7 +152,9 @@ end
 function Modern.ApplyPvP(inst, checkMercenary)
     local icon = inst.regions and inst.regions.pvpIcon
     if not icon then return end
-    if inst.previewStandIn then
+    -- The stand-in wears none, and neither does a frame under Hide PvP
+    -- Icons, the page's Misc switch (settings.lua).
+    if inst.previewStandIn or addon.UnitFrames.Settings.Misc(inst.key, "hidePvP") then
         icon:Hide()
         return
     end
