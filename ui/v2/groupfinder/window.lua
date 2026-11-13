@@ -488,25 +488,13 @@ local function Build()
     end
     trayPanel = UI.trayBuilder and UI.trayBuilder(tray) or nil
 
-    -- The settings nav's red "beta" chip, so the window says what its page
+    -- The settings nav's beta badge, so the window says what its page
     -- says; above the panels, since it sits beside the home page's root
     local Controls = addon.UI.Controls
-    if Controls and Controls.CreateInfoIcon then
-        betaChip = Controls:CreateInfoIcon({
-            parent = frame,
-            tooltipTitle = "Beta Feature",
-            tooltipText = "This feature is new and may need additional testing. Please report any issues you encounter.",
-            size = 18,
-            width = 32,
-            iconType = "info",
-            customText = "beta",
-            colorOverride = { 0.9, 0.2, 0.2 },
-        })
+    if Controls and Controls.CreateBetaBadge then
+        betaChip = Controls.CreateBetaBadge(frame)
         if betaChip then
             betaChip:SetFrameLevel(content:GetFrameLevel() + 20)
-            local fs = betaChip._iconText
-            local fontPath = fs and fs:GetFont()
-            if fontPath then pcall(fs.SetFont, fs, fontPath, 8, "OUTLINE") end
         end
     end
 
