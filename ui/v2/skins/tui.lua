@@ -75,7 +75,10 @@ Skin.Register("tui", {
         -- is the window descriptor above, the look the editor shipped with.
         titleBar      = { kind = "ascii", fontRole = "label" },
         closeButton   = { kind = "flat", glyph = "X" },
-        button        = { kind = "flat", labelColors = { normal = "accent", hover = "black", active = "background", disabled = "accent" } },
+        -- The success tone is a solid block, since a plain button's accent
+        -- is green too by default.
+        button        = { kind = "flat", labelColors = { normal = "accent", hover = "black", active = "background", disabled = "accent" },
+                          tones = { success = { fill = { 0.1, 0.8, 0.3 }, labelColor = "black" } } },
         resizeGrip    = { kind = "flat" },
         scrollBar     = { kind = "flat" },
         tab           = { kind = "flat", labelColors = { normal = "accent", hover = "accent", selected = "black" } },
@@ -97,6 +100,10 @@ Skin.Register("tui", {
             labelColors = { normal = "primary", hover = "primary", selected = "accent", disabled = { token = "dim", alpha = 0.35 } },
         },
         dropdown      = { kind = "flat" },
+        -- The beta badge: a red box around the word, the mark a feature under
+        -- test has carried in the nav since the first one shipped.
+        badge         = { kind = "flat", text = "beta", color = { 0.9, 0.2, 0.2 },
+                          width = 32, height = 18, fontSize = 8, fontStyle = "OUTLINE", gap = 4 },
     },
 
     metrics = {

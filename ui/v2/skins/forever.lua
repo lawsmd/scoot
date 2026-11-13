@@ -151,6 +151,11 @@ Skin.Register("forever", {
         -- another key on the open panel and 'font styles' lists them.
         navLabel      = { path = UI_FACE, size = 14, style = "DEEPSHADOWTHICKOUTLINE" },
         navChildLabel = { path = UI_FACE, size = 11, style = "DEEPSHADOWTHICKOUTLINE" },
+        -- The beta badge's word (chrome.badge below): GameFontHighlight's 12
+        -- at the 0.8 Blizzard scales its own label to in the options
+        -- category list, with that font's drop shadow, which the badge
+        -- colors.
+        navBadge      = { path = UI_FACE, size = 10, style = "SHADOW" },
         pageHeader    = { path = UI_FACE, size = 20, style = "DEEPSHADOWTHICKOUTLINE" },
         -- A hand-drawn block's heading, the page's own title for the group of
         -- controls under it (blockTitleFontRole). The Manage Profiles page's
@@ -357,6 +362,14 @@ Skin.Register("forever", {
             pressedOffset = { 1, -1 },
             labelColors = { normal = "primary", hover = "primary", selected = "accent", disabled = { token = "dim", alpha = 0.6 } },
             glyphColors = { normal = "accent", hover = "primary", selected = "accent", disabled = { token = "dim", alpha = 0.5 } },
+            -- The bronze with its color taken out and green multiplied in.
+            tones = {
+                success = {
+                    desaturate = true,
+                    tint = { border = { 0.45, 1, 0.5 }, center = { 0.45, 1, 0.5 } },
+                    labelColors = { normal = { 0.55, 1, 0.6 } },
+                },
+            },
             fallback = { kind = "template", template = "UIPanelButtonTemplate", font = "template" },
         },
         -- The grabber vanilla put on every resizable window, and the one
@@ -655,6 +668,29 @@ Skin.Register("forever", {
                 help = { texture = "Interface\\common\\help-i" },
             },
             glyphColors = { normal = "accent", hover = "primary" },
+            fallback = { kind = "flat" },
+        },
+        -- The beta badge, the word beside the name of a feature under test:
+        -- the label Blizzard's options panel hangs beside a new category and
+        -- a new setting (NewFeatureLabelTemplate, at scale 0.8 in
+        -- Blizzard_CategoryList.xml), with this panel's word in it. Blizzard
+        -- draws its word white with a blue drop shadow, a blue copy half a
+        -- pixel down and right of it, and collections-newglow behind both;
+        -- the blue is NEW_FEATURE_SHADOW_COLOR, #5280ff in the client's
+        -- GlobalColor table. A blue is on no other part of this panel, so
+        -- the word stands apart from a row's gray, cream and gold. The glow
+        -- reaches 20 by 10 past Blizzard's word at full scale, 16 by 8 at
+        -- 0.8; the sides are held to 12 here because the name is 8 to the
+        -- left (gap) and the glow draws over it. Blizzard pulses the glow's
+        -- alpha and offers a still variant; a nav row is on screen for as
+        -- long as the panel is, so this one holds still. Retail carries the
+        -- atlas too; a client without it draws the word and its shadow.
+        badge = {
+            kind = "label", text = "Beta", fontRole = "navBadge",
+            color = "white", shadow = { 0.322, 0.502, 1 }, copyOffset = { 0.5, -0.5 },
+            glow = { kind = "atlas", atlas = "collections-newglow",
+                     reach = { left = 12, right = 12, top = 8, bottom = 8 } },
+            gap = 8,
             fallback = { kind = "flat" },
         },
         -- The box that icon opens: the nine-slice the client draws its own

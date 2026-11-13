@@ -62,6 +62,10 @@ end
 --   noBottomBorder : Optional boolean to skip the builder-drawn divider under the row
 --   sizeScale   : Optional factor scaling the whole control (fonts, heights);
 --                 not supported together with description or emphasized
+--   key         : Optional unique key, for GetControl
+--   button      : Optional { text, width, onClick, tooltip }: a button at the
+--                 row's right end, the field to its left. row:GetButton()
+--                 returns it
 --   gear        : Optional in-field gear button opening a sub-options fly-out.
 --                 { pages = { [optionKey] = { build = function(content, panel,
 --                 key), tooltip, width, height } }, width, height, direction }.
@@ -96,6 +100,7 @@ function Builder:AddSelector(options)
         optionInfoIcons = options.optionInfoIcons,
         disabledOptions = options.disabledOptions,
         gear = options.gear,
+        button = options.button,
     })
 
     self:_PlaceRow(selector, options)
@@ -362,13 +367,16 @@ end
 --------------------------------------------------------------------------------
 -- Options:
 --   buttons     : Array of { text, onClick, width, tooltip, isDisabled,
---                 secureAction }, each a Controls:CreateButton
+--                 isHidden, secureAction }, each a Controls:CreateButton. A
+--                 hidden button keeps its place, so it goes last in the row
 --   justify     : "LEFT" (default, at the row padding), "CENTER" or "RIGHT"
 --   gap         : Space between buttons (default the item spacing)
 --   key         : Optional unique key
 --   noBottomBorder : Optional boolean to skip the divider under the row
+--   emphasized  : Optional boolean: taller buttons in the emphasized name's
+--                 size, on a bare row with none of the emphasis chrome
 -- The row's search text is the button texts joined; Refresh re-reads each
--- isDisabled.
+-- isDisabled and isHidden.
 --------------------------------------------------------------------------------
 
 function Builder:AddButtonRow(options)
@@ -385,14 +393,23 @@ function Builder:AddButtonRow(options)
     local m = Controls.Metrics()
     local gap = options.gap or m.itemSpacing
     local justify = options.justify or "LEFT"
+    local rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil
+    local emph = Controls.ResolveEmphasis(options.emphasized, rowWidth)
+    local rowHeight, buttonHeight, buttonFontSize = m.rowHeight, nil, nil
+    if emph then
+        rowHeight = math.floor((m.rowHeight + m.emphasisGrowth) * emph.scale + 0.5) + emph.padY * 2
+        buttonHeight = math.floor((m.button.height + m.emphasisGrowth) * emph.scale + 0.5)
+        buttonFontSize = emph.labelFontSize
+    end
     local row = CreateFrame("Frame", nil, scrollContent)
-    row:SetHeight(m.rowHeight)
+    row:SetHeight(rowHeight)
 
     local buttons, total = {}, 0
     for _, def in ipairs(defs) do
         local btn = Controls:CreateButton({
             parent = row, text = def.text, width = def.width, tooltip = def.tooltip,
             onClick = def.onClick, secureAction = def.secureAction,
+            height = buttonHeight, fontSize = buttonFontSize,
         })
         if btn then
             buttons[#buttons + 1] = { frame = btn, def = def }
@@ -431,6 +448,7 @@ function Builder:AddButtonRow(options)
             if b.def.isDisabled and b.frame.SetEnabled then
                 b.frame:SetEnabled(not b.def.isDisabled())
             end
+            if b.def.isHidden then b.frame:SetShown(not b.def.isHidden()) end
         end
     end
     paint()
@@ -442,7 +460,120 @@ function Builder:AddButtonRow(options)
         end
     end
 
-    self:_PlaceRow(row, { label = rowLabel, key = options.key, noBottomBorder = options.noBottomBorder })
+    self:_PlaceRow(row, {
+        label = rowLabel, key = options.key, noBottomBorder = options.noBottomBorder,
+        emphasized = options.emphasized,
+    })
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddInfoRow: Add a row that is a name and an info icon, with no control
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Row name
+--   description : Optional description below the name
+--   infoIcon    : { tooltipText, tooltipTitle, size }. A spec with no text
+--                 draws the name alone
+--   emphasized  : "Hero" styling, on unless false
+--   key         : Optional unique key
+--   noBottomBorder : Optional boolean to skip the divider under the row
+-- The icon stands at the row's right end, where a control would, and is the
+-- row's one hover target. Its size is the emphasized name's unless the spec
+-- names one, so a glyph skin draws it larger than a plain row's.
+--------------------------------------------------------------------------------
+
+function Builder:AddInfoRow(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    if self:_ScanRecord("info", options.label, options.description) then return self end
+
+    local m = Controls.Metrics()
+    local rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil
+    local emphasized = options.emphasized ~= false
+    local emph = Controls.ResolveEmphasis(emphasized, rowWidth)
+    local art = emph ~= nil and emph.art
+    local scale = emph and emph.scale or 1
+    local padY = emph and emph.padY or 0
+    local height = m.rowHeight
+    if emph then
+        height = math.floor((m.rowHeight + m.emphasisGrowth) * scale + 0.5) + padY * 2
+    end
+
+    local row = CreateFrame("Frame", nil, scrollContent)
+    row:SetHeight(height)
+    Controls.AddEmphasisChrome(row, emph)
+
+    -- The name stands inside the art's padding, or past the accent bar; the
+    -- icon keeps the same distance from the right edge.
+    local padLeft = (art and emph.padX) or (m.rowPadding + (emph and emph.leftBorderWidth or 0))
+    local padRight = (art and emph.padX) or m.rowPadding
+
+    -- Built before the name so the chrome keeps the icon's width free.
+    local icon
+    local infoSpec = Controls.InfoIconOptions(options.infoIcon)
+    if infoSpec then
+        icon = Controls:CreateInfoIcon({
+            parent = row,
+            tooltipText = infoSpec.tooltipText,
+            tooltipTitle = infoSpec.tooltipTitle,
+            size = infoSpec.size or (emph and emph.labelFontSize) or nil,
+        })
+    end
+    local reserve = icon and ((icon:GetWidth() or 0) + m.rowPadding + padRight) or 0
+
+    local dimR, dimG, dimB
+    if self._useLightDim then
+        dimR, dimG, dimB = Theme:GetDimTextLightColor()
+    else
+        dimR, dimG, dimB = Theme:GetDimTextColor()
+    end
+
+    if rowWidth then
+        Controls.AddRowChrome(row, {
+            rowWidth = rowWidth,
+            baseHeight = height,
+            label = options.label,
+            labelFontSize = emph and emph.labelFontSize or nil,
+            labelFontRole = emph and emph.labelFontRole or nil,
+            scale = emph and emph.scale or nil,
+            padY = emph and emph.padY or nil,
+            padLeft = padLeft,
+            description = options.description,
+            descFontSize = emph and math.floor(m.emphasisDescSize * scale + 0.5) or nil,
+            controlReserve = reserve,
+            dimColor = { dimR, dimG, dimB },
+        })
+        if icon then Controls.AnchorCluster(row, icon, { x = -padRight }) end
+    else
+        Controls.AddRowChrome(row, {
+            label = options.label,
+            labelFontSize = emph and emph.labelFontSize or nil,
+            padLeft = padLeft,
+            description = options.description,
+            reserve = reserve,
+            dimColor = { dimR, dimG, dimB },
+        })
+        if icon then icon:SetPoint("RIGHT", row, "RIGHT", -padRight, 0) end
+    end
+    row._infoIcon = icon
+
+    -- The name retints with the accent, as every row's does.
+    local subscribeKey = "InfoRow_" .. tostring(row)
+    Theme:Subscribe(subscribeKey, function(r, g, b)
+        if row._label then row._label:SetTextColor(r, g, b, 1) end
+    end)
+    row.Cleanup = function()
+        Theme:Unsubscribe(subscribeKey)
+        if icon and icon.Cleanup then icon:Cleanup() end
+    end
+
+    self:_PlaceRow(row, {
+        label = options.label, key = options.key,
+        emphasized = emphasized, noBottomBorder = options.noBottomBorder,
+    })
 
     return self
 end

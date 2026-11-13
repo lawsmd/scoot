@@ -640,10 +640,17 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
 
     -- The name's width is measured, not anchored to, so the box can be capped
     -- at the row's. A row built before the card has a width measures 0 and is
-    -- corrected on the next frame, the way a description row is.
+    -- corrected on the next frame, the way a description row is. A beta badge
+    -- stands inside the box after the name, so the art under the cursor and
+    -- on the open page covers both.
     if isCard then
         local function SizeBox()
             local width = (label:GetStringWidth() or 0) + boxPad * 2
+            local badge = row._betaBadge
+            if badge then
+                badge:Fit()
+                width = width + badge.gap + (badge:GetWidth() or 0)
+            end
             local rowWidth = row:GetWidth() or 0
             if rowWidth > 1 then width = math.min(width, rowWidth) end
             row._box:SetWidth(math.max(width, boxPad * 2))
@@ -699,29 +706,23 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
         row._versionBadge:SetPoint("LEFT", label, "RIGHT", 4, 0)
     end
 
-    -- Beta badge (red "beta" label)
+    -- Beta badge: the skin's badge role, after the name and any version badge
     if navItem.betaBadge and not suppressBadges
-        and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
-        local BETA_COLOR = { 0.9, 0.2, 0.2 }
-        local betaBadge = addon.UI.Controls:CreateInfoIcon({
-            parent = row,
-            tooltipTitle = "Beta Feature",
-            tooltipText = "This feature is new and may need additional testing. Please report any issues you encounter.",
-            size = 18,
-            width = 32,
-            iconType = "info",
-            customText = "beta",
-            colorOverride = BETA_COLOR,
+        and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateBetaBadge then
+        -- A badge drawn as a word takes the cursor from the row and passes
+        -- the click on, so the row keeps its hover art under it
+        local betaBadge = addon.UI.Controls.CreateBetaBadge(row, {
+            onHover = (not isModuleDisabled) and function(over)
+                row._backdrop:SetHover(over)
+            end or nil,
         })
-        if betaBadge._iconText then
-            local fontPath = betaBadge._iconText:GetFont()
-            if fontPath then
-                pcall(betaBadge._iconText.SetFont, betaBadge._iconText, fontPath, 8, "OUTLINE")
-            end
+        if betaBadge then
+            local anchorFrame = row._versionBadge or label
+            betaBadge:SetPoint("LEFT", anchorFrame, "RIGHT", betaBadge.gap, 0)
+            row._betaBadge = betaBadge
+            -- The card's box was sized to the name alone
+            if row._sizeBox then row._sizeBox() end
         end
-        local anchorFrame = row._versionBadge or label
-        betaBadge:SetPoint("LEFT", anchorFrame, "RIGHT", 4, 0)
-        row._betaBadge = betaBadge
     end
 
     if isModuleDisabled then
@@ -734,9 +735,8 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
             row._versionBadge._iconText:SetTextColor(dimR, dimG, dimB, 0.35)
             for _, tex in pairs(row._versionBadge._border) do tex:SetColorTexture(dimR, dimG, dimB, 0.15) end
         end
-        if row._betaBadge and row._betaBadge._iconText then
-            row._betaBadge._iconText:SetTextColor(dimR, dimG, dimB, 0.35)
-            for _, tex in pairs(row._betaBadge._border) do tex:SetColorTexture(dimR, dimG, dimB, 0.15) end
+        if row._betaBadge then
+            row._betaBadge:SetDimmed(true)
         end
         row:SetScript("OnEnter", function(self)
             local C = addon.UI and addon.UI.Controls

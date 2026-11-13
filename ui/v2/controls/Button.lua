@@ -18,6 +18,7 @@
 --   SetActive(bool), IsActive()   the pressed-in look while the button's page is open
 --   SetPulsing(bool)              the attention pulse (skin metrics.pulse)
 --   SetLabelColor(r, g, b, a)     a caller-owned label color, until the next SetActive
+--   SetTone(tone)                 a meaning shown in every state: "success", or nil to clear it
 --   SetIcon(icon, size)           an atlas name, a file, or a Chrome.Glyph table; nil removes it
 --   SetIconColor(r, g, b, a)      a caller-owned icon color; nil returns it to the role's
 -- The template kind draws no icon; its two icon methods are there and do nothing.
@@ -68,6 +69,10 @@ end
 
 -- The label colors a flat button draws with when its role declares none.
 local FLAT_LABEL_COLORS = { normal = "accent", hover = "black", active = "background", disabled = "accent" }
+
+-- The label of a template-kind button under the success tone. Its role is a
+-- skin's fallback and declares no tones.
+local TEMPLATE_SUCCESS = { 0.4, 1, 0.45 }
 
 --------------------------------------------------------------------------------
 -- Shared behavior
@@ -361,6 +366,7 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding, h
             local c = btn._customLabel
             r, g, b, a = c[1], c[2], c[3], c[4]
         end
+        if btn._tone then r, g, b, a = Chrome().Color(btn._tone.labelColor) end
         if state == "normal" and options.labelAlpha then
             a = (a or 1) * options.labelAlpha
         end
@@ -441,6 +447,21 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding, h
     function btn:SetLabelColor(r, g, b, a)
         self._customLabel = { r, g, b, a or 1 }
         paintLabel("normal")
+    end
+
+    -- The fill covers the border as well, one block of the tone's color.
+    function btn:SetTone(tone)
+        local def = tone and spec.tones and spec.tones[tone] or nil
+        self._tone = def
+        if def and not self._toneFill then
+            self._toneFill = self:CreateTexture(nil, "BORDER", nil, 0)
+            self._toneFill:SetAllPoints()
+        end
+        if self._toneFill then
+            if def then self._toneFill:SetColorTexture(Chrome().Color(def.fill)) end
+            self._toneFill:SetShown(def ~= nil)
+        end
+        paintLabel(self._labelState or "normal")
     end
 
     InstallPulse(btn, function(self, alpha)
@@ -539,6 +560,10 @@ function Controls:_DrawBackdropButton(btn, spec, options, text, fontSize, paddin
         paintFace()
     end
 
+    function btn:SetTone(tone)
+        backdrop:SetTone(tone)
+    end
+
     -- The art's alpha belongs to its opacity pieces, so the pulse rides on
     -- the state scale they are applied with
     InstallPulse(btn, function(self, alpha)
@@ -599,6 +624,17 @@ function Controls:_DrawTemplateButton(btn, spec, options, text, fontSize, paddin
 
     function btn:SetLabelColor(r, g, b, a)
         if self._label then self._label:SetTextColor(r, g, b, a or 1) end
+    end
+
+    -- The template owns its art, so a tone reaches only the label.
+    function btn:SetTone(tone)
+        if not self._label then return end
+        if not self._restTextColor then self._restTextColor = { self._label:GetTextColor() } end
+        if tone == "success" then
+            self._label:SetTextColor(TEMPLATE_SUCCESS[1], TEMPLATE_SUCCESS[2], TEMPLATE_SUCCESS[3], 1)
+        else
+            self._label:SetTextColor(unpack(self._restTextColor))
+        end
     end
 
     -- The template owns its art, so there is no icon to draw

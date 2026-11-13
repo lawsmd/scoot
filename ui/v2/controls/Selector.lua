@@ -101,6 +101,11 @@ function Controls:CreateSelector(options)
     }))
     local emphPadY = emph and emph.padY or 0
     local fieldInset = (emphArt and emph.padX) or sc(SELECTOR_PADDING)
+    -- button = { text, width, onClick, tooltip } stands at the row's right
+    -- end with the field to its left, at the scaled button size. Not with
+    -- centered.
+    local buttonDef = (not centered) and options.button or nil
+    local buttonReserve = buttonDef and (buttonDef.width + Controls.Metrics().itemSpacing) or 0
 
     -- Width-driven rows take the base height from the metrics; the chrome
     -- measure grows description rows synchronously. Direct callers without a
@@ -173,7 +178,7 @@ function Controls:CreateSelector(options)
             padLeft = labelLeftPad,
             description = description,
             descFontSize = emphasized and sc(12) or nil,
-            controlReserve = selectorWidth + sc(SELECTOR_PADDING) + fieldInset,
+            controlReserve = selectorWidth + sc(SELECTOR_PADDING) + fieldInset + buttonReserve,
             dimColor = { dimR, dimG, dimB },
         }
     else
@@ -200,9 +205,24 @@ function Controls:CreateSelector(options)
         labelFS:Hide()
         row._noDividerAfter = true
     elseif rowWidth then
-        Controls.AnchorCluster(row, selector, { x = -fieldInset })
+        Controls.AnchorCluster(row, selector, { x = -fieldInset - buttonReserve })
     else
-        selector:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING), 0)
+        selector:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING) - buttonReserve, 0)
+    end
+
+    if buttonDef then
+        local m = Controls.Metrics()
+        local button = Controls:CreateButton({
+            parent = row, text = buttonDef.text, width = buttonDef.width,
+            height = sc(m.button.height), fontSize = sc(m.button.fontSize),
+            onClick = buttonDef.onClick, tooltip = buttonDef.tooltip,
+        })
+        if rowWidth then
+            Controls.AnchorCluster(row, button, { x = -fieldInset })
+        else
+            button:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING), 0)
+        end
+        row._button = button
     end
 
     if labelAlign == "field" then
@@ -552,6 +572,10 @@ function Controls:CreateSelector(options)
         return self._isDisabled
     end
 
+    function row:GetButton()
+        return self._button
+    end
+
     -- Dynamic label update (for orientation-dependent labels like "# Rows" vs "# Columns")
     function row:SetLabel(newLabel)
         if self._label then
@@ -606,6 +630,7 @@ function Controls:CreateSelector(options)
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
         end
+        if self._button and self._button.Cleanup then self._button:Cleanup() end
         -- Cancel any pending sync lock timer
         if self._syncLockTimer then
             self._syncLockTimer:Cancel()

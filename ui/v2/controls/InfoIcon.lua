@@ -10,6 +10,10 @@
 -- tooltip hands the box to the client's own tooltip art. A badge, the letter
 -- in its own color that marks a component variant, stays flat under every
 -- skin: the letter is the content, not the chrome.
+--
+-- The beta badge is a third role, badge, on a factory of its own at the end
+-- of this file: the word beside the name of a feature under test, with the
+-- same tooltip.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -162,6 +166,32 @@ local function GetOrCreateTooltip()
     return tooltip
 end
 
+-- Show the shared tooltip above owner. The tooltip is shared, so every show
+-- retints it (or resets it to the accent) and a previous caller's variant
+-- tint never carries into this hover. A variant tint reaches the flat border
+-- only: the nine-slice carries the client's own border and its fill in one
+-- set of pieces, and tinting them would take the fill with it.
+local function ShowTooltipAbove(owner, title, text, tint)
+    local tooltip = GetOrCreateTooltip()
+    tooltip:SetContent(title, text)
+    local tr, tg, tb
+    if tint then
+        tr, tg, tb = tint[1], tint[2], tint[3]
+    else
+        tr, tg, tb = GetTheme():GetAccentColor()
+    end
+    if tooltip._titleText then
+        tooltip._titleText:SetTextColor(tr, tg, tb, 1)
+    end
+    if tooltip._border then
+        for _, tex in pairs(tooltip._border) do
+            tex:SetColorTexture(tr, tg, tb, 1)
+        end
+    end
+    -- Above the owner, clear of the cursor
+    tooltip:ShowAtAnchor(owner, "BOTTOMLEFT", "TOPLEFT", 0, 4)
+end
+
 -- Normalizes an info icon spec to the shape CreateInfoIcon reads. Accepts
 -- tooltipText / tooltipTitle or the shorter text / title (UF.TOOLTIPS and
 -- GF.TOOLTIPS use the latter). Returns nil when there is no text to show, so
@@ -292,29 +322,7 @@ function Controls:CreateInfoIcon(options)
 
         if self._border then self._border:Refresh() end
 
-        -- Position above icon to avoid cursor blocking
-        local tooltip = GetOrCreateTooltip()
-        tooltip:SetContent(self._tooltipTitle, self._tooltipText)
-        -- The tooltip is shared; always retint it (or reset to accent) so a
-        -- previous caller's variant tint never bleeds into this hover. A
-        -- variant tint reaches the flat border only: the nine-slice carries
-        -- the client's own border and its fill in one set of pieces, and
-        -- tinting them would take the fill with it.
-        local tr, tg, tb
-        if self._tooltipTint then
-            tr, tg, tb = self._tooltipTint[1], self._tooltipTint[2], self._tooltipTint[3]
-        else
-            tr, tg, tb = theme:GetAccentColor()
-        end
-        if tooltip._titleText then
-            tooltip._titleText:SetTextColor(tr, tg, tb, 1)
-        end
-        if tooltip._border then
-            for _, tex in pairs(tooltip._border) do
-                tex:SetColorTexture(tr, tg, tb, 1)
-            end
-        end
-        tooltip:ShowAtAnchor(self, "BOTTOMLEFT", "TOPLEFT", 0, 4)
+        ShowTooltipAbove(self, self._tooltipTitle, self._tooltipText, self._tooltipTint)
     end)
 
     icon:SetScript("OnLeave", function(self)
@@ -406,4 +414,133 @@ end
 
 function Controls:GetOrCreateTooltip()
     return GetOrCreateTooltip()
+end
+
+-- The beta badge: the word a feature under test carries beside its name, on
+-- a nav row and on a window's title, with a note under the cursor. The badge
+-- role draws it.
+--
+--   flat   the word in the role's color inside a box of that color, built as
+--          an info icon is: text, color, width, height, fontSize, fontStyle
+--   label  the word alone in the role's font role, sized to the word: text,
+--          fontRole, color, shadow (the drop shadow's color), copyOffset (a
+--          second string in the shadow color that far off the first) and
+--          glow, an atlas descriptor drawn reach past the word. The glow is
+--          outside the frame's rect, so a neighbour that anchors to the badge
+--          anchors to the word. Clicks pass through to what is under it, and
+--          opts.onHover(over) tells the owner the cursor is on the word, so a
+--          row the badge stands on can keep its hover art.
+--
+-- Returns the frame, or nil with no parent. It carries gap, the room the
+-- role asks a neighbour to leave before it; Fit(), which sizes a label to
+-- its word again; SetDimmed(on), for a row whose module is off; Cleanup().
+local BETA_TITLE = "Beta Feature"
+local BETA_TEXT = "This feature is new and may need additional testing. Please report any issues you encounter."
+
+function Controls.CreateBetaBadge(parent, opts)
+    if not parent then return nil end
+    local onHover = opts and opts.onHover
+    local theme = GetTheme()
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec("badge")
+    local flat = Chrome.FLAT.badge
+
+    if spec.kind ~= "label" then
+        local r, g, b = Chrome.Color(spec.color or flat.color)
+        local badge = Controls:CreateInfoIcon({
+            parent = parent,
+            tooltipTitle = BETA_TITLE,
+            tooltipText = BETA_TEXT,
+            size = spec.height or flat.height,
+            width = spec.width or flat.width,
+            iconType = "info",
+            customText = spec.text or flat.text,
+            colorOverride = { r, g, b },
+        })
+        if not badge then return nil end
+        theme:ApplyFont(badge._iconText, "button", spec.fontSize or flat.fontSize, spec.fontStyle or flat.fontStyle)
+        badge.gap = spec.gap or flat.gap
+
+        function badge:Fit() end
+
+        function badge:SetDimmed(on)
+            if on then
+                local dr, dg, db = theme:GetDimTextColor()
+                self._iconText:SetTextColor(dr, dg, db, 0.35)
+                for _, tex in pairs(self._border) do
+                    tex:SetColorTexture(dr, dg, db, 0.15)
+                end
+            else
+                self._iconText:SetTextColor(r, g, b, 1)
+                self._border:Refresh()
+            end
+        end
+
+        return badge
+    end
+
+    local badge = CreateFrame("Frame", nil, parent)
+    badge:SetFrameLevel((parent:GetFrameLevel() or 1) + 10)
+    badge.gap = spec.gap or flat.gap
+
+    local word = spec.text or flat.text
+    local text = badge:CreateFontString(nil, "OVERLAY")
+    theme:ApplyFont(text, spec.fontRole or "miniLabel")
+    text:SetPoint("CENTER", badge, "CENTER", 0, 0)
+    text:SetWordWrap(false)
+    text:SetTextColor(Chrome.Color(spec.color or "white"))
+    if spec.shadow then
+        text:SetShadowColor(Chrome.Color(spec.shadow))
+    end
+    text:SetText(word)
+    badge._text = text
+
+    -- The copy sits a draw layer under the word: two strings on one layer
+    -- have no order between them.
+    local offset = spec.shadow and spec.copyOffset
+    if offset then
+        local copy = badge:CreateFontString(nil, "ARTWORK")
+        theme:ApplyFont(copy, spec.fontRole or "miniLabel", nil, "NONE")
+        copy:SetPoint("CENTER", text, "CENTER", offset[1] or 0, offset[2] or 0)
+        copy:SetWordWrap(false)
+        copy:SetTextColor(Chrome.Color(spec.shadow))
+        copy:SetText(word)
+    end
+
+    -- A glow the client lacks resolves to nothing and the word stands alone
+    local glowSpec = spec.glow and Chrome.Resolve(spec.glow)
+    if glowSpec and glowSpec.kind == "atlas" and glowSpec.atlas then
+        local reach = glowSpec.reach or {}
+        local glow = badge:CreateTexture(nil, "BORDER")
+        glow:SetAtlas(glowSpec.atlas)
+        glow:SetPoint("TOPLEFT", text, "TOPLEFT", -(reach.left or 0), reach.top or 0)
+        glow:SetPoint("BOTTOMRIGHT", text, "BOTTOMRIGHT", reach.right or 0, -(reach.bottom or 0))
+        glow:SetAlpha(glowSpec.alpha or 1)
+    end
+
+    -- A string measured before its first layout can read 0, and a frame with
+    -- no size has no rect, so the floor is 1 and a caller measures again.
+    function badge:Fit()
+        self:SetSize(math.max(text:GetStringWidth() or 0, 1), math.max(text:GetStringHeight() or 0, 1))
+    end
+    badge:Fit()
+
+    function badge:SetDimmed(on)
+        self:SetAlpha(on and 0.35 or 1)
+    end
+
+    function badge:Cleanup() end
+
+    -- The scripts go on first: SetScript turns clicks back on.
+    badge:SetScript("OnEnter", function(self)
+        if onHover then onHover(true) end
+        ShowTooltipAbove(self, BETA_TITLE, BETA_TEXT)
+    end)
+    badge:SetScript("OnLeave", function()
+        if onHover then onHover(false) end
+        GetOrCreateTooltip():Hide()
+    end)
+    badge:SetMouseClickEnabled(false)
+
+    return badge
 end

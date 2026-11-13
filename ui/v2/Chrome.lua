@@ -5,8 +5,8 @@
 -- A skin's chrome table holds one descriptor per role: window, picker,
 -- dialog, dialogTitle, titleBar, closeButton, button, resizeGrip, scrollBar, tab, tabBody,
 -- sectionHeader, sectionBody, navRow, navCard, navDivider, dropdown,
--- arrowButton, field, popupList, contextMenu, flyout, infoIcon, tooltip, slider, input, toggle,
--- emphasis. A descriptor names a kind and what that kind needs:
+-- arrowButton, field, popupList, contextMenu, flyout, infoIcon, badge, tooltip, slider, input,
+-- toggle, emphasis. A descriptor names a kind and what that kind needs:
 --   flat       the framework's own draw (CreateBorder, AddBackground,
 --              AddHoverFill) with numbers from the skin metrics
 --   nineSlice  NineSliceUtil.ApplyLayout on a child frame: layout, textureKit
@@ -39,6 +39,11 @@
 --              width and height, the one size the box draws at wherever it
 --              stands; words = { on, off }; labelColors per face (on, off)
 --              and fontRole for the word
+--   label      a word with no box, on the badge role: text, fontRole, color,
+--              shadow (the color of the string's drop shadow), copyOffset
+--              (a second string in the shadow color that far off the
+--              first), glow (an atlas descriptor drawn reach past the
+--              word) and gap, the room a neighbour leaves before it
 --   ascii, text, texture   how the title bar presents the product's title.
 --              On the resizeGrip role, texture is the atlas kind with file
 --              paths in place of atlas names: normal, hover, pressed, plus
@@ -99,7 +104,7 @@ local Chrome = addon.UI.Chrome
 Chrome.ROLES = {
     "window", "picker", "dialog", "subWindow", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
     "tab", "tabBody", "subPanel", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider", "listRow",
-    "dropdown", "arrowButton", "field", "popupList", "contextMenu", "flyout", "infoIcon", "tooltip", "slider", "input", "toggle",
+    "dropdown", "arrowButton", "field", "popupList", "contextMenu", "flyout", "infoIcon", "badge", "tooltip", "slider", "input", "toggle",
     "emphasis",
     "editSelection", "editDialog",
 }
@@ -205,6 +210,13 @@ Chrome.FLAT = {
     -- bordered square with the character centered in it, and a bordered box
     -- with the title in the accent above the body.
     infoIcon      = { kind = "flat", glyphs = { info = "i", help = "?" } },
+    -- The word beside the name of a feature under test, in the nav and on a
+    -- window's title (Controls.CreateBetaBadge in ui/v2/controls/
+    -- InfoIcon.lua). Flat is the word in the role's color inside a box of
+    -- that color, built as an info icon is. A label kind is the word alone
+    -- over a glow, sized to the word.
+    badge         = { kind = "flat", text = "beta", color = { 0.9, 0.2, 0.2 },
+                      width = 32, height = 18, fontSize = 8, fontStyle = "OUTLINE", gap = 4 },
     tooltip       = { kind = "flat" },
     -- A slider row's track, thumb and steppers (ui/v2/controls/Slider.lua).
     -- Flat is the accent line with a square thumb between two arrow buttons;
@@ -336,7 +348,8 @@ function Chrome.Available(spec)
         if type(spec.on) ~= "table" or type(spec.off) ~= "table" then return false end
         return Chrome.AtlasSource(spec.on) ~= nil and Chrome.AtlasSource(spec.off) ~= nil
     end
-    -- flat, ascii, text, texture: drawn by the framework, always available.
+    -- flat, ascii, text, texture, label: drawn by the framework, always
+    -- available. A label's glow resolves on its own and may be absent.
     return true
 end
 
@@ -990,9 +1003,15 @@ function BackdropMT:State()
     return "normal"
 end
 
+-- The role's entry for the tone in force, or nil.
+function BackdropMT:Tone()
+    return self.tone and self.spec.tones and self.spec.tones[self.tone] or nil
+end
+
 function BackdropMT:LabelColor(state)
     state = state or self:State()
-    local colors = self.labelColors or {}
+    local tone = self:Tone()
+    local colors = (tone and tone.labelColors) or self.labelColors or {}
     local token = colors[state] or colors.normal or "accent"
     return Chrome.Color(token)
 end
@@ -1000,7 +1019,8 @@ end
 -- The color of an icon or an arrow on the control, by the same state walk
 function BackdropMT:GlyphColor(state)
     state = state or self:State()
-    local colors = self.spec.glyphColors or self.labelColors or {}
+    local tone = self:Tone()
+    local colors = (tone and (tone.glyphColors or tone.labelColors)) or self.spec.glyphColors or self.labelColors or {}
     local token = colors[state] or colors.normal or "accent"
     return Chrome.Color(token)
 end
@@ -1034,6 +1054,9 @@ function BackdropMT:SetPressed(v) self.pressed = v and true or false; self:Refre
 -- ("accent", "dim") or a literal; nil clears it. Only the listRow role has
 -- the fill, so the call is inert elsewhere.
 function BackdropMT:SetStatus(color) self.status = color; self:Refresh() end
+-- A meaning the control carries through all its states: a key into the role's
+-- `tones` table ("success"); nil clears it. Sliced art only.
+function BackdropMT:SetTone(tone) self.tone = tone; self:Refresh() end
 
 function BackdropMT:SetShown(shown)
     if shown then
@@ -1317,8 +1340,11 @@ local function SlicedParts(h, frame, spec)
     h.paint = function()
         local name = spec[h:State()] or spec.normal or spec.atlas
         if name ~= drawn and h.art:SetSource({ atlas = name }) then drawn = name end
-        h.art:SetDesaturated(spec.desaturate)
-        local tint = spec.tint
+        local tone = h:Tone()
+        h.art:SetDesaturated((tone or spec).desaturate)
+        local tint = (tone or spec).tint
+        if h.toneTinted and not tone then h.art:SetVertexColor(1, 1, 1, 1) end
+        h.toneTinted = tone ~= nil
         if tint then
             if tint.border then h.art:SetBorderColor(Chrome.Color(tint.border)) end
             if tint.center then h.art:SetCenterColor(Chrome.Color(tint.center)) end
@@ -1569,6 +1595,10 @@ local function describe(spec)
             if spec[state] then names[#names + 1] = state .. "=" .. tostring(spec[state]) end
         end
         return kind .. " " .. table.concat(names, " ")
+    end
+    if kind == "label" then
+        local glow = type(spec.glow) == "table" and spec.glow.atlas
+        return kind .. " " .. tostring(spec.text) .. (glow and (" glow=" .. glow) or "")
     end
     if kind == "button" then
         local function face(f)

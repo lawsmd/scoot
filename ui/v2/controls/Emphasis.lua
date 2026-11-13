@@ -9,7 +9,8 @@
 -- holds. The flat numbers are the skin's too, metrics.emphasisLabelSize and
 -- metrics.emphasisBar, and the wash is Controls.ALPHA_EMPHASIS, on Utils'
 -- accent registry so it retints with the theme. Selector.lua,
--- DualSelector.lua, Toggle.lua and Slider.lua read it.
+-- DualSelector.lua, Toggle.lua, Slider.lua and the builder's AddInfoRow
+-- (SettingsBuilderRows.lua) read it.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}

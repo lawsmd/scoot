@@ -221,6 +221,68 @@ end
 -- Dialog Frame Creation
 --------------------------------------------------------------------------------
 
+-- The name on top of a dialog surface, by the dialogTitle role. texture is an
+-- image drawn over the border art in place of the plate's text: the skin's
+-- own texture where the descriptor names one (a name in the skin's textures
+-- table, or a path), else the image the product's HeaderModel names, the one
+-- the title bar draws, at the model's aspect. A descriptor naming nothing on
+-- a product with no image takes the fallback, the way the title bar does.
+-- window is the template's own plate, carrying text. text is a string in the
+-- header role. edge is how far the content stands off the frame's edge.
+function Controls.AddDialogTitle(f, text, edge)
+    local theme = GetTheme()
+    local Chrome = GetChrome()
+    local m = M()
+    local hasPlate = f.SetTitle and f.GetTitleText and f.TitleContainer
+    local header = addon.UI.SettingsPanel and addon.UI.SettingsPanel.HeaderModel
+    local model = header and header.title or {}
+    local titleSpec = Chrome.Spec("dialogTitle")
+    if titleSpec.kind == "texture" and titleSpec.texture then
+        local key = titleSpec.texture
+        model = { texture = (theme.Textures and theme.Textures[key]) or key, aspect = titleSpec.aspect or 1 }
+    end
+    if titleSpec.kind == "texture" and not model.texture then
+        titleSpec = Chrome.Resolve(titleSpec.fallback, { kind = "text" })
+    end
+    if titleSpec.kind == "window" and not hasPlate then
+        titleSpec = { kind = "text" }
+    end
+    if titleSpec.kind == "texture" then
+        if hasPlate then f:SetTitle("") end
+        -- Over the plate: the template's TitleContainer is a child at a
+        -- fixed level above its NineSlice, the level Window:GetOverlayLevel
+        -- answers. The modal frame has no such method; a step past the plate
+        -- clears both, and the flat kind has no plate to clear.
+        local art = CreateFrame("Frame", nil, f)
+        local over = f.TitleContainer and f.TitleContainer:GetFrameLevel()
+        if f.NineSlice then
+            over = math.max(over or 0, f.NineSlice:GetFrameLevel())
+        end
+        art:SetFrameLevel((over or f:GetFrameLevel()) + 1)
+        local height = titleSpec.height or 36
+        art:SetSize(titleSpec.width or (model.aspect and height * model.aspect) or 120, height)
+        art:SetPoint(titleSpec.point or "TOP", f, titleSpec.point or "TOP", titleSpec.x or 0, titleSpec.y or 0)
+        local tex = art:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints()
+        tex:SetTexture(model.texture)
+        if model.texCoord then
+            tex:SetTexCoord(unpack(model.texCoord))
+        end
+        f._titleArt = art
+    elseif titleSpec.kind == "window" then
+        f:SetTitle(text)
+        f._title = f:GetTitleText()
+    else
+        local title = f:CreateFontString(nil, "OVERLAY")
+        theme:ApplyFont(title, "header", m.titleFontSize)
+        title:SetPoint("TOPLEFT", f, "TOPLEFT", m.contentPadding + edge, -(m.titleTop + edge))
+        title:SetText(text)
+        title:SetTextColor(theme:GetAccentColor())
+        f._title = title
+        f._titleThemed = true
+    end
+end
+
 local function CreateDialogFrame()
     if dialogFrame then
         return dialogFrame, modalBackdrop
@@ -289,62 +351,7 @@ local function CreateDialogFrame()
     titleBar:SetScript("OnDragStart", function() f:StartMoving() end)
     titleBar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
 
-    -- The name on top, by the dialogTitle role. texture is an image drawn
-    -- over the border art in place of the plate's text: the skin's own
-    -- texture where the descriptor names one (a name in the skin's textures
-    -- table, or a path), else the image the product's HeaderModel names, the
-    -- one the title bar draws, at the model's aspect. A descriptor naming
-    -- nothing on a product with no image takes the fallback, the way the
-    -- title bar does. window is the template's own plate. text is a string
-    -- in the header role.
-    local hasPlate = f.SetTitle and f.GetTitleText and f.TitleContainer
-    local header = addon.UI.SettingsPanel and addon.UI.SettingsPanel.HeaderModel
-    local model = header and header.title or {}
-    local titleSpec = Chrome.Spec("dialogTitle")
-    if titleSpec.kind == "texture" and titleSpec.texture then
-        local key = titleSpec.texture
-        model = { texture = (theme.Textures and theme.Textures[key]) or key, aspect = titleSpec.aspect or 1 }
-    end
-    if titleSpec.kind == "texture" and not model.texture then
-        titleSpec = Chrome.Resolve(titleSpec.fallback, { kind = "text" })
-    end
-    if titleSpec.kind == "window" and not hasPlate then
-        titleSpec = { kind = "text" }
-    end
-    if titleSpec.kind == "texture" then
-        if hasPlate then f:SetTitle("") end
-        -- Over the plate: the template's TitleContainer is a child at a
-        -- fixed level above its NineSlice, the level Window:GetOverlayLevel
-        -- answers. This frame has no such method; a step past the plate
-        -- clears both, and the flat kind has no plate to clear.
-        local art = CreateFrame("Frame", nil, f)
-        local over = f.TitleContainer and f.TitleContainer:GetFrameLevel()
-        if f.NineSlice then
-            over = math.max(over or 0, f.NineSlice:GetFrameLevel())
-        end
-        art:SetFrameLevel((over or f:GetFrameLevel()) + 1)
-        local height = titleSpec.height or 36
-        art:SetSize(titleSpec.width or (model.aspect and height * model.aspect) or 120, height)
-        art:SetPoint(titleSpec.point or "TOP", f, titleSpec.point or "TOP", titleSpec.x or 0, titleSpec.y or 0)
-        local tex = art:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints()
-        tex:SetTexture(model.texture)
-        if model.texCoord then
-            tex:SetTexCoord(unpack(model.texCoord))
-        end
-        f._titleArt = art
-    elseif titleSpec.kind == "window" then
-        f:SetTitle(BRAND)
-        f._title = f:GetTitleText()
-    else
-        local title = f:CreateFontString(nil, "OVERLAY")
-        theme:ApplyFont(title, "header", m.titleFontSize)
-        title:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -(m.titleTop + edge))
-        title:SetText(BRAND)
-        title:SetTextColor(theme:GetAccentColor())
-        f._title = title
-        f._titleThemed = true
-    end
+    Controls.AddDialogTitle(f, BRAND, edge)
 
     local function cancel()
         f:Hide()
