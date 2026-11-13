@@ -66,6 +66,7 @@ local COMPONENT_TO_CATEGORY = {
     extraAbilities = "extraAbilities",
     -- Group Finder
     groupfinder = "groupfinder",
+    bags = "bags",
     -- Minimap
     minimapStyle = "minimap",
     -- Notes
@@ -100,6 +101,7 @@ end
 
 addon.MODULE_CATEGORY_ORDER = {
     "actionBars",
+    "bags",
     "bossWarnings",
     "buffsDebuffs",
     -- Not rendered on the Features page (hiddenFromFeatures) — it appears as a
@@ -138,6 +140,13 @@ addon.MODULE_CATEGORIES = {
             { id = "microBar", label = "Micro Bar", variant = "X" },
             { id = "petBar", label = "Pet Bar", variant = "X" },
             { id = "stanceBar", label = "Stance Bar", variant = "X" },
+        },
+    },
+    bags = {
+        label = "Bags",
+        info = {
+            title = "Bags",
+            text = "One bag window in place of Blizzard's: every bag on lines of its own, the reagent bag included. Hover an item for its delete button.",
         },
     },
     bossWarnings = {

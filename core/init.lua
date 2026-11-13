@@ -734,6 +734,7 @@ function addon:GetDefaults()
             },
             moduleEnabled = {
                 actionBars = false,
+                bags = false,
                 bossWarnings = false,
                 buffsDebuffs = false,
                 cooldownManager = false,
