@@ -6,8 +6,9 @@ local addonName, addon = ...
 -- client's binding set and never pass through saved variables. This file
 -- carries them out as one prefixed string, on the profile codec
 -- (addon.ImportExport), and back in, so a character on a fresh install gets
--- its keys without rebinding by hand. Nothing is stored: the page's two boxes
--- keep session text only.
+-- its keys without rebinding by hand. The string itself is not stored: the
+-- page's two boxes keep session text only. Named sets the player keeps are
+-- core/keybindprofiles.lua, on the same rows.
 --
 -- The string is a full snapshot, a row per command the client enumerates,
 -- keys absent where the command had none. An import makes every command the
@@ -70,6 +71,16 @@ local function currentSet()
     return nil
 end
 
+local function setToWrite()
+    return currentSet() or (Enum and Enum.BindingSet and Enum.BindingSet.Account) or 1
+end
+
+--- True when this character is on its own binding set.
+function Keybinds.IsCharacterSet()
+    local sets = Enum and Enum.BindingSet
+    return sets ~= nil and currentSet() == sets.Character
+end
+
 local function setName(set)
     local sets = Enum and Enum.BindingSet
     if sets and set == sets.Character then return "character" end
@@ -81,6 +92,8 @@ local function available()
     return type(GetNumBindings) == "function" and type(GetBinding) == "function"
         and type(GetBindingKey) == "function"
 end
+
+Keybinds.IsAvailable = available
 
 --------------------------------------------------------------------------------
 -- Export
@@ -164,6 +177,8 @@ local function knownActions()
     return known
 end
 
+Keybinds.KnownActions = knownActions
+
 -- Binds one slot. A false return is the client refusing the key, a name it
 -- does not know; Blizzard's listener puts the old key back, so this does the
 -- same while that key is still free.
@@ -225,10 +240,69 @@ function Keybinds.Apply(envelope)
     end
     local r = walk(envelope, true)
     if r.changed > 0 then
-        local set = currentSet() or (Enum and Enum.BindingSet and Enum.BindingSet.Account) or 1
-        SaveBindings(set)
+        SaveBindings(setToWrite())
     end
     return r
+end
+
+--------------------------------------------------------------------------------
+-- One command at a time
+--------------------------------------------------------------------------------
+-- The steps of Blizzard's KeybindListener, for a hover-and-press surface that
+-- stays off Blizzard's listener: a write from addon code to that frame's
+-- fields would taint its own Cancel path. Nothing here saves; the surface
+-- calls SaveCurrent or RevertCurrent when the player leaves.
+
+--- The chord a press makes with the modifiers held now, or nil for a press
+-- that binds nothing on its own, such as a bare Shift.
+function Keybinds.ChordFor(input)
+    local key = GetConvertedKeyOrButton(input)
+    if IsKeyPressIgnoredForBinding(key) then return nil end
+    return CreateKeyChordStringUsingMetaKeyState(key)
+end
+
+function Keybinds.KeysOf(action)
+    return currentKeys(action, contextFor(action))
+end
+
+--- Puts the chord in the command's first slot and keeps its second key.
+-- Returns false when the client refuses the chord, otherwise true and the
+-- command the chord was taken from, if any.
+function Keybinds.BindPrimary(action, chord)
+    local ctx = contextFor(action)
+    local k1, k2 = currentKeys(action, ctx)
+    local holder = GetBindingAction(chord, nil, ctx)
+    if k1 then SetBinding(k1, nil, ctx) end
+    if k2 then SetBinding(k2, nil, ctx) end
+    SetBinding(chord, nil, ctx)
+    if not SetBinding(chord, action, ctx) then
+        if k1 then SetBinding(k1, action, ctx) end
+        if k2 then SetBinding(k2, action, ctx) end
+        return false
+    end
+    if k2 and k2 ~= chord then SetBinding(k2, action, ctx) end
+    if holder == "" or holder == action then holder = nil end
+    return true, holder
+end
+
+--- Frees the command's first key; its second key moves up. False when the
+-- command had no key.
+function Keybinds.ClearPrimary(action)
+    local ctx = contextFor(action)
+    local k1, k2 = currentKeys(action, ctx)
+    if not k1 then return false end
+    SetBinding(k1, nil, ctx)
+    if k2 then SetBinding(k2, action, ctx) end
+    return true
+end
+
+function Keybinds.SaveCurrent()
+    SaveBindings(setToWrite())
+end
+
+--- Puts back the keys last saved to the current set.
+function Keybinds.RevertCurrent()
+    LoadBindings(setToWrite())
 end
 
 --------------------------------------------------------------------------------
@@ -266,18 +340,21 @@ function Keybinds.ConfirmText(envelope, preview)
         preview.changed, preview.unchanged, preview.unknown, setName(currentSet()))
 end
 
-function Keybinds.ResultText(envelope, r)
-    local text = string.format(
-        "Keybinds imported from %s.\n\nChanged: %d\nAlready matching: %d\nNot on this client: %d",
-        character(envelope), r.changed, r.unchanged, r.unknown)
-    if #r.failed > 0 then
-        text = text .. "\n\nCould not bind:"
-        for i = 1, math.min(#r.failed, FAILED_SHOWN) do
-            text = text .. "\n" .. r.failed[i]
-        end
-        if #r.failed > FAILED_SHOWN then
-            text = text .. "\nand " .. (#r.failed - FAILED_SHOWN) .. " more"
-        end
+--- The keys an apply could not bind, as text to append; empty when none failed.
+function Keybinds.FailedText(r)
+    if #r.failed == 0 then return "" end
+    local text = "\n\nCould not bind:"
+    for i = 1, math.min(#r.failed, FAILED_SHOWN) do
+        text = text .. "\n" .. r.failed[i]
+    end
+    if #r.failed > FAILED_SHOWN then
+        text = text .. "\nand " .. (#r.failed - FAILED_SHOWN) .. " more"
     end
     return text
+end
+
+function Keybinds.ResultText(envelope, r)
+    return string.format(
+        "Keybinds imported from %s.\n\nChanged: %d\nAlready matching: %d\nNot on this client: %d",
+        character(envelope), r.changed, r.unchanged, r.unknown) .. Keybinds.FailedText(r)
 end
