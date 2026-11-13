@@ -42,6 +42,7 @@ end
 
 local SCOPES = {
     tooltip = { prefixes = { "tooltip." } },
+    bags = { prefixes = { "bags." } },
     minimap = { prefixes = { "minimap." }, layouts = { "minimap" } },
     chatCustomize = { prefixes = { "chat." }, layouts = { "chat" } },
     objectiveTracker = {
@@ -74,6 +75,10 @@ local SCOPES = {
         paths = { "qol.animFood", "qol.animDrink", "qol.animCampfire" },
         layouts = { "qolAnimations" },
     },
+    -- The anchor and the shared look of the toasts, and the two features of
+    -- the Professions page with the tracker's spot.
+    qolNotifications = { prefixes = { "notifications." }, layouts = { "notifications" } },
+    qolProfessions = { prefixes = { "professions." }, layouts = { "professionsTracker" } },
     ufPlayer = unitScope("player"),
     ufTarget = unitScope("target"),
     ufFocus = unitScope("focus"),

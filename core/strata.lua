@@ -34,6 +34,7 @@
 --
 --     ~2   Cast Bar Z                      (inherited, no explicit call)
 --     10   UFZ unit frames                 unitframesz/engine.lua
+--     15   professions tracker             forever/professions/tracker.lua
 --     20   group aura icons                groupauras/icons.lua
 --     25   ScootAuras shells and groups    scootauras/engine.lua, groups.lua
 --     30   CDM Custom Group containers     cooldowns/customgroups/core.lua
@@ -41,6 +42,7 @@
 --     49   PRD bar background overlay      prd/bars.lua
 --     50   PRD bar foreground overlay      prd/bars.lua
 --     ~55  PRD border containers           (derived: foreground level + 5)
+--     80   notification toasts             forever/notifications/display.lua
 --     100  PRD number text overlay         prd/text.lua
 --     100  minimap darkening               minimap/overlay.lua
 --     200  minimap pin button              minimap/overlay.lua
