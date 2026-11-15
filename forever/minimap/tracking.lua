@@ -151,6 +151,11 @@ function Tracking.Apply()
     frame:Show()
 end
 
+--- The frame, for the mail indicator's dock position.
+function Tracking.Frame()
+    return frame
+end
+
 --- Lines for /camelot map.
 function Tracking.Describe(push)
     push("  tracking: position %s, hide %s, size %s, generator %s, rule off %s, shown %s",

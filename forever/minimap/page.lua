@@ -5,7 +5,7 @@
 -- Laid out after Scoot's page (ui/v2/settings/interface/MinimapRenderer.lua),
 -- so a setting both products have sits in the same section under the same
 -- label: Map Style, then Text with its Dock, Zone Text, Coordinates, Clock
--- and System Data tabs, then Buttons with its Tracking tab. Phase 2 adds
+-- and System Data tabs, then Buttons with its Tracking and Mail tabs. Phase 2 adds
 -- tabs to Buttons and the node-hunting overlay's section. Loads on retail too, where no holder is built: the controls still
 -- draw and write.
 --------------------------------------------------------------------------------
@@ -399,6 +399,7 @@ local function Render(panel, scrollContent)
             inner:AddTabbedSection({
                 tabs = {
                     { key = "tracking", label = "Tracking" },
+                    { key = "mail", label = "Mail" },
                 },
                 componentId = NAV_KEY,
                 sectionKey = "buttonsTabs",
@@ -430,6 +431,40 @@ local function Render(panel, scrollContent)
                                 range = OFFSET.range, minLabel = OFFSET.minLabel, maxLabel = OFFSET.maxLabel,
                                 get = function(axis) return getSetting(axis == "x" and "trackingOffsetX" or "trackingOffsetY") end,
                                 set = function(axis, v) Style.Set(axis == "x" and "trackingOffsetX" or "trackingOffsetY", v) end,
+                                apply = apply,
+                            })
+                        end
+                        tab:Finalize()
+                    end,
+
+                    mail = function(_, tab)
+                        tab:AddToggle({
+                            label = "Hide Mail",
+                            description = "The envelope shows while you have unread mail, and always in Edit Mode so you can see where it sits.",
+                            get = function() return getSetting("mailHide") == true end,
+                            set = function(v) setSetting("mailHide", v and true or false) end,
+                        })
+                        tab:AddSelector({
+                            label = "Position",
+                            values = POSITION.values, order = POSITION.order,
+                            get = function() return getSetting("mailPosition") or "dock" end,
+                            set = function(v)
+                                setSetting("mailPosition", v)
+                                rerender()
+                            end,
+                        })
+                        tab:AddSlider({
+                            label = "Size",
+                            min = 12, max = 32, step = 1,
+                            get = function() return tonumber(getSetting("mailSize")) or 20 end,
+                            set = function(v) setSetting("mailSize", v) end,
+                            minLabel = "12", maxLabel = "32",
+                        })
+                        if (getSetting("mailPosition") or "dock") ~= "dock" then
+                            tab:AddOffsetPair({
+                                range = OFFSET.range, minLabel = OFFSET.minLabel, maxLabel = OFFSET.maxLabel,
+                                get = function(axis) return getSetting(axis == "x" and "mailOffsetX" or "mailOffsetY") end,
+                                set = function(axis, v) Style.Set(axis == "x" and "mailOffsetX" or "mailOffsetY", v) end,
                                 apply = apply,
                             })
                         end

@@ -442,6 +442,7 @@ function Display.Build()
     Display.CaptureDefault()
     if MR.Text then MR.Text.Build(holder) end
     if MR.Tracking then MR.Tracking.Build(holder) end
+    if MR.Mail then MR.Mail.Build(holder) end
     wireEvents()
     built = true
 
@@ -540,6 +541,7 @@ function Display.Dump()
     existsLine(push, "ExpansionLandingPageMinimapButton", _G.ExpansionLandingPageMinimapButton)
     if MR.Text then MR.Text.Describe(push) end
     if MR.Tracking then MR.Tracking.Describe(push) end
+    if MR.Mail then MR.Mail.Describe(push) end
     if MR.Dynamic then push("  dynamic layouts: %s", MR.Dynamic.Describe()) end
     push("  blocked actions naming the map (%d):", #blocked)
     for _, line in ipairs(blocked) do push("    %s", line) end

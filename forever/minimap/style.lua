@@ -207,12 +207,22 @@ do
     set("systemDataOffsetY", 0)
 
     -- Tracking: the magnifying glass that opens Blizzard's tracking menu,
-    -- in the one free corner of the setup above
+    -- at the middle of the map's right edge. The top left corner overlapped
+    -- a long zone name (the owner's first look on the LG2, 13 November 2026).
     set("trackingHide", false)
-    set("trackingPosition", "TOPLEFT")    -- "dock" is Blizzard's spot left of the plate
+    set("trackingPosition", "RIGHT")      -- "dock" is Blizzard's spot left of the plate
     set("trackingSize", 20)
     set("trackingOffsetX", 0)
     set("trackingOffsetY", 0)
+
+    -- Mail: Blizzard's envelope while there is unread mail, under the
+    -- tracking button on the right edge. Both are 20 wide with the same
+    -- inset, so their centres line up; -22 leaves a few pixels between them.
+    set("mailHide", false)
+    set("mailPosition", "RIGHT")          -- "dock" is Blizzard's spot under the tracking button
+    set("mailSize", 20)
+    set("mailOffsetX", 0)
+    set("mailOffsetY", -22)
 
     DB.RegisterDefaults(map)
 
@@ -240,6 +250,8 @@ do
     blizzard("systemDataOffsetY", -18)
     blizzard("trackingPosition", "dock")
     blizzard("trackingSize", 17)
+    blizzard("mailPosition", "dock")
+    blizzard("mailOffsetY", 0)
     DB.RegisterStock(stock)
 end
 
@@ -334,6 +346,7 @@ function Style.Apply()
         Text.ApplySystemData()
     end
     if MR.Tracking then MR.Tracking.Apply() end
+    if MR.Mail then MR.Mail.Apply() end
     if MR.Dynamic then MR.Dynamic.Reassert() end
 end
 

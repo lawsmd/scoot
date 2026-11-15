@@ -483,7 +483,8 @@ forever/personalresourcedisplay/combopoints.lua [ExcludeLoadGameType standard]
 ## Blizzard's XML under Camelot names, scripts wired in Lua, so no mixin
 ## file; display.lua leases the widget, parks the cluster, applies the shape,
 ## size, border and header, and registers /camelot map; text.lua the zone
-## text, coordinates, clock and system data; editmode.lua the positionable
+## text, coordinates, clock and system data; tracking.lua and mail.lua the
+## tracking button and the mail indicator; editmode.lua the positionable
 ## and the dialog mirror; dynamic.lua the Dynamic Layouts adapter. Stands on
 ## nativeframe, events, petbattle, colors, fonts, borders, catalogs,
 ## editmode/positionables, dynamiclayouts/engine, forever/db.lua,
@@ -493,6 +494,7 @@ forever/minimap/frames.xml [ExcludeLoadGameType standard]
 forever/minimap/display.lua [ExcludeLoadGameType standard]
 forever/minimap/text.lua [ExcludeLoadGameType standard]
 forever/minimap/tracking.lua [ExcludeLoadGameType standard]
+forever/minimap/mail.lua [ExcludeLoadGameType standard]
 forever/minimap/editmode.lua [ExcludeLoadGameType standard]
 forever/minimap/dynamic.lua [ExcludeLoadGameType standard]
 
