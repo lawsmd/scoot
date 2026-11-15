@@ -88,6 +88,93 @@ function Gamepad.IsActive()
     return Gamepad.IsLayoutActive() or Gamepad.IsUIEnabled()
 end
 
+--------------------------------------------------------------------------------
+-- The shoulder modifiers
+--------------------------------------------------------------------------------
+-- Four hidden bindings in the gamepad core context hold the modifiers
+-- (blizzard_gamepad_bindings.xml): the cross bar pair, GAMEPADLEFTMOD and
+-- GAMEPADRIGHTMOD, which pick the active bar, and the targeting pair, which
+-- raise the friendly and hostile targeting bars and, both held, HUD mode.
+-- Each is read as Blizzard's own GamepadMode.IsBindingDown reads it,
+-- IsKeyDown over every key the binding holds, so a rebound shoulder still
+-- counts. Nothing is registered into GamepadMode's modifier callbacks (the
+-- gamepad rules); the targeting pair's latch under GamepadHudModifierUsesToggle
+-- is read off GamepadMode's two getters, which only return its locals.
+
+local MODIFIER_BINDINGS = {
+    { binding = "GAMEPADLEFTMOD", name = "left cross bar" },
+    { binding = "GAMEPADRIGHTMOD", name = "right cross bar" },
+    { binding = "GAMEPADLEFTTARGETMODIFIER", name = "left targeting" },
+    { binding = "GAMEPADRIGHTTARGETMODIFIER", name = "right targeting" },
+}
+
+-- The keys per binding, read once and again on UPDATE_BINDINGS, since a
+-- caller may ask every frame.
+local modifierKeys
+
+local function readModifierKeys()
+    modifierKeys = {}
+    if type(GetBindingKey) ~= "function" then return end
+    for i, entry in ipairs(MODIFIER_BINDINGS) do
+        modifierKeys[i] = { GetBindingKey(entry.binding, 1) }
+    end
+end
+
+addon.Events.On(OWNER .. "Modifiers", "UPDATE_BINDINGS", function()
+    modifierKeys = nil
+end)
+
+local function bindingDown(i)
+    if type(IsKeyDown) ~= "function" then return false end
+    for _, key in ipairs(modifierKeys[i] or {}) do
+        if IsKeyDown(key) then return true end
+    end
+    return false
+end
+
+local function latched()
+    local mode = GamepadMode
+    if type(mode) ~= "table" then return false end
+    if type(mode.IsTargetingModifierDown) == "function" and mode.IsTargetingModifierDown() == true then
+        return true
+    end
+    return type(mode.IsHUDBindingModifierDown) == "function" and mode.IsHUDBindingModifierDown() == true
+end
+
+--- True while any shoulder modifier of the gamepad UI is held, or a
+--- targeting modifier is latched in toggle mode. Allocates nothing once the
+--- keys are read, for a caller that asks every frame.
+function Gamepad.ModifierDown()
+    if not modifierKeys then readModifierKeys() end
+    for i = 1, #MODIFIER_BINDINGS do
+        if bindingDown(i) then return true end
+    end
+    return latched()
+end
+
+--- The held modifiers by name, for reports.
+function Gamepad.HeldModifiers()
+    if not modifierKeys then readModifierKeys() end
+    local held = {}
+    for i, entry in ipairs(MODIFIER_BINDINGS) do
+        if bindingDown(i) then held[#held + 1] = entry.name end
+    end
+    if latched() then held[#held + 1] = "targeting latch" end
+    return held
+end
+
+--- Lines for /camelot gamepad: each modifier binding's keys and state.
+local function reportModifiers(push)
+    if not modifierKeys then readModifierKeys() end
+    push("Shoulder modifiers:")
+    for i, entry in ipairs(MODIFIER_BINDINGS) do
+        local keys = modifierKeys[i] or {}
+        push("  %-28s %-24s %s", entry.binding, #keys > 0 and table.concat(keys, ", ") or "(unbound)",
+            bindingDown(i) and "DOWN" or "up")
+    end
+    push("  targeting latch            %s", latched() and "on" or "off")
+end
+
 -- A preset's style by its client name, matched without case, remembered
 -- once the preset list has been read: DB.StartingPoint reads it per
 -- positionable, and the list is a copy of three layouts of fifty systems on
@@ -266,6 +353,8 @@ addon:RegisterSlashCommand({
         else
             push("Last transition: none this session")
         end
+        push("")
+        reportModifiers(push)
         push("")
         Gamepad.ReportManagers(push)
         addon.DebugShowWindow("Camelot gamepad", lines)

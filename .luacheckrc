@@ -587,7 +587,7 @@ files["forever/actionbars/compact.lua"] = {
 }
 files["forever/gamepad.lua"] = {
     read_globals = { "InputUtil", "GamepadMode", "GamepadSharedUtility", "GamepadMainActionBarFrame",
-        "issecurevariable" },
+        "issecurevariable", "IsKeyDown" },
 }
 files["forever/actionbars/suppression.lua"] = {
     read_globals = { "MainActionBar" },

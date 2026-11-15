@@ -17,7 +17,9 @@
 -- fifth, menuOpen, fixed, whose clearing never waits, reads true while the game
 -- menu, Blizzard's settings window, this addon's menu or Keybind Mode's window
 -- is shown. A sixth, spellbookOpen, the
--- same again since 20 October 2026, reads true while a spellbook is open.
+-- same again since 20 October 2026, reads true while a spellbook is open. A
+-- seventh, modifierHeld, fixed and waiting since 13 November 2026, reads true
+-- while a shoulder modifier of Forever's gamepad UI is held.
 --
 -- Two lanes, 19 October 2026: the main answer every frame follows, and a
 -- wide one that also counts a friendly unit target (friendlyUnit) while the
@@ -80,10 +82,20 @@ local function attackableNPCsOnly()
     return fn() ~= false
 end
 
+-- The soft enemy the client picks by facing, Forever's gamepad targeting: an
+-- attackable unit, players included, the two reads Blizzard's gamepad bar
+-- makes before it attacks one. The unit never exists with soft targeting off.
+local function probeSoftEnemy()
+    if not plainTrue(pcall(UnitExists, "softenemy")) then return false end
+    return plainTrue(pcall(UnitCanAttack, "player", "softenemy"))
+end
+
 -- Any target, or, under the rule, an NPC the player can attack: what the
 -- client colors yellow or red. A player never counts under it, as the
--- panel's checkbox says.
+-- panel's checkbox says. A soft enemy counts ahead of the rule, which governs
+-- the hard target alone.
 local function probeTargetAcquired()
+    if probeSoftEnemy() then return true end
     if not plainTrue(pcall(UnitExists, "target")) then return false end
     if not attackableNPCsOnly() then return true end
     if plainTrue(pcall(UnitIsPlayer, "target")) then return false end
@@ -173,6 +185,21 @@ local function probeSpellbookOpen()
     return shown(a) or shown(b) or shown(c)
 end
 
+-- A shoulder modifier of Forever's gamepad UI is held, the owner's call of
+-- 13 November 2026: a held LT, RT, LB or RB means the player is about to
+-- press an action or reach an item, so the whole layout comes back, and the
+-- release waits out the delay so a tap does not flash it. The read is
+-- addon.Gamepad's (forever/gamepad.lua); the watcher below arms on its
+-- changes and runs only while the gamepad is active, so the probe answers
+-- false on the keyboard client and wherever addon.Gamepad is absent.
+local modifierWatching = false
+
+local function probeModifierHeld()
+    if not modifierWatching then return false end
+    local Gamepad = addon.Gamepad
+    return Gamepad ~= nil and Gamepad.ModifierDown() == true
+end
+
 -- Ordered so the display and the resolution walk the triggers the same way.
 -- A fixed trigger is always enabled: no checkbox, no mask key, no verb. A
 -- noWait trigger's clearing skips the delay. A wide trigger counts in the
@@ -184,7 +211,8 @@ local TRIGGERS = {
     { name = "holdingAction",  probe = probeHoldingAction, fixed = true },
     { name = "menuOpen",       probe = probeMenuOpen, fixed = true, noWait = true },
     { name = "spellbookOpen",  probe = probeSpellbookOpen, fixed = true, noWait = true },
-    { name = "friendlyUnit",    probe = probeFriendlyUnit, fixed = true, wide = true },
+    { name = "modifierHeld",   probe = probeModifierHeld, fixed = true },
+    { name = "friendlyUnit",   probe = probeFriendlyUnit, fixed = true, wide = true },
 }
 
 local triggerByLower, fixedTrigger, wideTrigger = {}, {}, {}
@@ -207,7 +235,8 @@ local suspendedResolves = 0
 
 local enabled = {
     inCombat = true, targetAcquired = true, insideInstance = true,
-    holdingAction = true, menuOpen = true, spellbookOpen = true, friendlyUnit = true,
+    holdingAction = true, menuOpen = true, spellbookOpen = true, modifierHeld = true,
+    friendlyUnit = true,
 }
 
 local last = {}     -- per trigger: value, flippedAt, flippedWall
@@ -497,6 +526,8 @@ local EVENTS = {
     "PLAYER_REGEN_DISABLED",
     "PLAYER_REGEN_ENABLED",
     "PLAYER_TARGET_CHANGED",
+    -- The soft enemy gained, swapped or lost (probeSoftEnemy).
+    "PLAYER_SOFT_ENEMY_CHANGED",
     "PLAYER_ENTERING_WORLD",
     -- Registered beside PLAYER_ENTERING_WORLD to measure which of the two
     -- delivers instance edges; the loser drops once the log answers it.
@@ -579,6 +610,52 @@ end
 if SPELLCOLLECTION and _G.MultiActionBar_ShowAllGrids and _G.MultiActionBar_HideAllGrids then
     hooksecurefunc("MultiActionBar_ShowAllGrids", onBookGrid(true))
     hooksecurefunc("MultiActionBar_HideAllGrids", onBookGrid(false))
+end
+
+-- The shoulder modifiers' watcher (modifierHeld). A modifier is a binding in
+-- the gamepad core context, and no client event fires for its press or its
+-- release: MODIFIER_STATE_CHANGED covers Shift, Ctrl and Alt alone, and
+-- Blizzard hears these through GamepadMode's own callback registry, which
+-- the gamepad rules keep closed to Camelot. So a frame of Camelot's reads the
+-- keys each frame and arms a resolution only when the answer changes. It is
+-- shown only while addon.Gamepad.IsActive(), read at the world entry and on
+-- every interface transition, so the keyboard client runs nothing.
+local modifierSeen = false
+local modifierWatcher
+
+local function watchModifiers()
+    local Gamepad = addon.Gamepad
+    local down = Gamepad.ModifierDown() == true
+    if down ~= modifierSeen then
+        modifierSeen = down
+        onEvent(down and "MODIFIER_DOWN" or "MODIFIER_UP")
+    end
+end
+
+local function setModifierWatch(on)
+    if on == modifierWatching then return end
+    modifierWatching = on
+    if not modifierWatcher then
+        modifierWatcher = CreateFrame("Frame")
+        modifierWatcher:Hide()
+        modifierWatcher:SetScript("OnUpdate", watchModifiers)
+    end
+    modifierWatcher:SetShown(on)
+    if not on and modifierSeen then
+        -- A modifier held across the switch reads false from here on.
+        modifierSeen = false
+        onEvent("MODIFIER_UP")
+    end
+end
+
+local function refreshModifierWatch()
+    local Gamepad = addon.Gamepad
+    setModifierWatch(Gamepad ~= nil and Gamepad.IsActive() == true)
+end
+
+addon.Events.On(OWNER .. "Modifiers", "PLAYER_ENTERING_WORLD", refreshModifierWatch)
+if addon.Gamepad and addon.Gamepad.OnChange then
+    addon.Gamepad.OnChange(OWNER .. "Modifiers", refreshModifierWatch)
 end
 
 local brandMenuHooked = false
@@ -763,6 +840,13 @@ local function formatValues(record)
     return table.concat(parts, "  ")
 end
 
+-- The modifier row's tail: the watcher off, or the held modifiers by name.
+local function modifierExtra()
+    if not modifierWatching then return "  watcher off (no gamepad)" end
+    local held = addon.Gamepad.HeldModifiers()
+    return #held > 0 and ("  held: " .. table.concat(held, ", ")) or "  watching"
+end
+
 local function showWindow()
     local lines, push = addon.DebugLines("=== Camelot dynamic layouts ===", "")
     for _, lane in ipairs(LANES) do
@@ -789,7 +873,9 @@ local function showWindow()
             wideTrigger[name] and "wide" or (fixedTrigger[name] and "fixed" or (enabled[name] and "on" or "OFF")),
             record and tostring(record.value) or "unread",
             flip,
-            (name == "targetAcquired" and attackableNPCsOnly()) and "  attackable NPCs only" or "")
+            name == "targetAcquired"
+                and ((attackableNPCsOnly() and "  attackable NPCs only" or "") .. (probeSoftEnemy() and "  soft enemy" or ""))
+                or (name == "modifierHeld" and modifierExtra() or ""))
     end
     push("")
     push("events")
