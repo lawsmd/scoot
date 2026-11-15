@@ -248,7 +248,16 @@ local suppressed = false
 function OT.ApplySuppression()
     if suppressed or not OT.IsEnabled() then return end
     if not (ObjectiveTrackerFrame and addon.NativeFrame) then return end
-    addon.NativeFrame:Suppress(ObjectiveTrackerFrame, OWNER, "park")
+    -- Hidden as well as parked: the park leaves the frame's own shown flag
+    -- on, and under the gamepad UI the shortcuts bar's d-pad up asks only
+    -- IsShown() before it hands the frame to the frame controls manager
+    -- (ShortcutsActionBar.lua, SetUpDpadTop). The tracker then closes itself
+    -- for want of quest blocks (OnSmartNavFocus) and FrameShown asserts on a
+    -- focused frame it no longer tracks. No event shows this frame, so the
+    -- quiet entry names none.
+    addon.NativeFrame:Suppress(ObjectiveTrackerFrame, OWNER, "park", {
+        { frame = ObjectiveTrackerFrame, events = {}, hide = true },
+    })
     suppressed = true
 end
 
