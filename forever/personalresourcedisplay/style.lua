@@ -158,6 +158,9 @@ do
     map[Style.Path("enabled")] = true
     map[Style.Path("visibility")] = "always"
     map[Style.Path("scale")] = Style.SCALE.default
+    -- A gamepad layout starts at 120, the owner's, 13 November 2026: read
+    -- from the couch.
+    DB.RegisterGamepad({ [Style.Path("scale")] = 120 })
     map[Style.Path("barWidth")] = Style.BAR_WIDTH.default
     -- The owner's 10; Blizzard's preset is 0.
     map[Style.Path("padding")] = 10

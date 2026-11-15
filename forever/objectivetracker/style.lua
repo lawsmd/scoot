@@ -174,6 +174,9 @@ do
     map[Style.PanePath(cards, "spacing")] = Style.CARD_SPACING.default
     map[Style.PanePath(cards, "maxCards")] = Style.CARD_MAX.default
     map[Style.PanePath(cards, "scale")] = Style.SCALE.default
+    -- A gamepad layout starts the cards at 120 percent, the owner's, 13
+    -- November 2026: read from the couch.
+    DB.RegisterGamepad({ [Style.PanePath(cards, "scale")] = 1.2 })
     map[Style.PanePath(cards, "opacity")] = 100
     map[Style.PanePath(cards, "titleSize")] = Style.CARD_TITLE_SIZE.default
     map[Style.PanePath(cards, "objectiveSize")] = Style.CARD_OBJECTIVE_SIZE.default

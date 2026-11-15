@@ -69,11 +69,16 @@ do
         -- on the settings page once there is one.
         ["unitFrames.borderStyle"] = "tint",
     }
+    -- A gamepad layout starts every frame at 120 percent, the owner's,
+    -- 13 November 2026: read from the couch. The key is a fraction.
+    local gamepad = {}
     for _, key in ipairs(UF.ORDER) do
         map["unitFrames." .. key .. ".enabled"] = true
         map["unitFrames." .. key .. ".scale"] = 1
+        gamepad["unitFrames." .. key .. ".scale"] = 1.2
     end
     DB.RegisterDefaults(map)
+    DB.RegisterGamepad(gamepad)
     -- The Modern start: no bar numbers. The Classic start's are the Classic
     -- style's own (settings.lua), on mouseover, and its silver too (art.lua,
     -- Art.ApplyBorder), so that start leaves both module keys alone.
@@ -953,4 +958,15 @@ addon.Events.OnWorldEntered(function()
         exit = onEditModeExit,
     })
     UF.ApplyAll()
+    -- The gamepad layer's scale reaches a profile made before it at the
+    -- login pass (startingpoints.lua), which runs after this queue; a frame
+    -- later each scale lands again, a no-op when nothing was written.
+    C_Timer.After(0, function()
+        for _, key in ipairs(UF.ORDER) do
+            local inst = UF.Frames[key]
+            if inst and math.abs(inst.frame:GetScale() - UF.GetScale(key)) > 0.001 then
+                UF.ApplyScale(key)
+            end
+        end
+    end)
 end)

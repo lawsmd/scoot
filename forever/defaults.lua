@@ -72,7 +72,7 @@ local SCOPES = {
         shared = "the place of the error and quest text, which Current Objectives shares",
     },
     qolAnimations = {
-        paths = { "qol.animFood", "qol.animDrink", "qol.animCampfire" },
+        paths = { "qol.animFood", "qol.animDrink", "qol.animCampfire", "qol.animScale" },
         layouts = { "qolAnimations" },
     },
     -- The anchor and the shared look of the toasts, and the two features of
@@ -118,6 +118,7 @@ local SCOPES = {
     },
     actionBarGamepad = {
         prefixes = { "actionBars.gamepad.", "actionBars.visibility.gamepadBar." },
+        layouts = { "gamepadBar" },
     },
 }
 
@@ -184,6 +185,14 @@ function PageDefaults.Reset(navKey, which)
             local doc = DB.PresetDocument(which, key)
             if doc then DB.SetDocument(key, doc) end
         end
+    end
+    -- A gamepad layout starts with the gamepad layer over every start, so a
+    -- reset there lands on it too (DB.RegisterGamepad).
+    local gamepad = addon.Gamepad
+    if gamepad and gamepad.IsLayoutActive and gamepad.IsLayoutActive() then
+        DB.EachGamepad(function(path, value)
+            if inScope(scope, path) then DB.Set(path, value) end
+        end)
     end
 
     local SP = addon.StartingPoints

@@ -272,6 +272,31 @@ function DB.EachPresetDocument(name, fn)
     for key in pairs(docs) do fn(key) end
 end
 
+-- The gamepad layer: values a gamepad layout starts with over whatever its
+-- start writes. The start says which look; the layer says the player sits
+-- back from the screen with a controller. Keyed on the layout's
+-- interfaceStyle, never on the start, so Forever's gamepad preset, a copy of
+-- it and a New Layout made under the gamepad UI all take it
+-- (StartingPoints.SeedGamepad in forever/startingpoints.lua).
+local gamepadLayer = {}
+
+function DB.RegisterGamepad(map)
+    if type(map) ~= "table" then return false end
+    for path, value in pairs(map) do
+        if type(path) == "string" then gamepadLayer[path] = value end
+    end
+    return true
+end
+
+function DB.Gamepad(path)
+    return gamepadLayer[path]
+end
+
+--- Every path and value in the gamepad layer, in no order.
+function DB.EachGamepad(fn)
+    for path, value in pairs(gamepadLayer) do fn(path, value) end
+end
+
 --------------------------------------------------------------------------------
 -- Initialization
 --------------------------------------------------------------------------------

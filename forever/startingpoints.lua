@@ -343,6 +343,65 @@ local function wipeProfile(profile)
     DB.EnsureContainers(profile)
 end
 
+--------------------------------------------------------------------------------
+-- The gamepad layer
+--------------------------------------------------------------------------------
+-- A gamepad layout's profile takes DB.RegisterGamepad's values over its
+-- start's. `gamepadSeeded` records every layer path written into a profile,
+-- so each is written once: a value the player stored stays, and one the
+-- player cleared back to the default is not written again at the next login.
+
+--- Writes the layer's paths the profile has not taken yet. True when a value
+--- was written.
+function StartingPoints.SeedGamepad(profile)
+    if type(profile) ~= "table" then return false end
+    DB.EnsureContainers(profile)
+    local done = type(profile.gamepadSeeded) == "table" and profile.gamepadSeeded or {}
+    local wrote = false
+    DB.EachGamepad(function(path, value)
+        if done[path] then return end
+        if profile.settings[path] == nil then
+            profile.settings[path] = copyValue(value)
+            wrote = true
+        end
+        done[path] = true
+    end)
+    profile.gamepadSeeded = done
+    return wrote
+end
+
+-- Every layout the client knows, presets first: name -> info table.
+local function layoutsByName()
+    local byName = {}
+    for _, layout in ipairs(presetLayouts()) do
+        if type(layout.layoutName) == "string" then byName[layout.layoutName] = layout end
+    end
+    local ok, info = pcall(function() return C_EditMode.GetLayouts() end)
+    local saved = ok and type(info) == "table" and type(info.layouts) == "table" and info.layouts or {}
+    for _, layout in ipairs(saved) do
+        if type(layout.layoutName) == "string" then byName[layout.layoutName] = layout end
+    end
+    return byName
+end
+
+local function isGamepadLayout(info)
+    local gamepad = addon.Gamepad
+    return gamepad and gamepad.LayoutStyle and gamepad.LayoutStyle(info) == "gamepad" or false
+end
+
+-- A new profile's layout: its own style when the client already lists it,
+-- else where it came from. Blizzard's New Layout copies the active layout,
+-- which under the gamepad UI is always a gamepad one.
+local function createdForGamepad(name, origin)
+    local info = layoutsByName()[name]
+    if info then return isGamepadLayout(info) end
+    local gamepad = addon.Gamepad
+    if not gamepad then return false end
+    if origin.kind == "preset" then return gamepad.IsPresetGamepad(origin.preset) end
+    if origin.kind == "new" then return gamepad.IsActive() end
+    return false
+end
+
 -- Modern and Classic start as Camelot (the owner's call, 4 November 2026); the
 -- gamepad preset keeps Classic's set and spots.
 local function presetStartsCamelot(name)
@@ -379,6 +438,9 @@ Profiles.RegisterCreateHook("camelot", function(name, origin, profile)
     elseif origin.kind == "preset" then
         wipeProfile(profile)
         StartingPoints.Seed(profile, StartingPoints.PresetName(origin.preset) or origin.preset, true)
+    end
+    if (origin.kind == "new" or origin.kind == "preset") and createdForGamepad(name, origin) then
+        StartingPoints.SeedGamepad(profile)
     end
 end)
 
@@ -442,6 +504,14 @@ addon.Events.On("StartingPoints", "PLAYER_ENTERING_WORLD", function()
             -- stores what it is given, so an absent path is one the player
             -- never set, and without this it would read Camelot's default.
             StartingPoints.Seed(profile, start, false)
+        end
+    end
+    -- The gamepad layer, into every gamepad layout's profile that has not
+    -- taken a path of it yet: one made before the layer, or before the path.
+    for layoutName, info in pairs(layoutsByName()) do
+        local profile = profiles[layoutName]
+        if type(profile) == "table" and isGamepadLayout(info) then
+            StartingPoints.SeedGamepad(profile)
         end
     end
     if seeded then StartingPoints.SyncAll() end
