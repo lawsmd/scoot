@@ -126,7 +126,9 @@ end
 
 --- Put the button on a cell that holds an item it can delete. Coming back to
 --- the armed cell from its button keeps the step.
-function Delete.Attach(cell)
+--- over: a frame of a higher strata lying on the cell (the Pick Lock overlay);
+--- the button goes over it, so it still takes the mouse.
+function Delete.Attach(cell, over)
     if Bags.Get("showDelete") == false then return end
     local link, info = ItemLink(cell)
     if not info or info.isLocked then
@@ -137,7 +139,13 @@ function Delete.Attach(cell)
     if cell ~= target or link ~= armed then armed = nil end
     target = cell
     button:SetParent(cell)
-    button:SetFrameLevel(cell:GetFrameLevel() + 5)
+    if over then
+        button:SetFrameStrata(over:GetFrameStrata())
+        button:SetFrameLevel(over:GetFrameLevel() + 5)
+    else
+        button:SetFrameStrata(cell:GetFrameStrata())
+        button:SetFrameLevel(cell:GetFrameLevel() + 5)
+    end
     button:ClearAllPoints()
     button:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 3, 3)
     button._wash:ClearAllPoints()

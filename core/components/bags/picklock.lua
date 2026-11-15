@@ -30,8 +30,14 @@ local MISC_CLASS = (Enum.ItemClass and Enum.ItemClass.Miscellaneous) or 15
 local holder
 local pool
 local active = {}
+local lastClick     -- text, for the report
 
+-- IsPlayerSpell is a deprecation fallback, defined only under the
+-- loadDeprecationFallbacks CVar, so C_SpellBook is asked first.
 local function Known()
+    if C_SpellBook and C_SpellBook.IsSpellKnown then
+        return C_SpellBook.IsSpellKnown(SPELL_ID) and true or false
+    end
     return IsPlayerSpell and IsPlayerSpell(SPELL_ID) or false
 end
 
@@ -58,12 +64,32 @@ local function CreateOverlay()
     -- pcall: on a client that restricts the call, the overlay keeps the left
     -- click and the box cannot be picked up while it is locked.
     pcall(b.SetPassThroughButtons, b, "LeftButton")
+    -- The box may have been picked since the overlay was placed, and the scan
+    -- that removes the overlay may not have run yet. Before Blizzard's handler
+    -- reads the attributes, the click is set to cast on a box still locked
+    -- and to use the item otherwise, which opens a picked box.
+    b:SetScript("PreClick", function(self)
+        if InCombatLockdown() then return end
+        local bag, slot = self:GetAttribute("target-bag"), self:GetAttribute("target-slot")
+        if not (bag and slot) then return end
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        local want = IsLockedBox(bag, slot, info) and "spell" or "item"
+        if self:GetAttribute("type2") ~= want then self:SetAttribute("type2", want) end
+    end)
+    -- For the report: the last click an overlay took, and whether the spell
+    -- was waiting for a target after Blizzard's handler ran.
+    b:HookScript("OnClick", function(self, button, down)
+        lastClick = string.format("%s down=%s on bag %s slot %s, spell targeting after: %s",
+            tostring(button), tostring(down),
+            tostring(self:GetAttribute("target-bag")), tostring(self:GetAttribute("target-slot")),
+            tostring(_G.SpellIsTargeting and _G.SpellIsTargeting()))
+    end)
     b:SetScript("OnEnter", function(self)
         local cell = self.cell
         if not cell then return end
         local onEnter = cell:GetScript("OnEnter")
         if onEnter then onEnter(cell) end
-        if Bags.Delete then Bags.Delete.Attach(cell) end
+        if Bags.Delete then Bags.Delete.Attach(cell, self) end
     end)
     b:SetScript("OnLeave", function(self)
         local cell = self.cell
@@ -86,7 +112,12 @@ local function EnsureHolder()
     if holder then return end
     holder = CreateFrame("Frame", addon.Brand .. "BagPickLock", UIParent)
     holder:SetAllPoints(UIParent)
-    holder:SetFrameStrata("MEDIUM")
+    -- One strata over the window. The window is toplevel, and the client
+    -- orders a toplevel window and its children as one group against the other
+    -- frames of its strata, whatever their levels: measured on 15 November, an
+    -- overlay at level 12 in the window's strata lost the mouse to its cell at
+    -- level 10.
+    holder:SetFrameStrata("HIGH")
     holder:Hide()
     pool = addon.Pool.New(CreateOverlay, ResetOverlay)
 end
@@ -117,8 +148,9 @@ local function Place()
             b.cell = cell
             b:SetAttribute("target-bag", bag)
             b:SetAttribute("target-slot", slot)
+            b:SetAttribute("type2", "spell")
+            b:SetAttribute("item2", bag .. " " .. slot)
             b:SetAllPoints(cell)
-            b:SetFrameLevel(cell:GetFrameLevel() + 2)
             b:Show()
             active[#active + 1] = b
         end
@@ -153,3 +185,102 @@ end)
 addon.Events.On("Bags.pickLock", "SPELLS_CHANGED", function()
     if Bags.active then PickLock.Queue() end
 end)
+
+-- A finished Pick Lock: scan again so the picked box loses its overlay. Twice
+-- more after it, in case the item's tooltip data trails the cast.
+addon.Events.On("Bags.pickLock", "UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
+    if unit ~= "player" or not Bags.active then return end
+    if type(spellID) ~= "number" or issecretvalue(spellID) or spellID ~= SPELL_ID then return end
+    PickLock.Queue()
+    C_Timer.After(0.3, PickLock.Queue)
+    C_Timer.After(1, PickLock.Queue)
+end)
+
+--------------------------------------------------------------------------------
+-- Report
+--------------------------------------------------------------------------------
+
+local function Report()
+    if not addon.DebugLines then return end
+    local lines, push = addon.DebugLines("=== Bags: Pick Lock ===", "")
+    local book = C_SpellBook
+    push("build: %s", tostring((select(1, GetBuildInfo()))))
+    push("in combat: %s", tostring(InCombatLockdown()))
+    push("C_SpellBook.IsSpellKnown(%d): %s", SPELL_ID,
+        tostring(book and book.IsSpellKnown and book.IsSpellKnown(SPELL_ID)))
+    push("IsPlayerSpell: %s", IsPlayerSpell and tostring(IsPlayerSpell(SPELL_ID)) or "not defined")
+    push("spell name: %s", tostring(C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(SPELL_ID)))
+    push("Known(): %s", tostring(Known()))
+    push("LOCKED: %q", tostring(LOCKED))
+    push("C_TooltipInfo.GetBagItem: %s", tostring(C_TooltipInfo ~= nil and C_TooltipInfo.GetBagItem ~= nil))
+    push("feature running: %s, adopted (gamepad): %s", tostring(Bags.active or false), tostring(Bags.adopted or false))
+
+    local window = Bags.Window.IsBuilt() and Bags.Window.Frame()
+    if window then
+        push("window: shown %s, strata %s, level %d, protected %s", tostring(window:IsShown()),
+            window:GetFrameStrata(), window:GetFrameLevel(), tostring((window:IsProtected())))
+    else
+        push("window: not built")
+    end
+    if holder then
+        push("holder: shown %s, visible %s, strata %s, level %d", tostring(holder:IsShown()),
+            tostring(holder:IsVisible()), holder:GetFrameStrata(), holder:GetFrameLevel())
+    else
+        push("holder: not built (Place never ran)")
+    end
+
+    push("")
+    push("Items whose tooltip has a line holding the LOCKED text:")
+    local found = 0
+    local needle = type(LOCKED) == "string" and LOCKED:lower() or "locked"
+    Bags.Cells.Each(function(_, bag, slot)
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        if not (info and info.itemID and C_TooltipInfo and C_TooltipInfo.GetBagItem) then return end
+        local data = C_TooltipInfo.GetBagItem(bag, slot)
+        for i, line in ipairs(data and data.lines or {}) do
+            local text = line.leftText
+            if type(text) == "string" and text:lower():find(needle, 1, true) then
+                found = found + 1
+                local classID, subID = select(6, C_Item.GetItemInfoInstant(info.itemID))
+                push("  bag %d slot %d item %d class %s/%s: line %d %q (type %s) -> IsLockedBox %s",
+                    bag, slot, info.itemID, tostring(classID), tostring(subID), i, text,
+                    tostring(line.type), tostring(IsLockedBox(bag, slot, info)))
+            end
+        end
+    end)
+    if found == 0 then push("  none") end
+
+    push("")
+    push("Overlays placed: %d", #active)
+    for _, b in ipairs(active) do
+        local cell = b.cell
+        push("  bag %s slot %s: shown %s, visible %s, strata %s, level %d, mouse %s, %dx%d, type2 %s spell2 %s",
+            tostring(b:GetAttribute("target-bag")), tostring(b:GetAttribute("target-slot")),
+            tostring(b:IsShown()), tostring(b:IsVisible()), b:GetFrameStrata(), b:GetFrameLevel(),
+            tostring(b:IsMouseEnabled()), b:GetWidth() or 0, b:GetHeight() or 0,
+            tostring(b:GetAttribute("type2")), tostring(b:GetAttribute("spell2")))
+        if cell then
+            push("    its cell %s: strata %s, level %d, visible %s", cell:GetName() or "?",
+                cell:GetFrameStrata(), cell:GetFrameLevel(), tostring(cell:IsVisible()))
+        end
+    end
+
+    push("")
+    push("Under the mouse now:")
+    for _, f in ipairs(GetMouseFoci and GetMouseFoci() or {}) do
+        local isOverlay = false
+        for _, b in ipairs(active) do
+            if b == f then isOverlay = true end
+        end
+        push("  %s%s", f.GetDebugName and f:GetDebugName() or tostring(f), isOverlay and " (an overlay)" or "")
+    end
+    push("")
+    push("Last click an overlay took: %s", lastClick or "none")
+    addon.DebugShowWindow("Bags: Pick Lock", lines)
+end
+
+addon:RegisterDebugCommand({
+    name = "picklock",
+    help = "Bags: why a right-click on a lockbox does or does not cast Pick Lock",
+    handler = Report,
+})
