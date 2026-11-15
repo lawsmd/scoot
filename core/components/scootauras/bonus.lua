@@ -6,13 +6,21 @@
 -- settings page and both nav models read, so a host without what an aura
 -- needs shows neither the aura nor an empty page.
 --
--- All Cooldowns, the first: one group of icons, a cell per class ability
--- that is cooling, shown while the Dynamic Layout holds its dynamic state.
--- Every cell is a Spell Cooldown element set (cooldown.lua) painted by the
--- tracker chain through one settings component, so the swipe, the countdown
--- and the charge count are the tracker's own and legal in every secrecy
--- state. The group owns what the chain does not: which spells get a cell,
--- where the cells sit, and when the group shows.
+-- Both bonus auras are cooldown groups made by NewGroup: one group of icons,
+-- a cell per class ability that is cooling. Every cell is a Spell Cooldown
+-- element set (cooldown.lua) painted by the tracker chain through the
+-- group's own settings component, so the swipe, the countdown and the charge
+-- count are the tracker's own and legal in every secrecy state. The group
+-- owns what the chain does not: which spells get a cell, where the cells
+-- sit, and when the group shows. The two differ only in that last part:
+--
+--   All Cooldowns         live while the Dynamic Layout holds its dynamic
+--                         state, fading with it
+--   Gamepad Compact CDs   live while the gamepad bar draws in its Compact
+--                         style, in and out of the dynamic state
+--
+-- All Cooldowns stands down while Gamepad Compact CDs shows: the two hold
+-- the same cells at the same default place.
 --
 --   container (UIParent, the Edit Mode drag unit: one row of cells)
 --    +- cell (pooled)                 sized from the icon settings
@@ -25,12 +33,11 @@
 -- not off-spec, one per name so a book that lists each rank gives one cell.
 -- Membership is Cooldown.IsCooling per spell, read on the two cooldown
 -- events, on each cell's own completion script, and on a slow ticker while a
--- cell stands, since nothing fires when a cooldown runs out. Hidden, the
--- group holds no event and no ticker.
+-- cell stands, since nothing fires when a cooldown runs out. Hidden, a group
+-- holds no event and no ticker.
 --
--- The state is one function, Evaluate: hidden; the sample row while Edit Mode
--- is open; live while the layout is dynamic; fading out after it. The
--- resolver's edge and the Edit Mode pair are what call it.
+-- The state is one function per group, Evaluate: hidden; the sample row
+-- while Edit Mode is open; live; fading out after it.
 local addonName, addon = ...
 
 local SAU = addon.ScootAuras
@@ -86,88 +93,14 @@ function Bonus.ComponentId(key)
 end
 
 --------------------------------------------------------------------------------
--- All Cooldowns
+-- Shared by every group
 --------------------------------------------------------------------------------
 
-local KEY = "bonusAllCooldowns"
-local TITLE = "All Cooldowns"
-local OWNER = "aurasBonusAllCooldowns"
--- Beside the trackers' "t<id>" and the groups' "g<gid>" in the position store.
-local POSITION_KEY = "bAllCooldowns"
--- Under the Personal Resource Display's dynamic place, with room for a
--- second row above the screen's edge.
-local DEFAULT_POSITION = { point = "BOTTOM", x = 0, y = 40 }
 local TICK_SECONDS = 1
 -- The layout.lua gap between an icon and text set outside it.
 local TEXT_GAP = 2
 -- What the chain reads off a tracker record; a cell adds its spell.
 local SHAPE = { kind = "cooldown", shape = "icon" }
-
-local container, pool
-local cells = {}       -- [spell id] = cell, one per cooling spell
-local order = {}       -- the same cells in spellbook order
-local samples = {}     -- the Edit Mode row's cells
-local candidates = {}  -- spell ids in spellbook order
-local candidatesStale = true
-local handles = {}
-local armed = false
-local ticker
-local passPending = false
-local passToken = 0
-local mode = "off"     -- "off", "edit", "live", "leaving"
-local alphaNow = 0
-local fade
-
-local RequestPass, Evaluate
-
---------------------------------------------------------------------------------
--- Dynamic Layouts
---------------------------------------------------------------------------------
-
--- The engine, read at the moment of use: one host loads it and the other
--- does not, and both list this file.
-local function Layouts()
-    local DL = addon.DynamicLayouts
-    if type(DL) ~= "table" or type(DL.Resolver) ~= "table" then return nil end
-    return DL, DL.Resolver
-end
-
-local function Available()
-    return Layouts() ~= nil
-end
-
--- A profile where no frame takes part has no dynamic layout to pair with,
--- and its action bars stand where the group's default place is.
-local function AnyFrameTakesPart(DL)
-    if type(DL.Ids) ~= "function" or type(DL.IsParticipating) ~= "function" then return true end
-    for _, id in ipairs(DL.Ids()) do
-        if DL.IsParticipating(id) then return true end
-    end
-    return false
-end
-
--- The feature on, the main lane answering dynamic, and a frame to follow it.
--- The resolver answers by its triggers alone, so the two others are asked
--- here.
-local function Engaged()
-    local DL, resolver = Layouts()
-    if not DL then return false end
-    local store = addon.DynamicLayoutsStore
-    if type(store) ~= "table" or type(store.IsEnabled) ~= "function" or not store.IsEnabled() then
-        return false
-    end
-    return resolver.Answer("main") == "dynamic" and AnyFrameTakesPart(DL)
-end
-
-local function Speed(direction)
-    local DL = Layouts()
-    local seconds = DL and type(DL.Speed) == "function" and DL.Speed(direction) or nil
-    return type(seconds) == "number" and seconds or 0.5
-end
-
---------------------------------------------------------------------------------
--- Settings
---------------------------------------------------------------------------------
 
 local function Number(value, fallback)
     return tonumber(value) or fallback
@@ -231,515 +164,758 @@ local function Metrics(db)
     return w, h, stepX, stepY, columns
 end
 
---------------------------------------------------------------------------------
--- The spells
---------------------------------------------------------------------------------
-
--- The spells are SAU.WalkSpellbook's (core.lua): every active, castable
--- spell in the class's skill lines, one per name. A walk that throws keeps
--- the list it had and reads again on the next pass.
-local function RebuildCandidates()
-    local book = C_SpellBook
-    if not (book and book.GetNumSpellBookSkillLines and book.GetSpellBookSkillLineInfo
-        and book.GetSpellBookItemInfo) then
-        candidatesStale = false
-        return
-    end
-    local fresh = {}
-    if pcall(SAU.WalkSpellbook, fresh) then
-        candidates = fresh
-        candidatesStale = false
-    end
-end
-
---------------------------------------------------------------------------------
--- Cells
---------------------------------------------------------------------------------
-
-local function CreateCell()
-    local cell = CreateFrame("Frame", nil, container)
-    cell:Hide()
-    cell.cooldown = Cooldown.BuildVisual(cell, function() RequestPass() end)
-    cell.tracker = { kind = SHAPE.kind, shape = SHAPE.shape }
-    cell.shim = { container = cell, elements = cell.cooldown.elements }
-    return cell
-end
-
--- Cooldown.Release hides the set's root, which is the cell, stops the
--- countdown and clears the swipe.
-local function ResetCell(cell)
-    Cooldown.Release(nil, cell)
-    cell.tracker.spellId = nil
-    cell.seen = nil
-end
-
--- The tracker chain on one cell. It sizes nothing without a pool entry, so
--- the cell takes its size here; the icon then fills it.
-local function StyleCell(cell, w, h)
-    cell:SetSize(w, h)
-    Cooldown.PaintElementSet(KEY, cell.tracker, cell.shim, cell.cooldown)
-end
-
--- Rows fill left to right and hang below the first. A row shorter than the
--- container sits at its middle, its left or its right by the Alignment
--- setting, each row on its own count, so a last row of two centers under a
--- full one. The offset is whole, so no icon lands between pixels.
-local function PlaceCells(list, db)
-    local w, h, stepX, stepY, columns = Metrics(db)
-    local width = (columns - 1) * stepX + w
-    container:SetSize(width, h)
-    local align = db.bonusAlign
-    local total = #list
-    for i, cell in ipairs(list) do
-        local column = (i - 1) % columns
-        local row = math.floor((i - 1) / columns)
-        local inRow = math.min(columns, total - row * columns)
-        local slack = width - ((inRow - 1) * stepX + w)
-        local offset = 0
-        if align == "right" then
-            offset = slack
-        elseif align ~= "left" then
-            offset = math.floor(slack / 2 + 0.5)
-        end
-        cell:ClearAllPoints()
-        cell:SetPoint("TOPLEFT", container, "TOPLEFT", offset + column * stepX, -row * stepY)
-    end
-end
-
-local function ReleaseLive()
-    for spellId, cell in pairs(cells) do
-        cells[spellId] = nil
-        pool:Release(cell)
-    end
-    for i = #order, 1, -1 do order[i] = nil end
-end
-
-local function ReleaseSamples()
-    for i = #samples, 1, -1 do
-        pool:Release(samples[i])
-        samples[i] = nil
-    end
-end
-
---------------------------------------------------------------------------------
--- The live pass
---------------------------------------------------------------------------------
-
-local function UpdateTicker()
-    local want = armed and next(cells) ~= nil
-    if want and not ticker then
-        ticker = C_Timer.NewTicker(TICK_SECONDS, function() RequestPass(true) end)
-    elseif ticker and not want then
-        ticker:Cancel()
-        ticker = nil
-    end
-end
-
---- Membership, then values. A spell that started cooling takes a cell, styled
--- once and fed; one that stopped gives its cell back; the cells are placed
--- again only when the set changed. `repaint` feeds every standing cell too,
--- for an event that may have moved a cooldown; the ticker asks for
--- membership alone.
-local function Pass(repaint)
-    if mode ~= "live" then return end
-    local db = SAU.GetDB(KEY)
-    if not db then return end
-    if candidatesStale then RebuildCandidates() end
-    passToken = passToken + 1
-    local w, h = Metrics(db)
-    local changed = false
-    local count = 0
-    for _, spellId in ipairs(candidates) do
-        if Cooldown.IsCooling(spellId) then
-            local cell = cells[spellId]
-            if not cell then
-                cell = pool:Acquire()
-                cell.tracker.spellId = spellId
-                cells[spellId] = cell
-                StyleCell(cell, w, h)
-                Cooldown.PaintValues(KEY, cell.tracker, cell.cooldown, db)
-                cell:Show()
-                changed = true
-            elseif repaint then
-                Cooldown.PaintValues(KEY, cell.tracker, cell.cooldown, db)
-            end
-            cell.seen = passToken
-            count = count + 1
-            if order[count] ~= cell then
-                order[count] = cell
-                changed = true
-            end
-        end
-    end
-    for i = #order, count + 1, -1 do order[i] = nil end
-    for spellId, cell in pairs(cells) do
-        if cell.seen ~= passToken then
-            cells[spellId] = nil
-            pool:Release(cell)
-            changed = true
-        end
-    end
-    if changed then PlaceCells(order, db) end
-    UpdateTicker()
-end
-
--- One pass a frame, however many cooldown events arrive in it; the first
--- arrives on every GCD. A request that feeds values outranks one that does
--- not.
-local passRepaint = false
-
-function RequestPass(membershipOnly)
-    if not armed then return end
-    if not membershipOnly then passRepaint = true end
-    if passPending then return end
-    passPending = true
-    C_Timer.After(0, function()
-        passPending = false
-        local repaint = passRepaint
-        passRepaint = false
-        Pass(repaint)
-    end)
-end
-
-local function OnCooldownEvent()
-    RequestPass()
-end
-
 -- The specialization event fires for group members too; only the player's
 -- own moves the book.
-local function OnBookEvent(event, unit)
-    if event == "PLAYER_SPECIALIZATION_CHANGED" and unit ~= nil and unit ~= "player" then return end
-    candidatesStale = true
-    RequestPass()
-end
-
 local BOOK_EVENTS = {
     "SPELLS_CHANGED", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED", "PLAYER_SPECIALIZATION_CHANGED",
 }
 
--- A client that does not know an event hands back an inert handle.
-local function Arm()
-    if armed then return end
-    armed = true
-    candidatesStale = true
-    handles[#handles + 1] = addon.Events.On(OWNER, "SPELL_UPDATE_COOLDOWN", OnCooldownEvent)
-    handles[#handles + 1] = addon.Events.On(OWNER, "SPELL_UPDATE_CHARGES", OnCooldownEvent)
-    for _, event in ipairs(BOOK_EVENTS) do
-        handles[#handles + 1] = addon.Events.On(OWNER, event, OnBookEvent)
-    end
-end
-
-local function Disarm()
-    if not armed then return end
-    armed = false
-    for i = #handles, 1, -1 do
-        handles[i]:Off()
-        handles[i] = nil
-    end
-    UpdateTicker()
-end
-
 --------------------------------------------------------------------------------
--- The Edit Mode row
+-- A cooldown group
 --------------------------------------------------------------------------------
 
--- A cell as it looks mid-cooldown, with nothing running: the countdown is a
--- fixed number written here, so the font, size and place can be judged.
-local function PaintSample(cell, db)
-    local cdv = cell.cooldown
-    if cdv.binding then pcall(cdv.binding.SetEnabled, cdv.binding, false) end
-    if cdv.cd then pcall(cdv.cd.widget.Clear, cdv.cd.widget) end
-    local stacks = cdv.stacks and cdv.stacks.widget
-    if stacks then stacks:Hide() end
-    local icon = cdv.icon and cdv.icon.widget
-    if icon then pcall(icon.SetDesaturation, icon, 0) end
-    local text = cdv.duration and cdv.duration.widget
-    if text then
-        if SAU.ResolveVisibility(cell.tracker, db).showText then
-            -- ClearText first: the binding may have left an engine-written
-            -- string on it.
-            if text.ClearText then text:ClearText() end
-            text:SetText(db.textDecimal == true and "12.3" or "12")
-            text:Show()
-        else
-            text:Hide()
+--- One cooldown group. The spec:
+--   key, title, info, available()   the registry entry; key is the settings
+--                                   component id and the page section
+--   owner                           the events owner
+--   positionKey, defaultPosition    the Edit Mode position record
+--   frameName                       suffix of the container's global name
+--   gate()                          false hides the group everywhere, the
+--                                   Edit Mode row included
+--   live()                          true shows it live, false fades it out
+--   speed(direction)                the fade's seconds, "in" or "out"
+--   gateNotice                      optional: the page's line while the gate
+--                                   is shut and Enable is on
+local function NewGroup(spec)
+    local KEY = spec.key
+    local OWNER = spec.owner
+    local DEFAULT_POSITION = spec.defaultPosition
+
+    local group = { key = KEY }
+
+    local container, pool
+    local cells = {}       -- [spell id] = cell, one per cooling spell
+    local order = {}       -- the same cells in spellbook order
+    local samples = {}     -- the Edit Mode row's cells
+    local candidates = {}  -- spell ids in spellbook order
+    local candidatesStale = true
+    local handles = {}
+    local armed = false
+    local ticker
+    local passPending = false
+    local passRepaint = false
+    local passToken = 0
+    local mode = "off"     -- "off", "edit", "live", "leaving"
+    local alphaNow = 0
+    local fade
+
+    local RequestPass, Evaluate
+
+    ----------------------------------------------------------------------------
+    -- The spells
+    ----------------------------------------------------------------------------
+
+    -- The spells are SAU.WalkSpellbook's (core.lua): every active, castable
+    -- spell in the class's skill lines, one per name. A walk that throws
+    -- keeps the list it had and reads again on the next pass.
+    local function RebuildCandidates()
+        local book = C_SpellBook
+        if not (book and book.GetNumSpellBookSkillLines and book.GetSpellBookSkillLineInfo
+            and book.GetSpellBookItemInfo) then
+            candidatesStale = false
+            return
+        end
+        local fresh = {}
+        if pcall(SAU.WalkSpellbook, fresh) then
+            candidates = fresh
+            candidatesStale = false
         end
     end
-end
 
--- The book's first spells, half a row of them: the drag box is a full row
--- wide, so a short row shows where the Alignment setting puts the icons in it.
-local function ShowSamples(db)
-    if candidatesStale then RebuildCandidates() end
-    local w, h, _, _, columns = Metrics(db)
-    local count = math.min(#candidates, math.max(1, math.ceil(columns / 2)))
-    for i = #samples, count + 1, -1 do
-        pool:Release(samples[i])
-        samples[i] = nil
+    ----------------------------------------------------------------------------
+    -- Cells
+    ----------------------------------------------------------------------------
+
+    local function CreateCell()
+        local cell = CreateFrame("Frame", nil, container)
+        cell:Hide()
+        cell.cooldown = Cooldown.BuildVisual(cell, function() RequestPass() end)
+        cell.tracker = { kind = SHAPE.kind, shape = SHAPE.shape }
+        cell.shim = { container = cell, elements = cell.cooldown.elements }
+        return cell
     end
-    for i = 1, count do
-        local cell = samples[i]
-        if not cell then
-            cell = pool:Acquire()
-            samples[i] = cell
+
+    -- Cooldown.Release hides the set's root, which is the cell, stops the
+    -- countdown and clears the swipe.
+    local function ResetCell(cell)
+        Cooldown.Release(nil, cell)
+        cell.tracker.spellId = nil
+        cell.seen = nil
+    end
+
+    -- The tracker chain on one cell. It sizes nothing without a pool entry,
+    -- so the cell takes its size here; the icon then fills it.
+    local function StyleCell(cell, w, h)
+        cell:SetSize(w, h)
+        Cooldown.PaintElementSet(KEY, cell.tracker, cell.shim, cell.cooldown)
+    end
+
+    -- Rows fill left to right and hang below the first. A row shorter than
+    -- the container sits at its middle, its left or its right by the
+    -- Alignment setting, each row on its own count, so a last row of two
+    -- centers under a full one. The offset is whole, so no icon lands
+    -- between pixels.
+    local function PlaceCells(list, db)
+        local w, h, stepX, stepY, columns = Metrics(db)
+        local width = (columns - 1) * stepX + w
+        container:SetSize(width, h)
+        local align = db.bonusAlign
+        local total = #list
+        for i, cell in ipairs(list) do
+            local column = (i - 1) % columns
+            local row = math.floor((i - 1) / columns)
+            local inRow = math.min(columns, total - row * columns)
+            local slack = width - ((inRow - 1) * stepX + w)
+            local offset = 0
+            if align == "right" then
+                offset = slack
+            elseif align ~= "left" then
+                offset = math.floor(slack / 2 + 0.5)
+            end
+            cell:ClearAllPoints()
+            cell:SetPoint("TOPLEFT", container, "TOPLEFT", offset + column * stepX, -row * stepY)
         end
-        cell.tracker.spellId = candidates[i]
-        StyleCell(cell, w, h)
-        PaintSample(cell, db)
-        cell:Show()
     end
-    PlaceCells(samples, db)
-end
 
---------------------------------------------------------------------------------
--- The fade
---------------------------------------------------------------------------------
+    local function ReleaseLive()
+        for spellId, cell in pairs(cells) do
+            cells[spellId] = nil
+            pool:Release(cell)
+        end
+        for i = #order, 1, -1 do order[i] = nil end
+    end
 
-local function SetGroupAlpha(alpha)
-    alphaNow = alpha
-    container:SetAlpha(alpha)
-end
+    local function ReleaseSamples()
+        for i = #samples, 1, -1 do
+            pool:Release(samples[i])
+            samples[i] = nil
+        end
+    end
 
-local function StopFade()
-    fade = nil
-    container:SetScript("OnUpdate", nil)
-end
+    ----------------------------------------------------------------------------
+    -- The live pass
+    ----------------------------------------------------------------------------
 
--- Smoothstep, the layout's own easing, over the layout's own duration. The
--- script stands only while a fade runs.
-local function OnFadeUpdate(_, elapsed)
-    local f = fade
-    if not f then
+    local function UpdateTicker()
+        local want = armed and next(cells) ~= nil
+        if want and not ticker then
+            ticker = C_Timer.NewTicker(TICK_SECONDS, function() RequestPass(true) end)
+        elseif ticker and not want then
+            ticker:Cancel()
+            ticker = nil
+        end
+    end
+
+    --- Membership, then values. A spell that started cooling takes a cell,
+    -- styled once and fed; one that stopped gives its cell back; the cells
+    -- are placed again only when the set changed. `repaint` feeds every
+    -- standing cell too, for an event that may have moved a cooldown; the
+    -- ticker asks for membership alone.
+    local function Pass(repaint)
+        if mode ~= "live" then return end
+        local db = SAU.GetDB(KEY)
+        if not db then return end
+        if candidatesStale then RebuildCandidates() end
+        passToken = passToken + 1
+        local w, h = Metrics(db)
+        local changed = false
+        local count = 0
+        for _, spellId in ipairs(candidates) do
+            if Cooldown.IsCooling(spellId) then
+                local cell = cells[spellId]
+                if not cell then
+                    cell = pool:Acquire()
+                    cell.tracker.spellId = spellId
+                    cells[spellId] = cell
+                    StyleCell(cell, w, h)
+                    Cooldown.PaintValues(KEY, cell.tracker, cell.cooldown, db)
+                    cell:Show()
+                    changed = true
+                elseif repaint then
+                    Cooldown.PaintValues(KEY, cell.tracker, cell.cooldown, db)
+                end
+                cell.seen = passToken
+                count = count + 1
+                if order[count] ~= cell then
+                    order[count] = cell
+                    changed = true
+                end
+            end
+        end
+        for i = #order, count + 1, -1 do order[i] = nil end
+        for spellId, cell in pairs(cells) do
+            if cell.seen ~= passToken then
+                cells[spellId] = nil
+                pool:Release(cell)
+                changed = true
+            end
+        end
+        if changed then PlaceCells(order, db) end
+        UpdateTicker()
+    end
+
+    -- One pass a frame, however many cooldown events arrive in it; the first
+    -- arrives on every GCD. A request that feeds values outranks one that
+    -- does not.
+    function RequestPass(membershipOnly)
+        if not armed then return end
+        if not membershipOnly then passRepaint = true end
+        if passPending then return end
+        passPending = true
+        C_Timer.After(0, function()
+            passPending = false
+            local repaint = passRepaint
+            passRepaint = false
+            Pass(repaint)
+        end)
+    end
+
+    local function OnCooldownEvent()
+        RequestPass()
+    end
+
+    local function OnBookEvent(event, unit)
+        if event == "PLAYER_SPECIALIZATION_CHANGED" and unit ~= nil and unit ~= "player" then return end
+        candidatesStale = true
+        RequestPass()
+    end
+
+    -- A client that does not know an event hands back an inert handle.
+    local function Arm()
+        if armed then return end
+        armed = true
+        candidatesStale = true
+        handles[#handles + 1] = addon.Events.On(OWNER, "SPELL_UPDATE_COOLDOWN", OnCooldownEvent)
+        handles[#handles + 1] = addon.Events.On(OWNER, "SPELL_UPDATE_CHARGES", OnCooldownEvent)
+        for _, event in ipairs(BOOK_EVENTS) do
+            handles[#handles + 1] = addon.Events.On(OWNER, event, OnBookEvent)
+        end
+    end
+
+    local function Disarm()
+        if not armed then return end
+        armed = false
+        for i = #handles, 1, -1 do
+            handles[i]:Off()
+            handles[i] = nil
+        end
+        UpdateTicker()
+    end
+
+    ----------------------------------------------------------------------------
+    -- The Edit Mode row
+    ----------------------------------------------------------------------------
+
+    -- A cell as it looks mid-cooldown, with nothing running: the countdown
+    -- is a fixed number written here, so the font, size and place can be
+    -- judged.
+    local function PaintSample(cell, db)
+        local cdv = cell.cooldown
+        if cdv.binding then pcall(cdv.binding.SetEnabled, cdv.binding, false) end
+        if cdv.cd then pcall(cdv.cd.widget.Clear, cdv.cd.widget) end
+        local stacks = cdv.stacks and cdv.stacks.widget
+        if stacks then stacks:Hide() end
+        local icon = cdv.icon and cdv.icon.widget
+        if icon then pcall(icon.SetDesaturation, icon, 0) end
+        local text = cdv.duration and cdv.duration.widget
+        if text then
+            if SAU.ResolveVisibility(cell.tracker, db).showText then
+                -- ClearText first: the binding may have left an
+                -- engine-written string on it.
+                if text.ClearText then text:ClearText() end
+                text:SetText(db.textDecimal == true and "12.3" or "12")
+                text:Show()
+            else
+                text:Hide()
+            end
+        end
+    end
+
+    -- The book's first spells, half a row of them: the drag box is a full
+    -- row wide, so a short row shows where the Alignment setting puts the
+    -- icons in it.
+    local function ShowSamples(db)
+        if candidatesStale then RebuildCandidates() end
+        local w, h, _, _, columns = Metrics(db)
+        local count = math.min(#candidates, math.max(1, math.ceil(columns / 2)))
+        for i = #samples, count + 1, -1 do
+            pool:Release(samples[i])
+            samples[i] = nil
+        end
+        for i = 1, count do
+            local cell = samples[i]
+            if not cell then
+                cell = pool:Acquire()
+                samples[i] = cell
+            end
+            cell.tracker.spellId = candidates[i]
+            StyleCell(cell, w, h)
+            PaintSample(cell, db)
+            cell:Show()
+        end
+        PlaceCells(samples, db)
+    end
+
+    ----------------------------------------------------------------------------
+    -- The fade
+    ----------------------------------------------------------------------------
+
+    local function SetGroupAlpha(alpha)
+        alphaNow = alpha
+        container:SetAlpha(alpha)
+    end
+
+    local function StopFade()
+        fade = nil
         container:SetScript("OnUpdate", nil)
-        return
     end
-    f.elapsed = f.elapsed + elapsed
-    local p = f.elapsed / f.duration
-    if p >= 1 then
+
+    -- Smoothstep, the layout's own easing, over the spec's duration. The
+    -- script stands only while a fade runs.
+    local function OnFadeUpdate(_, elapsed)
+        local f = fade
+        if not f then
+            container:SetScript("OnUpdate", nil)
+            return
+        end
+        f.elapsed = f.elapsed + elapsed
+        local p = f.elapsed / f.duration
+        if p >= 1 then
+            StopFade()
+            SetGroupAlpha(f.to)
+            if f.done then f.done() end
+            return
+        end
+        SetGroupAlpha(f.from + (f.to - f.from) * (p * p * (3 - 2 * p)))
+    end
+
+    local function FadeTo(alpha, seconds, done)
         StopFade()
-        SetGroupAlpha(f.to)
-        if f.done then f.done() end
-        return
+        if seconds <= 0 or alpha == alphaNow or not container:IsShown() then
+            SetGroupAlpha(alpha)
+            if done then done() end
+            return
+        end
+        fade = { from = alphaNow, to = alpha, elapsed = 0, duration = seconds, done = done }
+        container:SetScript("OnUpdate", OnFadeUpdate)
     end
-    SetGroupAlpha(f.from + (f.to - f.from) * (p * p * (3 - 2 * p)))
-end
 
-local function FadeTo(alpha, seconds, done)
-    StopFade()
-    if seconds <= 0 or alpha == alphaNow or not container:IsShown() then
-        SetGroupAlpha(alpha)
-        if done then done() end
-        return
+    ----------------------------------------------------------------------------
+    -- The frame
+    ----------------------------------------------------------------------------
+
+    -- One setting written as the page writes it: the component's table,
+    -- made on the first write, then the restyle.
+    local function WriteSetting(key, value)
+        local component = addon.Components and addon.Components[SAU.GetComponentId(KEY)]
+        local db = component and addon:EnsureComponentDB(component)
+        if not db then return end
+        db[key] = value
+        Bonus.Reevaluate(KEY)
     end
-    fade = { from = alphaNow, to = alpha, elapsed = 0, duration = seconds, done = done }
-    container:SetScript("OnUpdate", OnFadeUpdate)
-end
 
---------------------------------------------------------------------------------
--- The frame
---------------------------------------------------------------------------------
-
--- One setting written as the page writes it: the component's table, made on
--- the first write, then the restyle.
-local function WriteSetting(key, value)
-    local component = addon.Components and addon.Components[SAU.GetComponentId(KEY)]
-    local db = component and addon:EnsureComponentDB(component)
-    if not db then return end
-    db[key] = value
-    Evaluate(true, true)
-end
-
--- The branded Edit Mode dialog's rows under the shared position row: the
--- page's Icon Size, Icon Spacing and Columns, over the same keys and ranges,
--- so the two surfaces cannot drift. Short labels: the dialog's label budget
--- is narrow, and a longer one runs under the track.
-local function EditModeMirror()
-    if not SAU.GetDB(KEY) then return nil end
-    local function slider(label, key, low, high, fallback)
+    -- The branded Edit Mode dialog's rows under the shared position row: the
+    -- page's Icon Size, Icon Spacing and Columns, over the same keys and
+    -- ranges, so the two surfaces cannot drift. Short labels: the dialog's
+    -- label budget is narrow, and a longer one runs under the track.
+    local function EditModeMirror()
+        if not SAU.GetDB(KEY) then return nil end
+        local function slider(label, key, low, high, fallback)
+            return {
+                kind = "slider", label = label,
+                min = low, max = high, step = 1, precision = 0,
+                get = function()
+                    local db = SAU.GetDB(KEY)
+                    return Number(db and db[key], fallback)
+                end,
+                set = function(v) WriteSetting(key, v) end,
+            }
+        end
         return {
-            kind = "slider", label = label,
-            min = low, max = high, step = 1, precision = 0,
-            get = function()
-                local db = SAU.GetDB(KEY)
-                return Number(db and db[key], fallback)
-            end,
-            set = function(v) WriteSetting(key, v) end,
+            slider("Size", "iconSize", 16, 64, 32),
+            slider("Spacing", "bonusSpacing", 0, 20, 4),
+            slider("Columns", "bonusColumns", 1, 20, 12),
         }
     end
-    return {
-        slider("Size", "iconSize", 16, 64, 32),
-        slider("Spacing", "bonusSpacing", 0, 20, 4),
-        slider("Columns", "bonusColumns", 1, 20, 12),
-    }
-end
 
--- Built on the first state that shows it. The box stays live in the dynamic
--- view of Edit Mode (dynamicViewMember): the group is on screen only in the
--- dynamic layout, so that view is where it is placed against the rest.
-local function EnsureContainer()
-    if container then return end
-    container = CreateFrame("Frame", addon.Brand .. "BonusAllCooldowns", UIParent)
-    addon.Strata.ApplyHUD(container, 25)
-    container:SetSize(32, 32)
-    container:SetPoint(DEFAULT_POSITION.point, UIParent, DEFAULT_POSITION.point,
-        DEFAULT_POSITION.x, DEFAULT_POSITION.y)
-    container:SetMovable(true)
-    container:SetClampedToScreen(true)
-    container:SetAlpha(0)
-    container:Hide()
-    container.editModeName = TITLE
-    addon.RegisterPetBattleFrame(container)
+    -- Built on the first state that shows it. The box stays live in the
+    -- dynamic view of Edit Mode (dynamicViewMember), where the group is
+    -- placed against the dynamic arrangement.
+    local function EnsureContainer()
+        if container then return end
+        container = CreateFrame("Frame", addon.Brand .. spec.frameName, UIParent)
+        addon.Strata.ApplyHUD(container, 25)
+        container:SetSize(32, 32)
+        container:SetPoint(DEFAULT_POSITION.point, UIParent, DEFAULT_POSITION.point,
+            DEFAULT_POSITION.x, DEFAULT_POSITION.y)
+        container:SetMovable(true)
+        container:SetClampedToScreen(true)
+        container:SetAlpha(0)
+        container:Hide()
+        container.editModeName = spec.title
+        addon.RegisterPetBattleFrame(container)
 
-    pool = addon.Pool.New(CreateCell, ResetCell)
+        pool = addon.Pool.New(CreateCell, ResetCell)
 
-    addon.EditMode.RegisterPositionable(container, {
-        key = POSITION_KEY,
-        default = DEFAULT_POSITION,
-        store = { get = Engine._GetStoredPosition, set = Engine.SavePosition },
-        restoreDefault = true,
-        dynamicViewMember = true,
-        brand = {
-            navKey = Bonus.NAV_KEY, componentId = Bonus.NAV_KEY, sectionKey = KEY,
-            mirror = EditModeMirror,
-        },
-    })
-end
-
---------------------------------------------------------------------------------
--- State
---------------------------------------------------------------------------------
-
-local function Conceal(snap)
-    Disarm()
-    -- A fade already on its way out keeps its clock.
-    if mode == "leaving" and fade and not snap then return end
-    if mode == "live" or mode == "leaving" then
-        mode = "leaving"
-        FadeTo(0, snap and 0 or Speed("out"), function()
-            if mode ~= "leaving" then return end
-            mode = "off"
-            ReleaseLive()
-            container:Hide()
-        end)
-        return
+        addon.EditMode.RegisterPositionable(container, {
+            key = spec.positionKey,
+            default = DEFAULT_POSITION,
+            store = { get = Engine._GetStoredPosition, set = Engine.SavePosition },
+            restoreDefault = true,
+            dynamicViewMember = true,
+            brand = {
+                navKey = Bonus.NAV_KEY, componentId = Bonus.NAV_KEY, sectionKey = KEY,
+                mirror = EditModeMirror,
+            },
+        })
     end
-    mode = "off"
-    StopFade()
-    ReleaseLive()
-    ReleaseSamples()
-    SetGroupAlpha(0)
-    container:Hide()
-end
 
-local function ShowEditRow(db)
-    Disarm()
-    mode = "edit"
-    StopFade()
-    ReleaseLive()
-    ShowSamples(db)
-    SetGroupAlpha(1)
-    container:Show()
-end
+    ----------------------------------------------------------------------------
+    -- State
+    ----------------------------------------------------------------------------
 
--- Cells left by a fade that had not landed stay; the pass keeps the ones
--- still cooling.
-local function ShowLive(db, restyle, snap)
-    local entering = mode ~= "live"
-    if entering then
+    local function Conceal(snap)
+        Disarm()
+        -- A fade already on its way out keeps its clock.
+        if mode == "leaving" and fade and not snap then return end
+        if mode == "live" or mode == "leaving" then
+            mode = "leaving"
+            FadeTo(0, snap and 0 or spec.speed("out"), function()
+                if mode ~= "leaving" then return end
+                mode = "off"
+                ReleaseLive()
+                container:Hide()
+            end)
+            return
+        end
+        mode = "off"
+        StopFade()
+        ReleaseLive()
         ReleaseSamples()
-        mode = "live"
-        Arm()
+        SetGroupAlpha(0)
+        container:Hide()
+    end
+
+    local function ShowEditRow(db)
+        Disarm()
+        mode = "edit"
+        StopFade()
+        ReleaseLive()
+        ShowSamples(db)
+        SetGroupAlpha(1)
         container:Show()
     end
-    if entering or restyle then
-        local w, h = Metrics(db)
-        for _, cell in pairs(cells) do
-            StyleCell(cell, w, h)
+
+    -- Cells left by a fade that had not landed stay; the pass keeps the
+    -- ones still cooling.
+    local function ShowLive(db, restyle, snap)
+        local entering = mode ~= "live"
+        if entering then
+            ReleaseSamples()
+            mode = "live"
+            Arm()
+            container:Show()
         end
-        PlaceCells(order, db)
+        if entering or restyle then
+            local w, h = Metrics(db)
+            for _, cell in pairs(cells) do
+                StyleCell(cell, w, h)
+            end
+            PlaceCells(order, db)
+        end
+        Pass(true)
+        local target = Clamp(Number(db.bonusOpacity, 50), 0, 100) / 100
+        if entering then
+            FadeTo(target, snap and 0 or spec.speed("in"))
+        elseif fade then
+            fade.to = target
+        else
+            SetGroupAlpha(target)
+        end
     end
-    Pass(true)
-    local target = Clamp(Number(db.bonusOpacity, 50), 0, 100) / 100
-    if entering then
-        FadeTo(target, snap and 0 or Speed("in"))
-    elseif fade then
-        fade.to = target
-    else
-        SetGroupAlpha(target)
+
+    -- The settings, when the group may show at all: the host can run it, the
+    -- aura feature is on, Enable is on and the spec's gate is open.
+    local function ShowableDB()
+        if not (spec.available() and SAU.IsModuleActive()) then return nil end
+        local db = SAU.GetDB(KEY)
+        if not db or db.bonusEnabled == false or not spec.gate() then return nil end
+        return db
+    end
+
+    --- The page's line while the group's own Enable is on but its gate is
+    -- shut, nil otherwise.
+    function group.Notice()
+        if not spec.gateNotice then return nil end
+        local db = SAU.GetDB(KEY)
+        if not db or db.bonusEnabled == false or spec.gate() then return nil end
+        return spec.gateNotice
+    end
+
+    --- Whether the group shows now, live or as the Edit Mode row.
+    function group.Wants()
+        return ShowableDB() ~= nil
+    end
+
+    --- The one state function. `restyle` repaints the standing cells for a
+    -- settings change; `snap` lands the alpha with no fade, for the first
+    -- resolution and for Edit Mode's edges, as the layout's own frames do.
+    function Evaluate(restyle, snap)
+        local db = ShowableDB()
+        if not db then
+            if container then Conceal(true) end
+            return
+        end
+        if addon.EditMode.IsEditing() then
+            EnsureContainer()
+            ShowEditRow(db)
+        elseif spec.live() then
+            EnsureContainer()
+            ShowLive(db, restyle, snap)
+        elseif container then
+            Conceal(snap)
+        end
+    end
+    group.Evaluate = Evaluate
+
+    ----------------------------------------------------------------------------
+    -- Registration
+    ----------------------------------------------------------------------------
+
+    Register({ key = KEY, title = spec.title, info = spec.info, available = spec.available })
+
+    -- Registered at init so the component links to its persisted table with
+    -- the trackers'. Gated inline, as theirs is: the category is a host token.
+    addon:RegisterComponentInitializer(function()
+        if not (SAU.IsModuleActive() and spec.available()) then return end
+        addon:RegisterComponent(addon.ComponentPrototype:New({
+            id = SAU.GetComponentId(KEY),
+            name = addon.Brand .. "Auras: " .. spec.title,
+            settings = BuildSettings(),
+            -- Beside the trackers' styling in the account-wide store.
+            GetContainer = SAU.GetStylingContainer,
+            ApplyStyling = function() Bonus.Reevaluate(KEY) end,
+        }))
+    end)
+
+    -- A component linked before the saved table was readable sits on its
+    -- defaults, so it links again at world entry.
+    function group.Relink()
+        local component = addon.Components and addon.Components[SAU.GetComponentId(KEY)]
+        if component and addon.IsComponentUnconfigured(component) then
+            addon:LinkComponent(component)
+        end
+    end
+
+    return group
+end
+
+local groups = {}
+
+--- The page's line for one bonus aura: why it is off while its Enable is on.
+function Bonus.Notice(key)
+    for _, group in ipairs(groups) do
+        if group.key == key then return group.Notice() end
+    end
+    return nil
+end
+
+--- A settings change on one group: that group restyles, and every other one
+-- is asked again, since one group's state can stand another down.
+function Bonus.Reevaluate(key)
+    for _, group in ipairs(groups) do
+        if group.key == key then
+            group.Evaluate(true, true)
+        else
+            group.Evaluate(false, true)
+        end
     end
 end
 
---- The one state function. `restyle` repaints the standing cells for a
--- settings change; `snap` lands the alpha with no fade, for the first
--- resolution and for Edit Mode's edges, as the layout's own frames do.
-function Evaluate(restyle, snap)
-    local db = Available() and SAU.IsModuleActive() and SAU.GetDB(KEY) or nil
-    if not db or db.bonusEnabled == false then
-        if container then Conceal(true) end
-        return
+local function EvaluateAll(snap)
+    for _, group in ipairs(groups) do
+        group.Evaluate(false, snap)
     end
-    if addon.EditMode.IsEditing() then
-        EnsureContainer()
-        ShowEditRow(db)
-    elseif Engaged() then
-        EnsureContainer()
-        ShowLive(db, restyle, snap)
-    elseif container then
-        Conceal(snap)
-    end
-end
-
--- Both lanes publish; the group follows the main one.
-local function OnLayoutEdge(_, info)
-    if type(info) == "table" then
-        if info.lane ~= nil and info.lane ~= "main" then return end
-        Evaluate(false, info.initial == true or info.origin == "editmode")
-        return
-    end
-    Evaluate(false, false)
 end
 
 --------------------------------------------------------------------------------
--- Registration
+-- Dynamic Layouts
 --------------------------------------------------------------------------------
 
-Register({
-    key = KEY,
-    title = TITLE,
+-- The engine, read at the moment of use: one host loads it and the other
+-- does not, and both list this file.
+local function Layouts()
+    local DL = addon.DynamicLayouts
+    if type(DL) ~= "table" or type(DL.Resolver) ~= "table" then return nil end
+    return DL, DL.Resolver
+end
+
+-- A profile where no frame takes part has no dynamic layout to pair with,
+-- and its action bars stand where the group's default place is.
+local function AnyFrameTakesPart(DL)
+    if type(DL.Ids) ~= "function" or type(DL.IsParticipating) ~= "function" then return true end
+    for _, id in ipairs(DL.Ids()) do
+        if DL.IsParticipating(id) then return true end
+    end
+    return false
+end
+
+-- The feature on, the main lane answering dynamic, and a frame to follow it.
+-- The resolver answers by its triggers alone, so the two others are asked
+-- here.
+local function Engaged()
+    local DL, resolver = Layouts()
+    if not DL then return false end
+    local store = addon.DynamicLayoutsStore
+    if type(store) ~= "table" or type(store.IsEnabled) ~= "function" or not store.IsEnabled() then
+        return false
+    end
+    return resolver.Answer("main") == "dynamic" and AnyFrameTakesPart(DL)
+end
+
+local function LayoutSpeed(direction)
+    local DL = Layouts()
+    local seconds = DL and type(DL.Speed) == "function" and DL.Speed(direction) or nil
+    return type(seconds) == "number" and seconds or 0.5
+end
+
+--------------------------------------------------------------------------------
+-- The gamepad bar
+--------------------------------------------------------------------------------
+
+-- Camelot's gamepad bar (forever/actionbars/gamepad.lua), read at the moment
+-- of use: it loads on Forever alone, after this file.
+local function GamepadBar()
+    local bars = addon.ActionBars
+    local bar = type(bars) == "table" and bars.GamepadBar or nil
+    if type(bar) ~= "table" or type(bar.IsBuilt) ~= "function" then return nil end
+    return bar
+end
+
+-- The bar drawn in its Compact style: built, the gamepad UI in use, and
+-- Compact on. Where the bar stands, on screen or off it in the dynamic
+-- state, does not matter.
+local function CompactBarInUse()
+    local bar = GamepadBar()
+    if not (bar and bar.IsBuilt()) then return false end
+    local Gamepad = addon.Gamepad
+    if not (Gamepad and Gamepad.IsActive and Gamepad.IsActive()) then return false end
+    return bar.Get("compact") == true
+end
+
+local function NoFade()
+    return 0
+end
+
+--------------------------------------------------------------------------------
+-- The groups
+--------------------------------------------------------------------------------
+
+-- Under the Personal Resource Display's dynamic place, with room for a
+-- second row above the screen's edge; under the gamepad bar's compact row.
+local BOTTOM_ROW = { point = "BOTTOM", x = 0, y = 40 }
+
+local gamepadCompact
+
+-- Registered first, so the page lists the general one above.
+local allCooldowns = NewGroup({
+    key = "bonusAllCooldowns",
+    title = "All Cooldowns",
+    owner = "aurasBonusAllCooldowns",
+    -- Beside the trackers' "t<id>" and the groups' "g<gid>" in the position
+    -- store.
+    positionKey = "bAllCooldowns",
+    defaultPosition = BOTTOM_ROW,
+    frameName = "BonusAllCooldowns",
     info = "While your Dynamic Layout is engaged, this icon group shows the remaining cooldown on all "
         .. "class abilities currently on cooldown. Meant for pairing with the default Dynamic Layout "
         .. "arrangement, for observing cooldowns while your Action Bars are off-screen/hidden.",
-    available = Available,
+    available = function() return Layouts() ~= nil end,
+    -- Stands down while Gamepad Compact CDs shows the same cells.
+    gate = function() return not gamepadCompact.Wants() end,
+    gateNotice = "Temporarily off: Gamepad Compact CDs shows these cooldowns while the Gamepad Bar "
+        .. "is in its Compact style. It returns when Compact is off or Gamepad Compact CDs is disabled.",
+    live = Engaged,
+    speed = LayoutSpeed,
 })
 
--- Registered at init so the component links to its persisted table with the
--- trackers'. Gated inline, as theirs is: the category is a host token.
-addon:RegisterComponentInitializer(function()
-    if not (SAU.IsModuleActive() and Available()) then return end
-    addon:RegisterComponent(addon.ComponentPrototype:New({
-        id = SAU.GetComponentId(KEY),
-        name = addon.Brand .. "Auras: " .. TITLE,
-        settings = BuildSettings(),
-        -- Beside the trackers' styling in the account-wide store.
-        GetContainer = SAU.GetStylingContainer,
-        ApplyStyling = function() Evaluate(true, true) end,
-    }))
-end)
+gamepadCompact = NewGroup({
+    key = "bonusGamepadCompactCDs",
+    title = "Gamepad Compact CDs",
+    owner = "aurasBonusGamepadCompactCDs",
+    positionKey = "bGamepadCompactCDs",
+    defaultPosition = BOTTOM_ROW,
+    frameName = "BonusGamepadCompactCDs",
+    info = "A cooldown tracker that remains always visible while using the 'Compact' style of our "
+        .. "Gamepad bar, to track cooldowns while they aren't shown in your current bar layer.",
+    available = function() return GamepadBar() ~= nil end,
+    gate = CompactBarInUse,
+    live = function() return true end,
+    speed = NoFade,
+})
+
+-- The gamepad group first, so its state is settled when All Cooldowns asks.
+groups[1] = gamepadCompact
+groups[2] = allCooldowns
+
+--------------------------------------------------------------------------------
+-- Triggers
+--------------------------------------------------------------------------------
+
+-- Both lanes publish; All Cooldowns follows the main one.
+local function OnLayoutEdge(_, info)
+    if type(info) == "table" then
+        if info.lane ~= nil and info.lane ~= "main" then return end
+        allCooldowns.Evaluate(false, info.initial == true or info.origin == "editmode")
+        return
+    end
+    allCooldowns.Evaluate(false, false)
+end
+
+-- The gamepad bar's own edges: built, laid out again after a setting or a
+-- profile switch (Compact among them), and a gamepad transition. Hooked, not
+-- called from there: the bar's file knows nothing of the auras.
+local gamepadHooked = false
+local function HookGamepadBar()
+    local bar = GamepadBar()
+    if gamepadHooked or not bar then return end
+    gamepadHooked = true
+    hooksecurefunc(bar, "Build", function() EvaluateAll(true) end)
+    hooksecurefunc(bar, "Apply", function() EvaluateAll(true) end)
+    if addon.Gamepad and addon.Gamepad.OnChange then
+        addon.Gamepad.OnChange("aurasBonusGamepadCompactCDs", function() EvaluateAll(true) end)
+    end
+end
 
 -- The resolver's first resolution lands after the world entry and arrives as
--- an edge. A component linked before the saved table was readable sits on its
--- defaults, so it links again here.
+-- an edge.
 addon.Events.OnWorldEntered(function()
-    local _, resolver = Layouts()
-    if not (resolver and SAU.IsModuleActive()) then return end
-    local component = addon.Components and addon.Components[SAU.GetComponentId(KEY)]
-    if component and addon.IsComponentUnconfigured(component) then
-        addon:LinkComponent(component)
+    if not SAU.IsModuleActive() then return end
+    local any = false
+    for _, group in ipairs(groups) do
+        local def = byKey[group.key]
+        if def.available() then
+            any = true
+            group.Relink()
+        end
     end
-    resolver.Subscribe(OWNER, OnLayoutEdge)
-    addon.EditMode.OnEditMode(OWNER, {
-        enter = function() Evaluate(false, true) end,
-        exit = function() Evaluate(false, true) end,
+    if not any then return end
+    local _, resolver = Layouts()
+    if resolver then resolver.Subscribe("aurasBonusAllCooldowns", OnLayoutEdge) end
+    HookGamepadBar()
+    addon.EditMode.OnEditMode("aurasBonus", {
+        enter = function() EvaluateAll(true) end,
+        exit = function() EvaluateAll(true) end,
     })
-    Evaluate(false, true)
+    EvaluateAll(true)
 end)

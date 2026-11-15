@@ -15,17 +15,24 @@ addon.UI.Settings.BonusAuras = {}
 local Page = addon.UI.Settings.BonusAuras
 local SettingsBuilder = addon.UI.SettingsBuilder
 
--- [bonus aura key] = function(inner, componentId): the section's rows.
+-- [bonus aura key] = function(inner, componentId, key): the section's rows.
 local sections = {}
 
--- All Cooldowns: the group's own rows, then the tracker editor's Duration
--- tab over the same keys. That tab finalizes the builder it is given, so it
--- is the last call on this one.
-sections.bonusAllCooldowns = function(inner, componentId)
+-- A cooldown group (All Cooldowns, Gamepad Compact CDs): the group's own
+-- rows, then the tracker editor's Duration tab over the same keys. That tab
+-- finalizes the builder it is given, so it is the last call on this one.
+local function CooldownGroupRows(inner, componentId, key)
     local Helpers = addon.UI.Settings.Helpers
     local Tabs = addon.UI.Settings.ScootAuraEditorTabs
     local h = Helpers.CreateComponentHelpers(componentId)
     local get, set = h.get, h.setAndApplyComponent
+
+    -- Off for now on another group's account, its own Enable untouched.
+    local SAU = addon.ScootAuras
+    local notice = SAU and SAU.Bonus and SAU.Bonus.Notice(key)
+    if notice then
+        inner:AddDescription(notice, { color = { 1, 0.82, 0 }, fontSize = 12, topPadding = 4 })
+    end
 
     inner:AddToggle({
         label = "Enable",
@@ -82,6 +89,9 @@ sections.bonusAllCooldowns = function(inner, componentId)
     })
 end
 
+sections.bonusAllCooldowns = CooldownGroupRows
+sections.bonusGamepadCompactCDs = CooldownGroupRows
+
 function Page.Render(panel, scrollContent)
     panel:ClearContent()
 
@@ -114,7 +124,7 @@ function Page.Render(panel, scrollContent)
                 sectionKey = def.key,
                 infoIcon = { tooltipTitle = def.title, tooltipText = def.info },
                 buildContent = function(_, inner)
-                    build(inner, componentId)
+                    build(inner, componentId, def.key)
                 end,
             })
         end
