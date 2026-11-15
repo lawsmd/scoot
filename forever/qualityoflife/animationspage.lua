@@ -26,6 +26,12 @@ local function Render(panel, scrollContent)
     builder:AddCollapsibleSection({ title = "Overhead Bars", componentId = NAV_KEY,
         sectionKey = "overhead", defaultExpanded = true,
         buildContent = function(_, inner)
+            local scale = Animations.SCALE
+            inner:AddSlider({ label = "Scale",
+                min = scale.min, max = scale.max, step = scale.step, precision = 0,
+                minLabel = scale.min .. "%", maxLabel = scale.max .. "%",
+                get = Animations.Scale,
+                set = function(v) Animations.SetScale(v) end })
             for _, row in ipairs(ROWS) do
                 inner:AddToggle({
                     label = row.label,

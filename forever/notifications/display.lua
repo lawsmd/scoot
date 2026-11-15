@@ -11,7 +11,9 @@
 -- toast's key updates that toast in place of stacking another.
 --
 -- The anchor is a fixed-size frame, so its stored Edit Mode point keeps its
--- center whatever the text size is. It shows only while a toast is live or
+-- center whatever the text size is. The toasts stand on a stage centered in
+-- it, which carries the Scale setting; the anchor takes the stage's scaled
+-- size, so its box covers the toast and its point keeps its units. It shows only while a toast is live or
 -- in Edit Mode, and one OnUpdate on it drives everything.
 --
 -- Every frame here is plain, so a toast shows in combat as out of it.
@@ -44,6 +46,7 @@ local VECTORS = {
 }
 
 local anchor
+local stage
 local pools = {}
 local live = {}
 local preview = false
@@ -55,8 +58,8 @@ local function easeOut(p)
 end
 
 local function snap(value)
-    if PixelUtil and PixelUtil.GetNearestPixelSize and anchor then
-        return PixelUtil.GetNearestPixelSize(value, anchor:GetEffectiveScale())
+    if PixelUtil and PixelUtil.GetNearestPixelSize and stage then
+        return PixelUtil.GetNearestPixelSize(value, stage:GetEffectiveScale())
     end
     return math.floor(value + 0.5)
 end
@@ -69,7 +72,7 @@ local function poolFor(source)
     local pool = pools[source.id]
     if pool then return pool end
     pool = addon.Pool.New(function()
-        local frame = CreateFrame("Frame", nil, anchor)
+        local frame = CreateFrame("Frame", nil, stage)
         frame:SetSize(1, 1)
         frame:Hide()
         source.painter.build(frame)
@@ -105,7 +108,7 @@ local function position(record, rise)
     if x ~= record.x or y ~= record.y then
         record.x, record.y = x, y
         record.frame:ClearAllPoints()
-        record.frame:SetPoint("CENTER", anchor, "CENTER", x, y)
+        record.frame:SetPoint("CENTER", stage, "CENTER", x, y)
     end
 end
 
@@ -302,8 +305,15 @@ end
 
 --- After a settings write: the direction, and the preview's look. A live
 --- toast keeps the look it was drawn with.
+local function applyScale()
+    local scale = Notifications.Scale() / 100
+    stage:SetScale(scale)
+    anchor:SetSize(ANCHOR_WIDTH * scale, ANCHOR_HEIGHT * scale)
+end
+
 function Notifications.Apply()
     if not anchor then return end
+    applyScale()
     vector = VECTORS[Notifications.Direction()]
     if preview then
         showPreview()
@@ -338,7 +348,37 @@ local function build()
     addon.Strata.ApplyHUD(anchor, HUD_LEVEL)
     anchor:Hide()
     anchor:SetScript("OnUpdate", onUpdate)
+    stage = CreateFrame("Frame", nil, anchor)
+    stage:SetSize(ANCHOR_WIDTH, ANCHOR_HEIGHT)
+    stage:SetPoint("CENTER")
+    applyScale()
     vector = VECTORS[Notifications.Direction()]
+end
+
+-- The dialog's rows: the size, the direction the toasts travel and stack,
+-- and how long each holds. The page's own writes (page.lua).
+local function editModeMirror()
+    local scale, hold = Notifications.SCALE, Notifications.HOLD
+    return {
+        {
+            kind = "slider", label = "Scale",
+            min = scale.min, max = scale.max, step = scale.step, precision = 0,
+            get = Notifications.Scale,
+            set = function(v) Notifications.Set("scale", tonumber(v) or scale.default) end,
+        },
+        {
+            kind = "selector", label = "Direction",
+            values = Notifications.DIRECTIONS.values, order = Notifications.DIRECTIONS.order,
+            get = Notifications.Direction,
+            set = function(v) Notifications.Set("direction", v) end,
+        },
+        {
+            kind = "slider", label = "Hold Time",
+            min = hold.min, max = hold.max, step = hold.step, precision = 1,
+            get = Notifications.Hold,
+            set = function(v) Notifications.Set("hold", tonumber(v) or hold.default) end,
+        },
+    }
 end
 
 local registered = false
@@ -351,7 +391,8 @@ local function registerEditMode()
         default = DEFAULT_POSITION,
         restoreDefault = true,
         store = store,
-        brand = { navKey = Notifications.NAV_KEY, componentId = Notifications.NAV_KEY },
+        brand = { navKey = Notifications.NAV_KEY, componentId = Notifications.NAV_KEY,
+                  mirror = editModeMirror },
     })
     addon.EditMode.OnEditMode(OWNER, { enter = showPreview, exit = endPreview })
     if addon.EditMode.IsEditing() then showPreview() end

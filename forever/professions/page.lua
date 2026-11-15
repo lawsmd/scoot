@@ -86,6 +86,7 @@ local OPACITY_TOOLTIP = {
 
 local TRACKER_CONTENT = {
     layout = function(_, tab)
+        slider(tab, "Scale", "scale", Professions.SCALE, trackerOff)
         slider(tab, "Width", "width", Professions.WIDTH, trackerOff)
         slider(tab, "Bar Height", "barHeight", Professions.BAR_HEIGHT, trackerOff)
         slider(tab, "Row Spacing", "spacing", Professions.SPACING, trackerOff)

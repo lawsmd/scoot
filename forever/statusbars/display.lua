@@ -60,17 +60,21 @@ end
 -- Applies
 --------------------------------------------------------------------------------
 
---- The container at the bar's Width, the holder at the container's rect, and
---- what Blizzard re-lays on a size change: the bars inside, the dividers
---- between the segments, the rested tick.
+--- The container at the bar's Width and Scale, the holder at the container's
+--- scaled rect, and what Blizzard re-lays on a size change: the bars inside,
+--- the dividers between the segments, the rested tick. The scale sits on the
+--- container, centered in the holder, so the holder's position grows the bar
+--- about its anchor and keeps its units.
 function Display.ApplyWidth(index)
     local holder, c = Style.Holder(index), container(index)
     if not (holder and c) then return end
     c.widthPercent = Style.Width(index)
+    local scale = Style.Scale(index) / 100
     local width = c:GetExpectedWidth()
     local height = c:GetHeight()
+    c:SetScale(scale)
     c:SetSize(width, height)
-    holder:SetSize(width, height)
+    holder:SetSize(width * scale, height * scale)
     c:ResizeContainerBars()
     c:UpdateDividers(c:GetExpectedSegments())
     c:UpdateBarTick()

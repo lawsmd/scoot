@@ -229,9 +229,9 @@ local function liveCenter(frame)
 end
 
 --- Stored record -> center pair. Offsets are in the frame's own scale (what
---- GetPoint reports and SetPoint takes); sizes convert through it. Today's
---- positionables all run at scale 1; s keeps the math right if one ever
---- does not. `scale` overrides the frame's own, for a caller computing the
+--- GetPoint reports and SetPoint takes); sizes convert through it, so a
+--- positionable with a scale of its own (a unit frame, the chat window) lands
+--- where it was stored. `scale` overrides the frame's own, for a caller computing the
 --- center the frame will have at another scale (the Dynamic Layouts tween).
 local function centerFromRecord(frame, point, x, y, scale)
     local f = ANCHOR_FRACTIONS[point]

@@ -34,6 +34,9 @@ Professions.WIDTH = { min = 100, max = 320, step = 1, default = 160 }
 Professions.BAR_HEIGHT = { min = 4, max = 24, step = 1, default = 10 }
 Professions.ICON_SIZE = { min = 12, max = 48, step = 1, default = 22 }
 Professions.SPACING = { min = 0, max = 30, step = 1, default = 6 }
+-- The tracker's scale, in percent: a stage inside the holder (tracker.lua),
+-- so the stored point keeps its units.
+Professions.SCALE = { min = 50, max = 200, step = 5, default = 100 }
 
 Professions.ORDER = {
     values = { lowFirst = "Lowest Level at the Top", highFirst = "Highest Level at the Top" },
@@ -67,6 +70,7 @@ DB.RegisterDefaults({
     [TRACKER .. "barHeight"] = Professions.BAR_HEIGHT.default,
     [TRACKER .. "iconSize"] = Professions.ICON_SIZE.default,
     [TRACKER .. "spacing"] = Professions.SPACING.default,
+    [TRACKER .. "scale"] = Professions.SCALE.default,
     [TRACKER .. "order"] = "lowFirst",
     [TRACKER .. "secondary"] = true,
     [TRACKER .. "showIcon"] = true,

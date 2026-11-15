@@ -52,6 +52,9 @@ Notifications.DIRECTIONS = {
 }
 Notifications.SIZE = { min = 12, max = 48, step = 1 }
 Notifications.HOLD = { min = 1, max = 10, step = 0.5, default = 3 }
+-- The toasts' scale, over the text size: a stage inside the anchor
+-- (display.lua), so the anchor's stored point keeps its units.
+Notifications.SCALE = { min = 50, max = 200, step = 5, default = 100 }
 
 -- The icon's side against the text size.
 Notifications.ICON_RATIO = 1.25
@@ -61,6 +64,7 @@ local PREFIX = "notifications."
 DB.RegisterDefaults({
     [PREFIX .. "direction"] = "up",
     [PREFIX .. "hold"] = Notifications.HOLD.default,
+    [PREFIX .. "scale"] = Notifications.SCALE.default,
     -- The outline vanilla's own text over the world carries (the zone and
     -- PvP lines); a shadow alone is lost against the scene.
     [PREFIX .. "fontStyle"] = "THICKOUTLINE",
@@ -126,6 +130,13 @@ end
 
 function Notifications.Hold()
     return clamp(Notifications.Get("hold"), Notifications.HOLD, Notifications.HOLD.default)
+end
+
+--- 50 to 200 percent, in steps of 5.
+function Notifications.Scale()
+    local range = Notifications.SCALE
+    local v = clamp(Notifications.Get("scale"), range, range.default)
+    return math.floor(v / range.step + 0.5) * range.step
 end
 
 --------------------------------------------------------------------------------

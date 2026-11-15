@@ -129,6 +129,10 @@ end
 --------------------------------------------------------------------------------
 
 local holder
+-- The bars and icons stand on a stage at the holder's bottom, which carries
+-- the Scale setting; the holder takes the stage's scaled size, so its Edit
+-- Mode box covers the bars and its stored point keeps its units.
+local stage
 local bars = {}
 local states = {}
 local icons = {}
@@ -157,10 +161,13 @@ local function build()
     holder:SetPoint(DEFAULT_POSITION.point, DEFAULT_POSITION.x, DEFAULT_POSITION.y)
     holder:SetFrameStrata("LOW")
     holder:Hide()
+    stage = CreateFrame("Frame", nil, holder)
+    stage:SetSize(HOLDER_W, HOLDER_H)
+    stage:SetPoint("BOTTOM")
 
     for _, kind in ipairs(Animations.KINDS) do
         local spec = BARS[kind]
-        local bar = CreateFrame("StatusBar", nil, holder, "CamelotPersonalResourceStatusBar")
+        local bar = CreateFrame("StatusBar", nil, stage, "CamelotPersonalResourceStatusBar")
         bar:SetSize(spec.w, spec.h)
         bar:SetStatusBarColor(spec.color[1], spec.color[2], spec.color[3])
         bar:SetMinMaxValues(0, 1)
@@ -171,7 +178,7 @@ local function build()
     end
 
     iconPool = addon.Pool.New(function()
-        return holder:CreateTexture(nil, "OVERLAY")
+        return stage:CreateTexture(nil, "OVERLAY")
     end, function(tex)
         tex:Hide()
         tex:ClearAllPoints()
@@ -187,7 +194,7 @@ local function layout()
         local bar = bars[Animations.KINDS[i]]
         if bar:IsShown() then
             bar:ClearAllPoints()
-            bar:SetPoint("BOTTOM", holder, "BOTTOM", 0, y)
+            bar:SetPoint("BOTTOM", stage, "BOTTOM", 0, y)
             y = y + bar:GetHeight() + GAP
         end
     end
@@ -245,7 +252,7 @@ local function moveIcons(now)
             local x = icon.x + math.sin(age * TWO_PI * SWAY_HZ + icon.phase) * SWAY
             local y = stackTop + ICON_SIZE / 2 + RISE * p
             icon.tex:ClearAllPoints()
-            icon.tex:SetPoint("CENTER", holder, "BOTTOM", x, y)
+            icon.tex:SetPoint("CENTER", stage, "BOTTOM", x, y)
             local alpha
             if p < 0.15 then
                 alpha = p / 0.15
@@ -471,7 +478,52 @@ local store = {
     end,
 }
 
+-- The art's overhang grows with the stage.
+local function scaledReach(scale)
+    return { left = REACH.left * scale, right = REACH.right * scale,
+             top = REACH.top * scale, bottom = REACH.bottom * scale }
+end
+
 local registered = false
+
+--- The Scale setting onto the stage, the holder at the stage's scaled size,
+--- and the Edit Mode box over the art again.
+function Animations.ApplyScale()
+    if not holder then return end
+    local scale = Animations.Scale() / 100
+    stage:SetScale(scale)
+    holder:SetSize(HOLDER_W * scale, HOLDER_H * scale)
+    if registered and addon.EditMode.UpdateReach then
+        addon.EditMode.UpdateReach(holder, scaledReach(scale))
+    end
+end
+
+-- The dialog's rows: the size and the three bars' switches, the whole of
+-- the page (animationspage.lua), under shorter labels.
+local function editModeMirror()
+    local scale = Animations.SCALE
+    local rows = {
+        {
+            kind = "slider", label = "Scale",
+            min = scale.min, max = scale.max, step = scale.step, precision = 0,
+            get = Animations.Scale,
+            set = function(v) Animations.SetScale(v) end,
+        },
+    }
+    for _, row in ipairs({
+        { kind = "food", label = "While Eating" },
+        { kind = "drink", label = "While Drinking" },
+        { kind = "campfire", label = "Campfire" },
+    }) do
+        rows[#rows + 1] = {
+            kind = "toggle", label = row.label,
+            get = function() return Animations.IsOn(row.kind) end,
+            set = function(v) Animations.SetOn(row.kind, v) end,
+        }
+    end
+    return rows
+end
+
 local function registerEditMode()
     if registered or not (addon.EditMode and addon.EditMode.RegisterPositionable) then return end
     registered = true
@@ -480,9 +532,10 @@ local function registerEditMode()
         key = LAYOUT_KEY,
         default = DEFAULT_POSITION,
         restoreDefault = true,
-        reach = REACH,
+        reach = scaledReach(Animations.Scale() / 100),
         store = store,
-        brand = { navKey = Animations.NAV_KEY, componentId = Animations.NAV_KEY },
+        brand = { navKey = Animations.NAV_KEY, componentId = Animations.NAV_KEY,
+                  mirror = editModeMirror },
     })
     addon.EditMode.OnEditMode(OWNER, { enter = showPreview, exit = endPreview })
     if addon.EditMode.IsEditing() then showPreview() end
@@ -495,6 +548,7 @@ end
 addon.Events.OnWorldEntered(function()
     loadNames()
     build()
+    Animations.ApplyScale()
     holder:SetScript("OnUpdate", onUpdate)
     registerEditMode()
     evaluate()
@@ -512,5 +566,6 @@ addon.Events.On(OWNER, "PLAYER_REGEN_ENABLED", evaluate)
 -- pass keeps the profile it had.
 addon.Profiles.RegisterApplyStep("camelotAnimations", function(_, ctx)
     if ctx.initial or ctx.resync then return end
+    Animations.ApplyScale()
     evaluate()
 end, 40)

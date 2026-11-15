@@ -465,6 +465,7 @@ end
 -- in the left half, left of one in the right half. A host with no nudge arrows
 -- has no band to clear, so it can sit close.
 local attachedSide         -- side the box was last anchored on, nil when unanchored
+local attachedFor          -- the selection that side was chosen for
 
 -- A frame the dynamic view has sent off-screen is stood in for by its edge
 -- tab (ui/v2/editmode/DynamicTabs.lua), and the box goes beside the tab on
@@ -497,14 +498,25 @@ local function AttachToSelection(dialog, selection, attach, onlyOnFlip)
     if not frame then return end
     if AttachToTab(dialog, selection, attach, onlyOnFlip) then return end
 
-    local side = "RIGHT"
+    -- An element centered on the screen (the Current Objectives cards, TOP 0)
+    -- reads a hair either side of the middle as its scale changes, so within
+    -- 4 UI units of the middle it keeps the side it has, RIGHT when it has
+    -- none.
+    local band = 4
+    local kept = attachedFor == selection and (attachedSide == "LEFT" or attachedSide == "RIGHT")
+    local side = kept and attachedSide or "RIGHT"
     local ok, centerX = pcall(selection.GetCenter, selection)
     if ok and type(centerX) == "number" then
         local ratio = selection:GetEffectiveScale() / UIParent:GetEffectiveScale()
-        if centerX * ratio > UIParent:GetWidth() / 2 then side = "LEFT" end
+        local offset = centerX * ratio - UIParent:GetWidth() / 2
+        if offset > band then
+            side = "LEFT"
+        elseif offset < -band then
+            side = "RIGHT"
+        end
     end
-    if onlyOnFlip and side == attachedSide then return end
-    attachedSide = side
+    if onlyOnFlip and side == attachedSide and attachedFor == selection then return end
+    attachedSide, attachedFor = side, selection
 
     -- The selection box stands off small elements, so the gap is measured from
     -- the border the player sees rather than from the element's own edge; the

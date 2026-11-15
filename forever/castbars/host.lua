@@ -113,6 +113,35 @@ function CBZ._GetUnitConfig(unitKey)
     return cfg
 end
 
+-- The Edit Mode dialog's rows under Snap To (anchoring.lua, the host seam):
+-- the look, the size and the readout, the page's three a player judges on
+-- the bar itself. Each is the page's own write (page.lua). The Player bar
+-- alone; a hosted row is placed by its host and has no dialog.
+local FRAME_STYLE_LABELS = { classic = "Classic", modern = "Modern" }
+local FRAME_STYLE_ORDER = { "classic", "modern" }
+
+function CBZ.EditModeExtraRows(bar, cfg)
+    if not (bar and bar.unitKey == "Player" and cfg) then return nil end
+    return {
+        {
+            kind = "selector", label = "Frame Style",
+            values = FRAME_STYLE_LABELS, order = FRAME_STYLE_ORDER,
+            get = function() return FRAME_STYLE_LABELS[cfg.frameStyle] and cfg.frameStyle or "classic" end,
+            set = function(v) cfg.frameStyle = v; CBZ._Reconcile() end,
+        },
+        {
+            kind = "slider", label = "Scale", min = 50, max = 150, step = 1, precision = 0,
+            get = function() return tonumber(cfg.scale) or 100 end,
+            set = function(v) cfg.scale = v; CBZ._Reconcile() end,
+        },
+        {
+            kind = "toggle", label = "Show Cast Time",
+            get = function() return DB.Get("castBars.castTime") == true end,
+            set = function(v) DB.Set("castBars.castTime", v and true or false); CBZ._Reconcile() end,
+        },
+    }
+end
+
 -- Whether a hosted row standing in for this unit is on: the Resource
 -- Display's cast bar is the player's only Camelot cast bar while it is.
 local function hostedStandIn(unitKey)

@@ -199,6 +199,10 @@ end
 --------------------------------------------------------------------------------
 
 local holder
+-- The rows stand on a stage at the holder's top left, which carries the
+-- Scale setting; the holder takes the stage's scaled size, so its Edit Mode
+-- box covers the rows and its stored point keeps its units.
+local stage
 local rows
 local preview = false
 
@@ -248,7 +252,7 @@ local function onIconMouseUp(self, button)
 end
 
 local function createRow()
-    local row = CreateFrame("Frame", nil, holder)
+    local row = CreateFrame("Frame", nil, stage)
     row:SetSize(1, 1)
     row:Hide()
     row.Icon = Icon.Create(row)
@@ -365,7 +369,11 @@ local function refresh()
         or (looks.level.size * #LEVEL_RESERVE * 0.6)
     local nameWidth = math.max(1, width - barLeft - reserve - NAME_GAP)
 
-    holder:SetSize(width, #list * rowHeight + (#list - 1) * spacing)
+    local scale = Professions.Clamp(get("scale"), Professions.SCALE) / 100
+    local height = #list * rowHeight + (#list - 1) * spacing
+    stage:SetScale(scale)
+    stage:SetSize(width, height)
+    holder:SetSize(width * scale, height * scale)
     holder:Show()
     applyHover()
     applyAlpha()
@@ -374,7 +382,7 @@ local function refresh()
         local row = rows:Get(i)
         row:SetSize(width, rowHeight)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(i - 1) * (rowHeight + spacing))
+        row:SetPoint("TOPLEFT", stage, "TOPLEFT", 0, -(i - 1) * (rowHeight + spacing))
         row:Show()
 
         row.Icon:SetShown(showIcon)
@@ -440,7 +448,36 @@ local function build()
     holder:SetPoint(DEFAULT_POSITION.point, DEFAULT_POSITION.x, DEFAULT_POSITION.y)
     addon.Strata.ApplyHUD(holder, HUD_LEVEL)
     holder:Hide()
+    stage = CreateFrame("Frame", nil, holder)
+    stage:SetPoint("TOPLEFT")
+    stage:SetSize(Professions.WIDTH.default, 1)
     rows = addon.Pool.NewIndexed(createRow)
+end
+
+-- The dialog's rows: the size, the width, the bar's height and the order,
+-- the page's Layout tab without the spacing. The page's own writes.
+local function trackerSlider(label, key, range)
+    return {
+        kind = "slider", label = label,
+        min = range.min, max = range.max, step = range.step, precision = 0,
+        get = function() return Professions.Clamp(get(key), range) end,
+        set = function(v) Professions.TrackerSet(key, Professions.Clamp(v, range)) end,
+    }
+end
+
+local function editModeMirror()
+    return {
+        trackerSlider("Scale", "scale", Professions.SCALE),
+        trackerSlider("Width", "width", Professions.WIDTH),
+        trackerSlider("Bar Height", "barHeight", Professions.BAR_HEIGHT),
+        {
+            kind = "selector", label = "Order",
+            values = { lowFirst = "Lowest First", highFirst = "Highest First" },
+            order = Professions.ORDER.order,
+            get = function() return get("order") == "highFirst" and "highFirst" or "lowFirst" end,
+            set = function(v) Professions.TrackerSet("order", v) end,
+        },
+    }
 end
 
 local registered = false
@@ -455,7 +492,7 @@ local function registerEditMode()
         store = store,
         brand = {
             navKey = Professions.NAV_KEY, componentId = Professions.NAV_KEY,
-            sectionKey = "tracker",
+            sectionKey = "tracker", mirror = editModeMirror,
         },
     })
     addon.EditMode.OnEditMode(OWNER, {

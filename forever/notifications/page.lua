@@ -51,6 +51,13 @@ local function Render(panel, scrollContent)
         get = Notifications.Direction,
         set = function(v) Notifications.Set("direction", v) end })
 
+    local scale = Notifications.SCALE
+    builder:AddSlider({ label = "Scale",
+        min = scale.min, max = scale.max, step = scale.step, precision = 0,
+        minLabel = scale.min .. "%", maxLabel = scale.max .. "%",
+        get = Notifications.Scale,
+        set = function(v) Notifications.Set("scale", tonumber(v) or scale.default) end })
+
     local hold = Notifications.HOLD
     builder:AddSlider({ label = "Hold Time",
         min = hold.min, max = hold.max, step = hold.step, precision = 1,

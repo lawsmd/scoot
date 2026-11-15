@@ -266,18 +266,86 @@ end
 
 local OFFSET = Settings.ATTACH_OFFSET_RANGE
 
-function EditMode.Mirror(frame)
-    local inst = instByFrame[frame]
-    local a = inst and Settings.ATTACH[inst.key]
-    if not a then return nil end
-    local key = inst.key
+-- A style swap retires the frame the dialog is open on and shows the other
+-- style's instance in its place, so the selection moves to the new frame:
+-- the old box goes back to highlighted, and the new one takes the click the
+-- library selects a frame with. A frame later, once the pass has shown it.
+local function reselect(key, oldFrame)
+    C_Timer.After(0, function()
+        if not addon.EditMode.IsEditing() or InCombatLockdown() then return end
+        local inst = UF.Frames[key]
+        if not (inst and inst.frame and inst.frame ~= oldFrame) then return end
+        local old = oldFrame and oldFrame.camelotEditModeSelection
+        if old and old.isSelected and old.ShowHighlighted then old:ShowHighlighted() end
+        local sel = inst.frame.camelotEditModeSelection
+        local click = sel and sel:IsVisible() and sel:GetScript("OnMouseDown")
+        if click then click(sel, "LeftButton") end
+    end)
+end
 
+-- The rows every frame carries, before its own: the style it draws, its
+-- size, and the portrait, the three a player judges by looking at the frame.
+-- Each is the page's own write (page.lua), so the two cannot drift.
+local function frameRows(frame, key)
+    local hiddenPath = Settings.PortraitPath(key, "hidden")
     local specs = {
         {
-            kind = "toggle", label = a.short, rebuild = true,
-            get = function() return UF.IsAttachOn(key) end,
-            set = function(v) UF.SetAttach(key, v) end,
+            kind = "selector", label = "Style",
+            values = UF.STYLES, order = UF.STYLE_ORDER,
+            get = function() return UF.StyleOf(key) end,
+            set = function(v)
+                if UF.StyleOf(key) == v then return end
+                UF.SetStyle(key, v)
+                reselect(key, frame)
+            end,
         },
+        {
+            kind = "slider", label = "Scale",
+            min = UF.SCALE_MIN * 100, max = UF.SCALE_MAX * 100, step = 5, precision = 0,
+            get = function() return math.floor(UF.GetScale(key) * 100 + 0.5) end,
+            set = function(v) UF.SetScale(key, (tonumber(v) or 100) / 100) end,
+        },
+        {
+            -- The portrait key carries the style's prefix, so the row reads
+            -- the style on screen.
+            kind = "toggle", label = "Hide Portrait",
+            get = function() return Settings.Portrait(key, "hidden") == true end,
+            set = function(v)
+                DB.Set(hiddenPath, v and true or false)
+                UF.RefreshPortrait(key)
+            end,
+        },
+    }
+    if Settings.COMBO_POINTS[key] then
+        specs[#specs + 1] = {
+            kind = "toggle", label = "Combo Points",
+            get = function() return UF.ShowComboPoints(key) end,
+            set = function(v) UF.SetComboPoints(key, v) end,
+        }
+    end
+    if Settings.HIDE_WHEN_SELF[key] then
+        specs[#specs + 1] = {
+            kind = "toggle", label = "Hide When Self",
+            get = function() return UF.HideWhenSelf(key) end,
+            set = function(v) UF.SetHideWhenSelf(key, v) end,
+        }
+    end
+    return specs
+end
+
+function EditMode.Mirror(frame)
+    local inst = instByFrame[frame]
+    if not inst then return nil end
+    local key = inst.key
+
+    local specs = frameRows(frame, key)
+    local a = Settings.ATTACH[key]
+    if not a then return specs end
+
+    specs[#specs + 1] = {
+        kind = "toggle", label = a.short, rebuild = true,
+        get = function() return UF.IsAttachOn(key) end,
+        set = function(v) UF.SetAttach(key, v) end,
     }
     if UF.IsAttachOn(key) then
         specs[#specs + 1] = {
@@ -309,7 +377,7 @@ function EditMode.Register(inst, opts)
     inst.editModeLabel = opts.label
     refreshName(inst)
 
-    addon.EditMode.RegisterPositionable(inst.frame, {
+    inst.frame.camelotEditModeSelection = addon.EditMode.RegisterPositionable(inst.frame, {
         key = opts.key,
         default = opts.default,
         restoreDefault = true,

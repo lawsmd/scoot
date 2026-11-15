@@ -249,6 +249,14 @@ function CBZ._EditModeMirror(bar)
         }
     end
 
+    -- Host seam: rows a host adds under the position rows. Unset on Scoot.
+    if CBZ.EditModeExtraRows then
+        local extra = CBZ.EditModeExtraRows(bar, cfg)
+        if type(extra) == "table" then
+            for _, spec in ipairs(extra) do specs[#specs + 1] = spec end
+        end
+    end
+
     return specs
 end
 

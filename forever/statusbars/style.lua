@@ -58,6 +58,10 @@ end
 -- the replica's is 25.
 Style.WIDTH = { min = 25, max = 130, step = 5, default = 100 }
 Style.OPACITY = { min = 0, max = 100, step = 1, default = 100 }
+-- Scale is the container's, inside a holder sized to match (display.lua,
+-- ApplyWidth), so the stored position and the Dynamic Layouts record keep
+-- their units. Blizzard's Edit Mode has no scale for the system.
+Style.SCALE = { min = 50, max = 200, step = 5, default = 100 }
 
 -- The owner's spots off the beta's saved profile, rounded: bar 1 on the
 -- bottom edge, bar 2 on the top edge left of center. Kept by reference: Reset
@@ -99,6 +103,7 @@ do
     for index = 1, 2 do
         map[Style.Path(index, "width")] = CAMELOT_WIDTH
         map[Style.Path(index, "opacity")] = CAMELOT_OPACITY[index]
+        map[Style.Path(index, "scale")] = Style.SCALE.default
         map[Style.Path(index, "alwaysShowText")] = false
         map[Style.Path(index, "showLevel")] = true
         stock[Style.Path(index, "width")] = Style.WIDTH.default
@@ -127,6 +132,12 @@ end
 
 function Style.Opacity(index)
     return clamp(Style.Get(index, "opacity"), Style.OPACITY)
+end
+
+--- 50 to 200 percent, in steps of 5.
+function Style.Scale(index)
+    local v = clamp(Style.Get(index, "scale"), Style.SCALE)
+    return math.floor(v / Style.SCALE.step + 0.5) * Style.SCALE.step
 end
 
 function Style.AlwaysShowText(index)
@@ -173,7 +184,7 @@ end, 30)
 -- Edit Mode dialog
 --------------------------------------------------------------------------------
 -- Blizzard's one Edit Mode setting for the system, Size, carried as Width,
--- with the replica's own three beside it. Labels only.
+-- with the replica's own four beside it. Labels only.
 
 --- The mirror for one bar's branded Edit Mode dialog. The engine puts the
 --- position row in front of the list.
@@ -186,6 +197,15 @@ function Style.EditModeMirror(index)
                 get = function() return Style.Width(index) end,
                 set = function(v)
                     Style.Set(index, "width", clamp(v, Style.WIDTH))
+                    Style.Apply()
+                end,
+            },
+            {
+                kind = "slider", label = "Scale",
+                min = Style.SCALE.min, max = Style.SCALE.max, step = Style.SCALE.step, precision = 0,
+                get = function() return Style.Scale(index) end,
+                set = function(v)
+                    Style.Set(index, "scale", clamp(v, Style.SCALE))
                     Style.Apply()
                 end,
             },

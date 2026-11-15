@@ -33,6 +33,16 @@ local function addBar(builder, index)
                 end,
             })
             inner:AddSlider({
+                label = "Scale",
+                min = Style.SCALE.min, max = Style.SCALE.max, step = Style.SCALE.step, precision = 0,
+                minLabel = Style.SCALE.min .. "%", maxLabel = Style.SCALE.max .. "%",
+                get = function() return Style.Scale(index) end,
+                set = function(v)
+                    Style.Set(index, "scale", Style.Clamp(v, Style.SCALE))
+                    Style.Apply()
+                end,
+            })
+            inner:AddSlider({
                 label = "Opacity",
                 min = Style.OPACITY.min, max = Style.OPACITY.max, step = Style.OPACITY.step, precision = 0,
                 minLabel = "0%", maxLabel = "100%",

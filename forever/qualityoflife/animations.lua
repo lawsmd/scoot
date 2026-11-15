@@ -29,11 +29,31 @@ Animations.PATHS = {
     campfire = "qol.animCampfire",
 }
 
+-- The bars' scale, in percent: a stage inside the holder
+-- (animationsdisplay.lua), so the stored point keeps its units.
+Animations.SCALE_PATH = "qol.animScale"
+Animations.SCALE = { min = 50, max = 200, step = 5, default = 100 }
+
 DB.RegisterDefaults({
     [Animations.PATHS.food] = true,
     [Animations.PATHS.drink] = true,
     [Animations.PATHS.campfire] = true,
+    [Animations.SCALE_PATH] = Animations.SCALE.default,
 })
+
+--- 50 to 200 percent, in steps of 5.
+function Animations.Scale()
+    local range = Animations.SCALE
+    local v = tonumber(DB.Get(Animations.SCALE_PATH)) or range.default
+    v = math.max(range.min, math.min(range.max, v))
+    return math.floor(v / range.step + 0.5) * range.step
+end
+
+function Animations.SetScale(value)
+    DB.Set(Animations.SCALE_PATH, tonumber(value) or Animations.SCALE.default)
+    -- Forever only (animationsdisplay.lua); on retail the row stores alone.
+    if Animations.ApplyScale then Animations.ApplyScale() end
+end
 
 function Animations.IsOn(kind)
     return DB.Get(Animations.PATHS[kind]) and true or false

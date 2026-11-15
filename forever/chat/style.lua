@@ -513,8 +513,9 @@ end, 30)
 --------------------------------------------------------------------------------
 -- Edit Mode dialog
 --------------------------------------------------------------------------------
--- Blizzard's Edit Mode settings for the chat frame, Width and Height, plus
--- the font size Blizzard keeps in the tab menu. Labels only.
+-- Blizzard's Edit Mode settings for the chat frame, Width and Height, the
+-- window's Scale, and the font size Blizzard keeps in the tab menu. Labels
+-- only.
 
 function Style.EditModeMirror()
     return function()
@@ -534,6 +535,15 @@ function Style.EditModeMirror()
                 get = Style.Height,
                 set = function(v)
                     Style.Set("height", clamp(v, Style.HEIGHT))
+                    Style.Apply()
+                end,
+            },
+            {
+                kind = "slider", label = "Scale",
+                min = Style.SCALE.min, max = Style.SCALE.max, step = Style.SCALE.step, precision = 0,
+                get = Style.ScalePercent,
+                set = function(v)
+                    Style.Set("scale", clamp(v, Style.SCALE))
                     Style.Apply()
                 end,
             },
