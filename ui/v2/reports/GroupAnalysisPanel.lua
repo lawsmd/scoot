@@ -1,10 +1,8 @@
--- GroupAnalysisPanel.lua - Group Analysis report panel (widget flyout child)
+-- GroupAnalysisPanel.lua - Group Analysis report panel
 --
--- Persistent surface attached to the widget diamond through the flyout-child
--- chain, so it stacks along the configured direction and inherits the
--- widget's combat fade through frame parenting. The diamond sits on the
--- panel's near edge as its head, so the header block is pushed clear of it
--- (see addon.Widget:GetHeadInset).
+-- A window of its own, opened from the minimap button's right-click menu.
+-- The player drags it by any empty part, Escape or the x closes it, and its
+-- place is kept under addon.db.global.groupAnalysisPosition.
 --
 -- Each player is a two-line cell: role icon in a gutter on the left, then a
 -- class-colored name with the realm in parentheses beside it for cross-realm
@@ -83,7 +81,9 @@ local DOTS_PERIOD = 0.35                  -- seconds per frame; a full cycle rea
 local FALLBACK_BG_ALPHA = 0.98  -- only if the Reports opacity setting is unreachable
 
 local frame = nil
-local flyoutHandle = nil
+local isOpen = false
+local POSITION_KEY = "groupAnalysisPosition"
+local onClosed  -- forward: the frame's OnHide runs it
 local renderQueued = false
 local render  -- forward: the footer's click handler re-renders immediately
 
@@ -212,12 +212,32 @@ end
 local function ensureFrame()
     if frame then return frame end
 
-    local W = addon.Widget
-    local parent = (W and W:GetFrame()) or UIParent
-
-    frame = CreateFrame("Frame", "ScootGroupAnalysisPanel", parent)
+    -- Kept off addon.UI.WindowShell: the panel draws its own surface at the Reports opacity and its own title with the loading dots.
+    frame = CreateFrame("Frame", "ScootGroupAnalysisPanel", UIParent)
     frame:SetSize(METRICS.party.width, 100)
+    frame:SetFrameStrata("MEDIUM")
+    frame:SetClampedToScreen(true)
     frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local point, _, relPoint, x, y = self:GetPoint(1)
+        if point and addon.db and addon.db.global then
+            addon.db.global[POSITION_KEY] = { point = point, relPoint = relPoint, x = x, y = y }
+        end
+    end)
+    -- Anchored by its top so a roster change grows the panel downward.
+    local pos = addon.db and addon.db.global and addon.db.global[POSITION_KEY]
+    if type(pos) == "table" and pos.point and pos.x and pos.y then
+        frame:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x, pos.y)
+    else
+        frame:SetPoint("TOP", UIParent, "TOP", 0, -200)
+    end
+    -- The game's own Escape hides it; OnHide does the rest of the close.
+    tinsert(UISpecialFrames, "ScootGroupAnalysisPanel")
+    frame:SetScript("OnHide", function() if onClosed then onClosed() end end)
     frame:Hide()
 
     local theme = addon.UI.Theme
@@ -258,8 +278,7 @@ local function ensureFrame()
         end)
     end
 
-    -- Centered on the panel, under the diamond. Anchored per render so it
-    -- tracks head clearance when the icon size or flyout direction changes.
+    -- Centered on the panel. Anchored per render.
     local title = frame:CreateFontString(nil, "OVERLAY")
     title:SetJustifyH("CENTER")
     title:SetWordWrap(false)
@@ -690,15 +709,9 @@ function render()
     local snapshot = GA.BuildSnapshot()
     local M = METRICS[snapshot.mode] or METRICS.party
 
-    -- The diamond wears the panel's near edge; shift content clear of the
-    -- half that intrudes and grow the panel by the same amount, so the usable
-    -- content box is identical in all four flyout directions. TITLE_TOP_PAD is
-    -- the smaller of the panel's two insets, so clearance is never short.
-    local W = addon.Widget
+    -- Insets the layout below still reads; all zero since the panel stopped
+    -- hanging off the widget.
     local padTop, padLeft, extraH, extraW = 0, 0, 0, 0
-    if W and W.GetHeadInset then
-        padTop, padLeft, extraH, extraW = W:GetHeadInset(W:GetFlyoutDirection(), TITLE_TOP_PAD)
-    end
 
     -- The usable box is inset by padLeft on the left and (extraW - padLeft) on
     -- the right, so the centre of the content is not the centre of the frame.
@@ -917,31 +930,27 @@ end
 -- Open / close
 --------------------------------------------------------------------------------
 
-local function onRelease(released)
-    -- First, ahead of anything that can throw: the widget invokes this under a
-    -- pcall, so a failure below would be swallowed along with every remaining
-    -- line — orphaning a ticker that holds a closure over a hidden frame until
-    -- the next reload.
+-- Runs from the frame's OnHide, so the x, Escape and Panel:Close all end here.
+function onClosed()
+    if not isOpen then return end
+    isOpen = false
+    -- First, ahead of anything that can throw: an orphaned ticker would hold
+    -- a closure over a hidden frame until the next reload.
     stopDots()
     dotsSettled = false
     if GA then GA.Unsubscribe() end
     addon:UnregisterMessage("SCOOT_REPORTS_FONT_CHANGED")
     addon:UnregisterMessage("SCOOT_REPORTS_OPACITY_CHANGED")
     addon:UnregisterMessage("SCOOT_REPORT_SETTING_CHANGED")
-    if released then released:Hide() end
-    flyoutHandle = nil
 end
 
 function Panel:OpenOrRefresh()
     ensureFrame()
     GA = addon.Reports and addon.Reports.GroupAnalysis
 
-    if not flyoutHandle then
+    if not isOpen then
+        isOpen = true
         frame:Show()
-        flyoutHandle = addon.Widget:RegisterFlyoutChild(frame, {
-            id = "groupAnalysis",
-            onRelease = onRelease,
-        })
         if GA then
             -- Roster and combat changes rebuild; inspect updates fill blanks.
             GA.Subscribe(function(event)
@@ -974,11 +983,9 @@ function Panel:OpenOrRefresh()
 end
 
 function Panel:Close()
-    if flyoutHandle then
-        addon.Widget:ReleaseFlyoutChild(flyoutHandle)
-    end
+    if frame then frame:Hide() end
 end
 
 function Panel:IsOpen()
-    return flyoutHandle ~= nil
+    return isOpen
 end

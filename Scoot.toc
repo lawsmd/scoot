@@ -236,8 +236,17 @@ core/components/minimap/dial.lua
 core/components/minimap/offscreenunlock.lua
 core/components/minimap/overlay.lua
 core/components/tooltip.lua
-core/components/notes.lua
-core/components/widget/core.lua
+## Notes (docs/notes.md). panelart is the backdrop, title bar and border art
+## the Notes windows and Damage Meters Y share; damagemetersY/art.lua reads it
+## at file scope. markdown reads a note's text into blocks. noteshost is
+## Scoot's store for the notes and their positions. The three component files
+## share addon.Notes: core makes it, render and editor fill it.
+core/panelart.lua
+core/markdown.lua
+core/noteshost.lua
+core/components/notes/core.lua
+core/components/notes/render.lua
+core/components/notes/editor.lua
 core/reports/core.lua
 core/reports/groupanalysis.lua
 core/components/dungeonjournal/core.lua
@@ -299,7 +308,6 @@ core/debug/cdm.lua
 core/debug/hover.lua
 core/debug/dmY.lua
 core/debug/rosteroverlay.lua
-core/debug/widget.lua
 core/debug/inspect.lua
 core/debug/nametextreports.lua
 core/debug/nametextprobe.lua
@@ -379,7 +387,6 @@ ui/v2/controls/Flyout.lua
 ui/v2/controls/SelectorGear.lua
 ui/v2/controls/FlyoutColorPicker.lua
 ui/v2/HighScoreWindow.lua
-ui/v2/reports/WidgetMenu.lua
 ui/v2/reports/GroupAnalysisPanel.lua
 ui/v2/Window.lua
 ui/v2/WindowShell.lua
@@ -447,7 +454,6 @@ ui/v2/settings/castbars/CastBarZRenderer.lua
 ui/v2/settings/bosswarnings/BossWarningsRenderer.lua
 ui/v2/settings/bosswarnings/BossTimelineRenderer.lua
 ui/v2/settings/bosswarnings/BossBarsRenderer.lua
-ui/v2/settings/reports/WidgetRenderer.lua
 ui/v2/settings/reports/ReportsRenderer.lua
 ui/v2/settings/qol/EditModeRenderer.lua
 ui/v2/settings/qol/LootVendorsRenderer.lua

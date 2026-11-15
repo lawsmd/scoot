@@ -770,7 +770,7 @@ function GF.Setting(key)
 end
 
 -- The two ways in beside /scoot lfg, each behind a switch on the page: the
--- /lfg word and a row in the widget's click menu. Both are put in place
+-- /lfg word and a row in the minimap button's right-click menu. Both are put in place
 -- from the initializer, so they exist only while the module is on. The
 -- word's handler reads its switch on each call and the menu reads the
 -- action's on each open, so a change takes without a reload.
@@ -784,8 +784,8 @@ local function InstallOpenPaths()
             if GF.UI then GF.UI:Toggle() end
         end)
     end
-    if addon.Widget and addon.Widget.RegisterAction then
-        addon.Widget:RegisterAction({
+    if addon.MinimapMenu then
+        addon.MinimapMenu.RegisterAction({
             id = "groupFinder",
             label = "Group Finder",
             order = 20,

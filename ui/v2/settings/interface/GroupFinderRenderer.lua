@@ -30,7 +30,7 @@ function Page.Render(panel, scrollContent)
 
     builder:AddDescription(
         "Scoot's own Premade Groups window in place of Blizzard's. " ..
-        "It opens from the widget's click menu, /lfg, a button on Blizzard's Group Finder and the queue eye; " ..
+        "It opens from the minimap button's right-click menu, /lfg, a button on Blizzard's Group Finder and the queue eye; " ..
         "/scoot lfg always opens it."
     )
 
@@ -44,8 +44,8 @@ function Page.Render(panel, scrollContent)
     })
 
     builder:AddToggle({
-        label = "Widget",
-        description = "A Group Finder row in the widget's click menu. The widget is the Reports/Widget module on the Features page.",
+        label = "Minimap Menu",
+        description = "A Group Finder row in the menu a right-click on the minimap button opens.",
         get = function() return h.get("widgetLaunch") ~= false end,
         set = function(value) h.set("widgetLaunch", value and true or false) end,
     })

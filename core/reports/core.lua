@@ -1,11 +1,10 @@
 -- reports/core.lua - Report registry and per-report enabled state
 --
--- A report is an on-demand summary the user runs from the widget's click
--- menu. This file is pure data and accessors: no frames, no events. Report
--- definitions register at file load; everything visual is created lazily by
--- the menu and the report's own Run implementation, which can only be
--- reached if the widget module built its frame — so no module gating is
--- needed here.
+-- A report is an on-demand summary the user runs from the minimap button's
+-- right-click menu (core/minimap.lua). This file is data and accessors: no
+-- frames, no events. Report definitions register at file load; the
+-- initializer at the end, which runs only while the Reports module is on,
+-- gives each report its menu row, so a report is reachable only then.
 local addonName, addon = ...
 
 addon.Reports = addon.Reports or {}
@@ -13,13 +12,6 @@ local Reports = addon.Reports
 
 Reports._ordered = Reports._ordered or {}
 Reports._byId = Reports._byId or {}
-
--- Single source for the plain-language widget explanation. Shown at the top
--- of the Reports > Widget settings page, and by the widget's click menu when
--- no report is enabled (the lone diamond would otherwise confuse users).
--- The last sentence doubles as the menu's empty-state guidance, so the menu
--- appends nothing of its own.
-Reports.WIDGET_EXPLANATION = "This is the Scoot widget. It is meant for launching Reports or providing simple notifications. Reports must first be enabled in Reports > Config."
 
 --------------------------------------------------------------------------------
 -- Enabled state
@@ -75,8 +67,8 @@ end
 --------------------------------------------------------------------------------
 -- One face for every report panel, stored Zero-Touch at profile.reports
 -- .fontFace (a font key, nil = default). Report output is read against the
--- game world rather than a settings panel, so it defaults to the same Roboto
--- Medium the widget menu uses instead of the lighter UI face.
+-- game world rather than a settings panel, so it defaults to Roboto Medium
+-- instead of the lighter UI face.
 --------------------------------------------------------------------------------
 
 Reports.DEFAULT_FONT_KEY = "ROBOTO_MED"
@@ -116,8 +108,7 @@ end
 --------------------------------------------------------------------------------
 -- Panel backdrop opacity
 --------------------------------------------------------------------------------
--- One backdrop alpha for every surface the diamond spawns: the widget's click
--- menu and each report panel. Stored Zero-Touch at profile.reports
+-- One backdrop alpha for every report panel. Stored Zero-Touch at profile.reports
 -- .backdropOpacity (a percent, nil = default).
 --
 -- The default is the /scoot window's own backdrop alpha, read from the theme
@@ -222,7 +213,7 @@ end
 --------------------------------------------------------------------------------
 
 -- def = { id, label, menuLabel?, description, order?, Run(def, ctx) }
--- The widget's menu shows menuLabel when set, else label; the Config page
+-- The minimap menu shows menuLabel when set, else label; the Config page
 -- always shows label.
 function Reports:Register(def)
     if type(def) ~= "table" or type(def.id) ~= "string" or def.id == "" then return end
@@ -272,3 +263,33 @@ function Reports:Run(id, ctx)
         end
     end
 end
+
+--------------------------------------------------------------------------------
+-- The minimap menu rows
+--------------------------------------------------------------------------------
+-- One row per report on the minimap button's right-click menu, listed while
+-- the report is enabled. Registered from an initializer in the module's
+-- category, so the rows exist only while the module is on, and after every
+-- file has loaded, so the menu's registry is there.
+
+addon:RegisterComponentInitializer(function()
+    local Menu = addon.MinimapMenu
+    if Menu then
+        for _, def in ipairs(Reports._ordered) do
+            local id = def.id
+            Menu.RegisterAction({
+                id = "report:" .. id,
+                label = def.menuLabel or def.label,
+                order = 50 + (def.order or 100),
+                isEnabled = function() return Reports:IsEnabled(id) end,
+                Run = function() Reports:Run(id, { source = "minimapMenu" }) end,
+            })
+        end
+    end
+
+    -- Warm the shared inspect service only when a report is enabled: the
+    -- module alone must not generate background inspects.
+    if Reports:HasAnyEnabled() and addon.Inspect then
+        addon.Inspect:EnsureStarted()
+    end
+end, "widget")

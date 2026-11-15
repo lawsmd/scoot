@@ -91,6 +91,7 @@ local function cloneProfilePayload(preset, layoutName)
         copy.components.notes = nil
     end
     copy.notePositions = nil
+    copy.noteData = nil
     -- Backfill module toggles. Preset payloads captured before the module-toggle
     -- feature existed carry no moduleEnabled table at all, and the AceDB defaults
     -- are all false (core/init.lua) -- so without this the applied profile comes

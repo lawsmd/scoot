@@ -50,7 +50,7 @@ Navigation.NavModel = {
             { key = "objectiveTracker", label = "Objective Tracker", module = "objectiveTracker" },
             { key = "minimap", label = "Minimap", module = "minimap" },
             { key = "chat", label = "Chat" },
-            { key = "notes", label = "Notes", module = "notes" },
+            { key = "notes", label = "Notes" },
             { key = "misc", label = "Misc." },
         },
     },
@@ -243,7 +243,6 @@ Navigation.NavModel = {
         label = "Reports",
         collapsible = true,
         children = {
-            { key = "reportsWidget", label = "Widget", module = "widget" },
             { key = "reportsList", label = "Config", module = "widget" },
         },
     },

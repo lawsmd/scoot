@@ -69,8 +69,6 @@ local COMPONENT_TO_CATEGORY = {
     bags = "bags",
     -- Minimap
     minimapStyle = "minimap",
-    -- Notes
-    notes = "notes",
     -- Objective Tracker
     objectiveTracker = "objectiveTracker",
     -- Personal Resource Display
@@ -79,8 +77,6 @@ local COMPONENT_TO_CATEGORY = {
     sctDamage = "sct",
     -- Tooltip
     tooltip = "tooltip",
-    -- Widget (Reports launchpad)
-    widget = "widget",
 }
 
 --- Returns the module category for a component ID.
@@ -114,10 +110,9 @@ addon.MODULE_CATEGORY_ORDER = {
     "groupfinder",
     "groupFrames",
     "minimap",
-    "notes",
     "objectiveTracker",
     "prd",
-    "widget",  -- label "Reports/Widget" — sorted alphabetically by label
+    "widget",  -- label "Reports" — sorted alphabetically by label
     "scootAuras",
     "sct",
     "tooltip",
@@ -225,7 +220,7 @@ addon.MODULE_CATEGORIES = {
         label = "Group Finder",
         info = {
             title = "Group Finder",
-            text = "Opens from the widget's click menu, so the Reports/Widget module may need turning on as well. /lfg opens it too. Both ways in are set on the Group Finder page under Interface.",
+            text = "Opens from the minimap button's right-click menu and from /lfg. Both ways in are set on the Group Finder page under Interface.",
         },
     },
     groupFrames = {
@@ -240,9 +235,6 @@ addon.MODULE_CATEGORIES = {
     minimap = {
         label = "Minimap",
         variant = "X",
-    },
-    notes = {
-        label = "Notes",
     },
     objectiveTracker = {
         label = "Objective Tracker",
@@ -260,8 +252,10 @@ addon.MODULE_CATEGORIES = {
         label = "Tooltip",
         variant = "X",
     },
+    -- The key predates the widget's retirement and stays, so a saved
+    -- moduleEnabled.widget keeps its meaning.
     widget = {
-        label = "Reports/Widget",
+        label = "Reports",
     },
     unitFrames = {
         label = "Unit Frames",

@@ -251,7 +251,7 @@ end
 --   padding    : number  content inset (default 8)
 --   gap        : number  trigger-to-panel spacing (default 6). Negative values
 --                        overlap the panel onto the trigger, so the trigger
---                        reads as the panel's head (see WidgetMenu.lua)
+--                        reads as the panel's head
 --   align      : string  "CENTER" (default) centers the panel on the trigger.
 --                        "LEFT" or "RIGHT", for DOWN and UP, sets that panel
 --                        edge on the trigger's and aims the nub at the

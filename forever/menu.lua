@@ -50,6 +50,9 @@ Navigation.NavModel = {
             -- No `module`: the switch is registered by forever/statusbars/style.lua.
             { key = "statusBars", label = "Status Bars" },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
+            -- Notes, shared with the other addon. Beta until its look has been
+            -- judged on Forever.
+            { key = "notes", label = "Notes", betaBadge = true },
             -- The damage meter, the shared system under this addon's name
             -- (forever/meters/host.lua). The key is the renderer's. Beta
             -- until it has been judged on Forever.

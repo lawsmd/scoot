@@ -983,3 +983,40 @@ function Builder:AddStateOpacityBlock(opts)
 
     return self
 end
+
+--------------------------------------------------------------------------------
+-- AddPanelArtSelector: one slot of the panel art catalog (core/panelart.lua)
+--------------------------------------------------------------------------------
+-- A selector over the plain value and the art this client offers for a slot
+-- ("window", "title"). The row is drawn only where the client offers art, so
+-- a client with none shows no row with one choice.
+--   slot        the catalog slot
+--   get, set    the stored key
+--   label       the row's name; "Backdrop Texture" when nil
+--   plain       the key that draws no art; "solid" when nil
+--   plainLabel  its name; "Solid" when nil
+--   isDisabled  optional
+-- Returns a reader of the key in effect: a stored key the client does not
+-- offer draws as the plain value does, and reads as it.
+
+function Builder:AddPanelArtSelector(opts)
+    local plain = opts.plain or "solid"
+    local order, values = { plain }, { [plain] = opts.plainLabel or "Solid" }
+    local PanelArt = addon.PanelArt
+    if PanelArt then
+        local keys, labels = PanelArt.Entries(opts.slot)
+        for _, key in ipairs(keys) do
+            order[#order + 1] = key
+            values[key] = labels[key]
+        end
+    end
+    local function current()
+        local key = opts.get()
+        return values[key] and key or plain
+    end
+    if #order > 1 then
+        self:AddSelector({ label = opts.label or "Backdrop Texture", values = values, order = order,
+            get = current, set = opts.set, isDisabled = opts.isDisabled })
+    end
+    return current
+end

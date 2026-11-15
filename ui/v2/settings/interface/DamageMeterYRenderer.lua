@@ -822,23 +822,12 @@ function DMYSettings.Render(panel, scrollContent)
     -- fontStyle/fontSize; the accessors translate the composite's field names.
     local FIELD_KEYS = { style = "fontStyle", size = "fontSize" }
     -- A Backdrop Texture row for one slot of the art catalog
-    -- (damagemetersY/art.lua), drawn only where this client offers art besides
-    -- the flat color. Returns a reader of the key in effect: a stored key the
-    -- client does not offer paints flat, so it reads as "solid".
+    -- (core/panelart.lua). Returns a reader of the key in effect.
     local function AddPanelArtSelector(target, slot, settingKey, isDisabled)
-        local order, values = { "solid" }, { solid = "Solid" }
-        if DMY and DMY.PanelArtKeys then order, values = DMY.PanelArtKeys(slot) end
-        local function current()
-            local key = getSetting(settingKey)
-            return values[key] and key or "solid"
-        end
-        if #order > 1 then
-            target:AddSelector({ label = "Backdrop Texture", values = values, order = order,
-                get = current,
-                set = function(v) setAndRefresh(settingKey, v) end,
-                isDisabled = isDisabled })
-        end
-        return current
+        return target:AddPanelArtSelector({ slot = slot,
+            get = function() return getSetting(settingKey) end,
+            set = function(v) setAndRefresh(settingKey, v) end,
+            isDisabled = isDisabled })
     end
 
     -- The Border Style keys: the drawn styles, then the art lines this client

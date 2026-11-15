@@ -168,6 +168,9 @@ forever/auras/host.lua
 ## are stored. The shared files in the component block read it at the moment
 ## of use, so its place in this block is free.
 forever/meters/host.lua
+## The Notes host: where the notes and their positions are stored. The shared
+## component reads it at the moment of use, so its place in this block is free.
+forever/notes/host.lua
 forever/recolor.lua
 
 ## Quality of Life shared with Scoot (docs/qualityoflife/qualityoflife.md).
@@ -219,6 +222,20 @@ forever/components.lua
 ## and the profile step (docs above the engine's block).
 forever/dynamiclayouts/host.lua
 core/components/tooltip.lua
+## Notes, shared (docs/notes.md): text windows the player makes from the
+## minimap button's right-click menu, with fonts from the Tooltip component
+## above. panelart is the backdrop, title bar and border art the windows draw
+## (CAMELOT_LOOKS.notes in forever/components.lua), shared with the damage
+## meter, whose art.lua below reads it at file scope. markdown reads a note's
+## text into blocks. The three component files share addon.Notes: core makes
+## it, render and editor fill it. They read addon.NotesHost above,
+## core/fonts.lua, core/petbattle.lua, the positionables, the minimap menu and
+## the controls inside functions.
+core/panelart.lua
+core/markdown.lua
+core/components/notes/core.lua
+core/components/notes/render.lua
+core/components/notes/editor.lua
 ## The aura tracker, shared whole, CamelotAuras here (docs/scootauras/
 ## sahosts.md): one file set both TOCs list, in the other TOC's order. core
 ## defines the namespace every file after it aliases at file scope; engine
@@ -702,7 +719,7 @@ ui/v2/settings/profiles/ImportExportRenderer.lua
 ui/v2/settings/applyall/ApplyAllRenderer.lua
 
 ## The accessor factories and the builder's composite blocks (AddTextStyleBlock,
-## AddOffsetPair and the rest), then the Tooltip page that uses them.
+## AddOffsetPair and the rest), then the Tooltip and Notes pages that use them.
 ## Helpers reads addon.FontStyles and addon.Catalogs at file scope,
 ## BuilderComposites reads Helpers; the page registers at file scope after
 ## settingspanel/renderers.lua. The Minimap page is the replica's own,
@@ -710,6 +727,7 @@ ui/v2/settings/applyall/ApplyAllRenderer.lua
 ui/v2/settings/Helpers.lua
 ui/v2/settings/BuilderComposites.lua
 ui/v2/settings/interface/TooltipRenderer.lua
+ui/v2/settings/interface/NotesRenderer.lua
 
 ## The aura tracker's settings surface: the editor's tabs, picker, fly-outs,
 ## carousel and window, then the Aura List page and the BonusAuras page, which

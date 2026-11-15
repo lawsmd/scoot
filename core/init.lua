@@ -743,7 +743,6 @@ function addon:GetDefaults()
                 groupfinder = false,
                 groupFrames = false,
                 minimap = false,
-                notes = false,
                 objectiveTracker = false,
                 prd = false,
                 scootAuras = false,
@@ -833,14 +832,6 @@ function addon:RefreshOpacityState()
     -- settings, so the loop below never sees it -- explicit seam instead.
     if addon.UnitFramesZ and addon.UnitFramesZ.RefreshOpacity then
         addon.UnitFramesZ.RefreshOpacity()
-    end
-    -- The widget styles itself while unconfigured (module-enabled means
-    -- visible), so the zero-touch skip below would strand its combat dimming.
-    do
-        local widget = self.Components and self.Components.widget
-        if widget and addon.IsComponentUnconfigured(widget) and widget.RefreshOpacity then
-            pcall(widget.RefreshOpacity, widget)
-        end
     end
     -- Every configured component that declares an opacity key (CDM, action
     -- bars, auras, and the rest). The walk is shared (core/opacity.lua) so

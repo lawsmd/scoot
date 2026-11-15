@@ -67,7 +67,7 @@ function ReportsListUI.Render(panel, scrollContent)
         ReportsListUI.Render(panel, scrollContent)
     end)
 
-    builder:AddDescription("Reports are on-demand summaries that open from the widget (the green diamond). Enable a report here to add it to the widget's click menu. Changes apply immediately, with no reload needed.")
+    builder:AddDescription("Reports are on-demand summaries. Enable a report here to add it to the menu a right-click on the minimap button opens. Changes apply immediately, with no reload needed.")
 
     local Reports = addon.Reports
     if Reports then

@@ -55,6 +55,8 @@ local FEATURES = {
     -- draw beside this one.
     { category = "bags", label = "Bags", default = false },
 }
+-- Notes have no row: the component carries no category, so its initializer
+-- always runs, and nothing draws until a player makes a note.
 
 local function switchPath(category)
     return category .. ".enabled"
@@ -193,6 +195,16 @@ local CAMELOT_LOOKS = {
         ["textTitle.fontFace"] = METER_FACE,   ["textTitle.fontStyle"] = METER_STYLE,
         ["textTimer.fontFace"] = METER_FACE,   ["textTimer.fontStyle"] = METER_STYLE,
         ["textHeaders.fontFace"] = METER_FACE, ["textHeaders.fontStyle"] = METER_STYLE,
+    },
+    -- The Notes windows take the meter's window: the rock, the title plate
+    -- behind a note's title row and the bronze line, at the meter's opacities
+    -- (15 November 2026). The text stays the Tooltip's.
+    notes = {
+        windowBackdropTexture = "rock",
+        windowBackdropOpacity = 50,
+        windowBorderStyle = "bronzeLine",
+        titleBarBackdropTexture = "titlePlate",
+        titleBarBackdropOpacity = 65,
     },
 }
 

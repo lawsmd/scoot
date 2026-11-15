@@ -198,6 +198,8 @@ end
 local function CreateMenuEntry(parent, buttonInfo, index)
     local entry = CreateFrame("Button", nil, parent)
     entry:SetSize(32, 32)
+    -- Both buttons: the original decides what a right-click does.
+    entry:RegisterForClicks("AnyUp")
 
     -- Icon from original button
     local iconTex = GetButtonIconTexture(buttonInfo.button)
