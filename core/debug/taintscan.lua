@@ -120,6 +120,18 @@ local MARKERS = {
     { "the panel manager's show", "FramePositionDelegate", "center" },
     { "EnterEditMode", "EditModeManagerFrame", "editModeActive" },
     { "OnEditModeEnter", "EditModeManagerFrame", "AccountSettings", "oldActionBarSettings" },
+    -- EditModeFrameSetup's steps ahead of the party preview, in its order
+    -- (Mainline/EditModeManagerOverrides.lua on Forever 1.60.1.70938). A step
+    -- written "@Name" is the global frame used as the key.
+    { "SetupActionBar(StanceBar)", "EditModeManagerFrame", "AccountSettings", "oldActionBarSettings", "@StanceBar", "isShown" },
+    { "RefreshActionBarShown(Stance)", "StanceBar", "editModeForceShow" },
+    { "SetupActionBar(PetActionBar)", "EditModeManagerFrame", "AccountSettings", "oldActionBarSettings", "@PetActionBar", "isShown" },
+    { "RefreshActionBarShown(Pet)", "PetActionBar", "editModeForceShow" },
+    { "SetupActionBar(PossessBar)", "EditModeManagerFrame", "AccountSettings", "oldActionBarSettings", "@PossessActionBar", "isShown" },
+    { "RefreshActionBarShown(Possess)", "PossessActionBar", "editModeForceShow" },
+    { "RefreshTargetAndFocus", "EditModeManagerFrame", "AccountSettings", "oldTargetName" },
+    { "RefreshTargetAndFocus", "EditModeManagerFrame", "AccountSettings", "oldFocusName" },
+    { "the party frame preview", "CompactPartyFrameMember1", "optionTable" },
     { "the party frame preview", "CompactPartyFrameMember1", "newUnit" },
     { "the party frame preview", "CompactPartyFrameMember1", "isLootObject" },
     { "the party frame preview", "CompactPartyFrameMember1", "outOfRange" },
@@ -157,7 +169,10 @@ local function markerVerdict(marker)
     local t = _G[marker[2]]
     for i = 3, #marker - 1 do
         if type(t) ~= "table" or (canaccesstable and not canaccesstable(t)) then return "absent" end
-        local ok, step = pcall(rawget, t, marker[i])
+        local key = marker[i]
+        if type(key) == "string" and key:sub(1, 1) == "@" then key = _G[key:sub(2)] end
+        if key == nil then return "absent" end
+        local ok, step = pcall(rawget, t, key)
         if not ok then return "unreadable" end
         t = step
     end
@@ -463,6 +478,107 @@ addon.Events.On("taintscan", "SUPER_TRACKING_CHANGED", function()
     superTrackSeen.stack = stack
 end)
 
+-- The gamepad interact capture. Under Forever's gamepad UI a panel's close
+-- ends in SetPreferredGamepadInteractTarget, and one tainted value on the way
+-- there forbids it with a stack that is all Blizzard's. ADDON_ACTION_FORBIDDEN
+-- is dispatched inside the forbidden call, so the marks read here are the
+-- ones the failing pass saw. The first few captures of a session go to the
+-- saved variables, where they can be read off disk after a reload.
+local INTERACT_ROOTS = {
+    { "SmartNavigation", 1 },
+    { "GamepadSharedUtility", 4 },
+    { "GamepadMode", 3 },
+    { "GamepadMainActionBarFrame", 4 },
+    { "LootFrame", 1 },
+    { "InputUtil", 1 },
+    { "EventRegistry", 1 },
+    { "CVarCallbackRegistry", 1 },
+    { "UIParent", 0 },
+}
+local INTERACT_KEPT = 3
+local INTERACT_ROWS = 600
+local INTERACT_GLOBALS = 300
+local interactSeen = 0
+
+local function interactRows()
+    local rows, seen, fields = {}, {}, 0
+    local function walk(t, path, depth)
+        if seen[t] or not readable(t) then return end
+        seen[t] = true
+        local children = {}
+        pcall(function()
+            for k, v in next, t do
+                fields = fields + 1
+                local text = keyText(k)
+                local by = type(k) == "string" and taintOf(t, k) or nil
+                if by and #rows < INTERACT_ROWS then
+                    rows[#rows + 1] = string.format("%s%s (%s) by %s", path, text, type(v), by)
+                end
+                if type(v) == "table" and depth > 0 then
+                    children[#children + 1] = { v, path .. text }
+                end
+            end
+        end)
+        for _, child in ipairs(children) do walk(child[1], child[2], depth - 1) end
+    end
+    for _, root in ipairs(INTERACT_ROOTS) do
+        local t = _G[root[1]]
+        if type(t) == "table" then
+            walk(t, root[1], root[2])
+        else
+            rows[#rows + 1] = root[1] .. " absent"
+        end
+    end
+    return rows, fields
+end
+
+local function interactGlobals()
+    local names = {}
+    local brand = tostring(addon.Brand or addonName)
+    pcall(function()
+        for k in next, _G do
+            if type(k) == "string" and #names < INTERACT_GLOBALS then
+                local by = taintOf(k)
+                if by and not k:find(brand, 1, true) and not k:find("^SLASH_") then
+                    names[#names + 1] = k .. " by " .. by
+                end
+            end
+        end
+    end)
+    table.sort(names)
+    return names
+end
+
+addon.Events.On("taintscan", "ADDON_ACTION_FORBIDDEN", function(_, blamed, action)
+    if type(action) ~= "string" or not action:find("SetPreferredGamepadInteractTarget", 1, true) then return end
+    interactSeen = interactSeen + 1
+    if interactSeen > INTERACT_KEPT then return end
+    local db = addon.db
+    if not (db and db.global) then return end
+    local rows, fields = interactRows()
+    local managers = {}
+    local gamepad = addon.Gamepad
+    if gamepad and gamepad.ReportManagers then
+        pcall(gamepad.ReportManagers, function(fmt, ...)
+            managers[#managers + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt
+        end)
+    end
+    if interactSeen == 1 then db.global.taintCaptures = {} end
+    local captures = db.global.taintCaptures
+    captures[#captures + 1] = {
+        when = date("%Y-%m-%d %H:%M:%S"),
+        sinceLoad = GetTime(),
+        by = tostring(blamed),
+        action = action,
+        combat = InCombatLockdown() and true or false,
+        fieldsWalked = fields,
+        stack = debugstack(2, 40, 0),
+        tainted = rows,
+        managers = managers,
+        globals = interactGlobals(),
+    }
+end)
+
 local function methodTable(frame)
     local mt = getmetatable(frame)
     local index = type(mt) == "table" and rawget(mt, "__index")
@@ -610,14 +726,34 @@ local function Scan()
     for _, marker in ipairs(MARKERS) do
         local path = marker[2]
         for i = 3, #marker do path = path .. "." .. marker[i] end
-        push("  %-28s %-62s %s", marker[1], path, markerVerdict(marker))
+        push("  %-30s %-62s %s", marker[1], path, markerVerdict(marker))
     end
     push("")
 
     push("Tainted fields on the Edit Mode path (%d):", #tainted)
     if #tainted == 0 then push("  none") end
-    for _, row in ipairs(tainted) do push("  %s", row) end
+    local systems = {}
+    for _, row in ipairs(tainted) do
+        push("  %s", row)
+        local index = row:match("registeredSystemFrames%[(%d+)%]")
+        if index then systems[tonumber(index)] = true end
+    end
     push("")
+
+    -- The numbered Edit Mode systems the list names, by frame name.
+    local registered = EditModeManagerFrame and rawget(EditModeManagerFrame, "registeredSystemFrames")
+    if type(registered) == "table" and next(systems) then
+        local indices = {}
+        for index in pairs(systems) do indices[#indices + 1] = index end
+        table.sort(indices)
+        push("Edit Mode systems named above:")
+        for _, index in ipairs(indices) do
+            local frame = registered[index]
+            local ok, name = pcall(function() return frame and frame:GetName() end)
+            push("  [%d] %s", index, (ok and name) or tostring(frame))
+        end
+        push("")
+    end
 
     push("Addon or unnamed frames in Blizzard's button and watcher lists (%d):", #listed)
     if #listed == 0 then push("  none") end
