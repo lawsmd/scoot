@@ -74,6 +74,10 @@ local BAR_LOOK = {
 -- tracker's 30 by 200 stamp stands, SAU.VerticalBarShapeStartingValues), no
 -- border, since the atlas carries its frame and this stamp leads the
 -- tracker's square, and the icon under the bar in the action button frame.
+-- The timer and the name start two points above the tracker's 12 and on
+-- Shadow Thick Outline. The crisp variant (SLUG) drew a long black spike off
+-- the top-left serif of Friz Quadrata's "B" at 14 (Blade Flurry, 15 November
+-- 2026), in the preview and in play alike.
 local VBAR_LOOK = {
     barForegroundTexture   = "blizzardCooldownManager",
     barBackgroundTexture   = "blizzardCooldownManager",
@@ -82,11 +86,13 @@ local VBAR_LOOK = {
     barBorderStyle         = "none",
     borderStyle            = "blizzard",
     textFont               = "FRIZQT__",
-    textStyle              = "OUTLINE",
+    textStyle              = "SHADOWTHICKOUTLINE",
+    textSize               = 14,
     stackTextFont          = "FRIZQT__",
     stackTextStyle         = "OUTLINE",
     nameTextFont           = "FRIZQT__",
-    nameTextStyle          = "OUTLINE",
+    nameTextStyle          = "SHADOWTHICKOUTLINE",
+    nameTextSize           = 14,
 }
 
 -- The lists are built once: the restamp on a shape change matches stamps by

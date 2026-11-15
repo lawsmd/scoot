@@ -514,6 +514,10 @@ local function ApplyTextStyling(trackerId, tracker, state)
             if not ScootWritesText(tracker, source) then
                 style = addon.FontStyles.Unpaired(style)
             end
+            -- A vertical bar's name turns on its side (FontStyles.Uncrisp).
+            if source == "name" and tracker.shape == "vbar" then
+                style = addon.FontStyles.Uncrisp(style)
+            end
             addon.ApplyFontStyle(elem.widget, fontFace, size, style)
 
             if source == "duration" and tracker.kind == "classpower" then

@@ -355,6 +355,7 @@ Helpers.fontStyleOrder = addon.FontStyles.order
 Helpers.fontStyleOrderPaired = addon.FontStyles.orderPaired
 Helpers.fontStyleOrderOutlineFirst = addon.FontStyles.orderOutlineFirst
 Helpers.fontStyleOrderOutlineFirstPaired = addon.FontStyles.orderOutlineFirstPaired
+Helpers.fontStyleOrderUncrisp = addon.FontStyles.orderUncrisp
 
 -- Dropdown option catalogs. core/catalogs.lua is the source of truth; these
 -- names are aliases by reference so existing renderer reads stay put.

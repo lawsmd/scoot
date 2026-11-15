@@ -146,10 +146,18 @@ function TB.resolveBarColor(colorMode, tint, defaultR, defaultG, defaultB, defau
 end
 
 local tbTextFontOpts = { size = 14 }
-function TB.applyTextStyling(fontString, cfg)
+-- turned: the spell name, which vertical mode turns on its side, where a
+-- stored crisp style draws as its base (addon.FontStyles.Uncrisp). Both modes
+-- pass it, so the name draws what its settings tab shows.
+function TB.applyTextStyling(fontString, cfg, turned)
     if not fontString or not fontString.SetFont then return end
     cfg = cfg or { size = 14, style = "OUTLINE", color = {1,1,1,1} }
-    addon.ApplyTextFont(fontString, cfg, tbTextFontOpts)
+    if turned then
+        local face, size, style = addon.ResolveTextFont(cfg, tbTextFontOpts)
+        addon.ApplyFontStyle(fontString, face, size, addon.FontStyles.Uncrisp(style))
+    else
+        addon.ApplyTextFont(fontString, cfg, tbTextFontOpts)
+    end
     local c = addon.ResolveCDMColor(cfg)
     fontString:SetTextColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
 end

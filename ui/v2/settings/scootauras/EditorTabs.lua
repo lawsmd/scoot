@@ -463,10 +463,17 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx, opts)
         size = "nameTextSize",
         color = "nameTextColor",
     })
+    -- A vertical bar turns its name on its side, where the crisp styles draw
+    -- spikes (FontStyles.Uncrisp): none offered, and a stored one reads as
+    -- the base style the bar draws.
+    local turnable = (not isMissing) and ctx.shape() == "vbar"
     tabBuilder:AddTextStyleBlock({
         -- The hide toggle defaults on: nil reads as hidden
         get = function(field)
             if field == "hidden" then return ctx.get("hideNameText") ~= false end
+            if field == "style" and turnable then
+                return addon.FontStyles.Uncrisp(get(field))
+            end
             return get(field)
         end,
         set = set,
@@ -482,6 +489,7 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx, opts)
         -- qualifies. On a buff or debuff tracker the aura container writes the
         -- spell name natively, so the copy would stay empty.
         style = { order = isMissing and Helpers.fontStyleOrderPaired
+            or turnable and Helpers.fontStyleOrderUncrisp
             or Helpers.fontStyleOrder },
         size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt" },
         color = { kind = "plain" },

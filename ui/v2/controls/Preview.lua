@@ -850,6 +850,8 @@ function Controls:CreatePreview(options)
         local nameFont = readSetting("nameTextFont", "FRIZQT__")
         local nameSize = readSetting("nameTextSize", 10)
         local nameStyle = readSetting("nameTextStyle", "OUTLINE")
+        -- The live bar's rule: a vertical bar's name draws no crisp style.
+        if barVertical then nameStyle = addon.FontStyles.Uncrisp(nameStyle) end
         local nameColor = readSetting("nameTextColor", { 1, 1, 1, 1 })
 
         local nameFrame = CreateFrame("Frame", nil, previewBar)

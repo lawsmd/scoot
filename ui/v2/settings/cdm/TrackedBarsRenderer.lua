@@ -220,9 +220,18 @@ function TrackedBars.Render(panel, scrollContent)
                         -- Styled in place on Blizzard FontStrings in default
                         -- mode, so the plain style order applies (no paired
                         -- Deep Shadow styles).
+                        -- Vertical mode turns the name on its side, where the
+                        -- crisp styles draw spikes (FontStyles.Uncrisp), so
+                        -- none are offered and a stored one reads as its base.
                         local s = Helpers.CreateSubTableHelpers("trackedBars", "textName", { apply = applyText })
                         tabBuilder:AddTextStyleBlock({
-                            get = s.get, set = s.set, apply = applyText,
+                            get = function(field)
+                                local v = s.get(field)
+                                if field == "style" then return addon.FontStyles.Uncrisp(v) end
+                                return v
+                            end,
+                            set = s.set, apply = applyText,
+                            style = { order = Helpers.fontStyleOrderUncrisp },
                             font = { description = "The font used for spell name text." },
                             size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
                         })

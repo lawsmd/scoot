@@ -838,7 +838,7 @@ local function styleVerticalStack(stack, component)
 
     -- Text styling — only when user has explicitly configured text settings
     if rawget(db, "textName") then
-        TB.applyTextStyling(stack.spellNameFS, db.textName)
+        TB.applyTextStyling(stack.spellNameFS, db.textName, true)
     end
     if rawget(db, "textDuration") then
         TB.applyTextStyling(stack.timerFS, db.textDuration)

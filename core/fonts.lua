@@ -240,10 +240,10 @@ do
     -- those dropdowns opt in by using a *Paired order table.
     local PAIRED = { "DEEPSHADOWOUTLINE", "DEEPSHADOWTHICKOUTLINE" }
 
-    local function buildOrder(base, includePaired)
+    local function buildOrder(base, includePaired, noCrisp)
         local order = {}
         for _, k in ipairs(base) do order[#order + 1] = k end
-        if slugSupported then
+        if slugSupported and not noCrisp then
             for _, k in ipairs(CRISP) do order[#order + 1] = k end
         end
         if includePaired then
@@ -256,6 +256,8 @@ do
     addon.FontStyles.orderPaired = buildOrder(BASE, true)
     addon.FontStyles.orderOutlineFirst = buildOrder(OUTLINE_FIRST, false)
     addon.FontStyles.orderOutlineFirstPaired = buildOrder(OUTLINE_FIRST, true)
+    -- For a string that can be turned on its side (FontStyles.Uncrisp).
+    addon.FontStyles.orderUncrisp = buildOrder(BASE, false, true)
 end
 
 -- DEEPSHADOW* stripped back to its base style, which decodes to the same
@@ -268,6 +270,18 @@ end
 function addon.FontStyles.Unpaired(style)
     if type(style) == "string" and style:sub(1, 10) == "DEEPSHADOW" then
         return style:sub(11)
+    end
+    return style
+end
+
+-- *SLUG stripped back to its base style, for a string that can be turned a
+-- quarter by a Rotation animation (a vertical bar's name). Turned, the crisp
+-- renderer drew a long black spike off a serif's corner (Friz Quadrata's "B"
+-- of Blade Flurry, 15 November 2026), so such a string draws a stored crisp
+-- value as its base and its dropdown offers FontStyles.orderUncrisp.
+function addon.FontStyles.Uncrisp(style)
+    if type(style) == "string" and style:sub(-4) == "SLUG" then
+        return style:sub(1, -5)
     end
     return style
 end

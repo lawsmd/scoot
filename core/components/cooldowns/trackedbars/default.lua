@@ -503,7 +503,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
         if rawget(db, "textName") and nameFS and nameFS.SetFont then
             local cfg = rawget(db, "textName")
             pcall(nameFS.SetDrawLayer, nameFS, "OVERLAY", 7)
-            TB.applyTextStyling(nameFS, cfg)
+            TB.applyTextStyling(nameFS, cfg, true)
             if nameFS.SetJustifyH then pcall(nameFS.SetJustifyH, nameFS, "LEFT") end
             local ox = (cfg.offset and cfg.offset.x) or 0
             local oy = (cfg.offset and cfg.offset.y) or 0
