@@ -78,6 +78,12 @@ local function GearMenu(_, root)
     end)
 end
 
+-- Under the gamepad UI nothing is added to Blizzard's bag menu. Elements this
+-- addon adds through Menu.ModifyMenu taint the menu Blizzard builds from them,
+-- so its show and close run the controls manager as the addon: the menu never
+-- took the controller, and its close was refused. These settings are in the
+-- options panel there.
+
 function Menu.OpenGear(owner)
     if MenuUtil and MenuUtil.CreateContextMenu then
         MenuUtil.CreateContextMenu(owner, GearMenu)

@@ -308,13 +308,26 @@ function Window.ApplySettings()
     frame:SetScale(math.max(0.5, math.min(2, scale / 100)))
 
     -- The search box runs from Blizzard's left edge to the gear. Both its
-    -- anchors are top corners, so its height stays its own.
+    -- anchors are top corners, so its height stays its own. Under the gamepad
+    -- UI there is no gear: a menu opened from this addon's code runs the
+    -- controls manager as the addon, so the settings ride in Blizzard's bag
+    -- menu (menu.lua), opened from the portrait.
     local showSort = Bags.Get("showSortButton") ~= false
+    local showGear = not Bags.adopted
     frame._sort:SetShown(showSort)
+    frame._gear:SetShown(showGear)
     frame._gear:ClearAllPoints()
     local gearRight = showSort and (SORT_RIGHT + SORT_W + HEADER_GAP) or SORT_RIGHT
     frame._gear:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -gearRight, -SORT_TOP)
-    frame._search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(gearRight + SORT_W + 8), -37)
+    local searchRight
+    if showGear then
+        searchRight = gearRight + SORT_W
+    elseif showSort then
+        searchRight = SORT_RIGHT + SORT_W
+    else
+        searchRight = SORT_RIGHT
+    end
+    frame._search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(searchRight + 8), -37)
 
     frame._free:SetShown(Bags.Get("showFreeSlots") ~= false)
     PlaceFooter()

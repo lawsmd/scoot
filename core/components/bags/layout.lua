@@ -115,6 +115,15 @@ function Layout.Columns()
     return math.max(6, math.min(16, cols))
 end
 
+-- The bags as last laid out, top to bottom:
+-- { bag, count, row, rows, icon, collapsed }.
+local lines = {}
+
+--- The bags as last laid out, for the controller's navigation.
+function Layout.Lines()
+    return lines
+end
+
 --- Place every line and size the window around them.
 function Layout.Run()
     local content = Bags.Window.Content()
@@ -122,9 +131,13 @@ function Layout.Run()
     local bags = Bags.BagList()
     local drawn = {}
     local row = 0
+    wipe(lines)
     for i, bag in ipairs(bags) do
         drawn[bag] = true
-        local n = C_Container.GetContainerNumSlots(bag) or 0
+        -- A bag collapsed from its icon with the controller keeps its line
+        -- and its icon, and draws no slots.
+        local collapsed = Bags.IsCollapsed and Bags.IsCollapsed(bag) or false
+        local n = collapsed and 0 or (C_Container.GetContainerNumSlots(bag) or 0)
 
         local icon = icons:Get(i)
         PaintIcon(icon, bag)
@@ -137,7 +150,9 @@ function Layout.Run()
             Place(Bags.Cells.Get(bag, slot), content, 1 + i0 % cols, row + math.floor(i0 / cols))
         end
         Bags.Cells.SetCount(bag, n)
-        row = row + math.max(1, math.ceil(n / cols))
+        local rows = math.max(1, math.ceil(n / cols))
+        lines[i] = { bag = bag, count = n, row = row, rows = rows, icon = icon, collapsed = collapsed }
+        row = row + rows
     end
     icons:HideFrom(#bags + 1)
 

@@ -79,6 +79,11 @@ function Cells.Get(bag, slot)
     return Pool(bag):Get(slot, bag)
 end
 
+--- The frame a bag's cells are on, or nil before the bag is drawn.
+function Cells.Holder(bag)
+    return holders[bag]
+end
+
 --- The cell drawn for a slot, or nil.
 function Cells.Find(bag, slot)
     local pool = pools[bag]
