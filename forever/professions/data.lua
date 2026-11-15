@@ -9,11 +9,17 @@
 -- rank and its skill line. The first two slots are the primary professions;
 -- the rest are the secondary ones.
 --
--- No call gives the bottom of a rank, and none is needed: ranks are 75
--- points wide, so the band is the 75-point span the level stands in, its top
--- held to the cap. A level at its cap is the top of the band below, a full
--- bar that waits on training. That reads the same whether the cap steps
--- with each trained rank or stands at the last rank from the start.
+-- The bar's band runs from 0 to the cap, the top of the highest rank the
+-- player has trained: 142 with Expert trained is 142 of 225. A rank can be
+-- trained well before the level reaches the top of the one below, so the bar
+-- is full only when the next point waits on a trainer. A cap that does not
+-- read falls back to the 75-point span the level stands in.
+--
+-- Lockpicking is a skill line and no profession, so GetProfessions leaves it
+-- out. C_SkillInfo.GetSkillLineInfoByID, the call the character pane makes
+-- for a skill, gives its name, level and cap, and a character with a level
+-- in it gets an entry after the professions, as a secondary one. The entry
+-- carries skill = true: it has no profession window to open.
 --
 -- No event carries a gained point. SKILL_LINES_CHANGED says only that some
 -- skill moved, and it also fires for weapon skills, so every one is gathered
@@ -35,10 +41,14 @@ Professions.Data = Data
 
 local OWNER = "CamelotProfessions"
 
--- A rank's width in skill points.
+-- A rank's width in skill points, for a cap that does not read.
 local BAND = 75
 -- GetProfessions' slots past these are the secondary professions.
 local PRIMARY_SLOTS = 2
+-- The Lockpicking skill line, and Pick Lock, whose icon it wears.
+local LOCKPICKING = 633
+local PICK_LOCK = 1804
+local LOCKPICKING_ICON = "Interface\\Icons\\Spell_Nature_MoonKey"
 
 local function isSecret(v)
     return issecretvalue and issecretvalue(v) or false
@@ -46,13 +56,9 @@ end
 
 --- The band a level stands in, lower then upper.
 function Data.Band(rank, cap)
-    if cap > 0 and rank >= cap then
-        return math.max(0, cap - BAND), cap
-    end
+    if cap > 0 then return 0, cap end
     local lower = math.floor(rank / BAND) * BAND
-    local upper = lower + BAND
-    if cap > lower and cap < upper then upper = cap end
-    return lower, upper
+    return lower, lower + BAND
 end
 
 -- One slot. Returns the entry, or nil and whether the slot would not read.
@@ -93,13 +99,41 @@ local function readSlots(list, ...)
     return complete
 end
 
---- Every known profession, in slot order, and whether the whole read held.
+-- Lockpicking's entry, when the character has a level in it. Returns false
+-- when a value would not read.
+local function readLockpicking(list)
+    local get = C_SkillInfo and C_SkillInfo.GetSkillLineInfoByID
+    if not get then return true end
+    local ok, info = pcall(get, LOCKPICKING)
+    if not ok or info == nil then return true end
+    if isSecret(info) or type(info) ~= "table" then return false end
+    local name, rank, cap = info.name, info.rank, info.maxRank
+    if isSecret(name) or isSecret(rank) or isSecret(cap) then return false end
+    if type(name) ~= "string" or type(rank) ~= "number" or rank <= 0 then return true end
+    cap = type(cap) == "number" and cap or 0
+    local icon
+    if C_Spell and C_Spell.GetSpellTexture then
+        local iconOk, texture = pcall(C_Spell.GetSpellTexture, PICK_LOCK)
+        if iconOk and texture and not isSecret(texture) then icon = texture end
+    end
+    local lower, upper = Data.Band(rank, cap)
+    list[#list + 1] = {
+        skillLine = LOCKPICKING, name = name, icon = icon or LOCKPICKING_ICON,
+        rank = rank, cap = cap, lower = lower, upper = upper,
+        secondary = true, skill = true,
+    }
+    return true
+end
+
+--- Every known profession, in slot order, then Lockpicking, and whether the
+--- whole read held.
 --- A read that did not hold is partial and must not be compared against.
 function Data.Read()
     local list = {}
     if not (GetProfessions and GetProfessionInfo) then return list, false end
     local ok, complete = pcall(function() return readSlots(list, GetProfessions()) end)
-    return list, ok and complete or false
+    if not (ok and complete) then return list, false end
+    return list, readLockpicking(list)
 end
 
 --------------------------------------------------------------------------------

@@ -7,17 +7,17 @@
 -- A row is the profession's icon at the left, centered on the height of what
 -- stands beside it: the name and the level on one line, the name at the
 -- bar's left end and the level at its right, over the bar. The bar is
--- vanilla's skill bar, its art and its blue, filled by the level's progress
--- through its 75-point band. There is no header.
+-- vanilla's skill bar, its art and its blue, filled by the level's share of
+-- the cap of the highest trained rank. There is no header.
 --
 -- The icon wears the border the aura tracker's icons start with, through the
 -- shared dispatcher, and Icon below is also what the skill-up toast draws
 -- its icon with (skillups.lua). A left click on a row's icon opens that
 -- profession's window, or closes it when it is already open, outside combat
--- and outside Edit Mode.
+-- and outside Edit Mode. Lockpicking's row has no window and takes no click.
 --
 -- One holder, one Edit Mode box. While the tracker is off, or the character
--- knows no profession outside Edit Mode, the holder is hidden. The holder's
+-- has no profession to draw outside Edit Mode, the holder is hidden. The holder's
 -- opacity follows the player's state: the Visibility tab's In Combat value
 -- in combat, its With Target value with a target, full otherwise, in Edit
 -- Mode, and under the cursor while Mouseover Mode is on.
@@ -62,7 +62,7 @@ local ICON_STYLE = "blizzard"
 local SAMPLE_ICON = "Interface\\Icons\\INV_Scroll_04"
 local SAMPLES = {
     { skillLine = -1, name = "Profession", icon = SAMPLE_ICON, rank = 37, cap = 75, lower = 0, upper = 75 },
-    { skillLine = -2, name = "Profession", icon = SAMPLE_ICON, rank = 112, cap = 150, lower = 75, upper = 150 },
+    { skillLine = -2, name = "Profession", icon = SAMPLE_ICON, rank = 112, cap = 150, lower = 0, upper = 150 },
 }
 
 local function get(key)
@@ -267,13 +267,17 @@ local function createRow()
     return row
 end
 
--- The professions to draw, sorted. Edit Mode stands samples in for a
--- character with none.
+-- The professions to draw, sorted: a secondary one and one at the game's
+-- last level each by its switch. Edit Mode stands samples in for a character
+-- with none to draw.
 local function listed()
     local list = {}
     local secondary = get("secondary") ~= false
+    local maxed = get("showMaxed") == true
     for _, entry in ipairs(Data.Current()) do
-        if secondary or not entry.secondary then list[#list + 1] = entry end
+        if (secondary or not entry.secondary) and (maxed or entry.rank < Professions.MAX_RANK) then
+            list[#list + 1] = entry
+        end
     end
     if #list == 0 and preview then
         for i, sample in ipairs(SAMPLES) do list[i] = sample end
@@ -386,7 +390,7 @@ local function refresh()
         row:Show()
 
         row.Icon:SetShown(showIcon)
-        row.Icon.skillLine = entry.skillLine
+        row.Icon.skillLine = not entry.skill and entry.skillLine or nil
         if showIcon then
             row.Icon:ClearAllPoints()
             row.Icon:SetPoint("LEFT", row, "LEFT", 0, 0)

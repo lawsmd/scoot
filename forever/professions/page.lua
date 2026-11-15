@@ -97,6 +97,9 @@ local TRACKER_CONTENT = {
         tab:AddToggle({ label = "Show Secondary Professions", disabled = trackerOff,
             get = function() return Professions.TrackerGet("secondary") ~= false end,
             set = function(v) Professions.TrackerSet("secondary", v and true or false) end })
+        tab:AddToggle({ label = "Show Maxed Professions", disabled = trackerOff,
+            get = function() return Professions.TrackerGet("showMaxed") == true end,
+            set = function(v) Professions.TrackerSet("showMaxed", v and true or false) end })
         tab:Finalize()
     end,
 

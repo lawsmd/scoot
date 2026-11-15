@@ -3,7 +3,7 @@
 -- The Professions page's settings and their defaults, for its two features:
 --
 --   The Professions Tracker (tracker.lua): one bar per profession the player
---   knows, filled by progress through the current 75-point rank band.
+--   knows, filled by the level's share of the highest trained rank's cap.
 --
 --   Skill Up Notifications (skillups.lua): a toast on each skill point, the
 --   profession's icon beside a number that rolls from the old level to the
@@ -43,6 +43,12 @@ Professions.ORDER = {
     order = { "lowFirst", "highFirst" },
 }
 
+-- The last rank's cap, Artisan's. No call returns it. A profession at this
+-- level has no point left to gain, and the tracker leaves it out unless Show
+-- Maxed Professions is on. Lockpicking's cap is five points a character
+-- level, which is the same number at level 60.
+Professions.MAX_RANK = 300
+
 -- Vanilla's skill bar blue (SkillStatusBarTemplate's BarColor), the fill
 -- while no color is chosen.
 Professions.BAR_COLOR = { 0.25, 0.25, 0.75, 1 }
@@ -73,6 +79,7 @@ DB.RegisterDefaults({
     [TRACKER .. "scale"] = Professions.SCALE.default,
     [TRACKER .. "order"] = "lowFirst",
     [TRACKER .. "secondary"] = true,
+    [TRACKER .. "showMaxed"] = false,
     [TRACKER .. "showIcon"] = true,
     [TRACKER .. "icon.borderEnable"] = true,
     [TRACKER .. "icon.borderStyle"] = "blizzard",

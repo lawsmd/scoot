@@ -735,9 +735,10 @@ files["forever/qualityoflife/messagesdisplay.lua"] = {
 }
 
 -- Camelot's professions (forever/professions/): the two calls the client's
--- own professions book reads the player's professions with.
+-- own professions book reads the player's professions with, and the skill
+-- line call the character pane makes, for Lockpicking.
 files["forever/professions/data.lua"] = {
-    read_globals = { "GetProfessions", "GetProfessionInfo" },
+    read_globals = { "GetProfessions", "GetProfessionInfo", "C_SkillInfo" },
 }
 -- The tracker's icon click opens and closes a profession's window.
 files["forever/professions/tracker.lua"] = {
