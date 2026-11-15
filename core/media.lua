@@ -174,10 +174,13 @@ local BAR_ATLASES = {
 		-- The member rows between the background's rims: the top rim is row 1,
 		-- the bottom rim row 12 of 19, so the bottom rim lies inside the rect.
 		interior = { top = 2, bottom = 12 },
-		-- The bottom rim with its dark lines either side, 2x rows 23 to 26 of
-		-- 38, drawn 3 tall: the seam between two bars in one frame, heavier
-		-- than the art's own rim so the two bars read apart (owner ask).
-		seam = { top = 23 / 38, bottom = 27 / 38, height = 3 },
+		-- The bottom rim with its dark lines either side, drawn 3 tall: the
+		-- seam between two bars in one frame, heavier than the art's own rim
+		-- so the two bars read apart (owner ask). A file, cut by
+		-- docs/tools/cdmseam.py: a crop of the atlas was lost whenever the
+		-- engine re-resolved the atlas for a new effective scale, and the
+		-- line then drew in tiled pieces (the display at Scale 140).
+		seam = { file = BAR_MEDIA_PREFIX .. "cooldown-manager-seam.tga", height = 3 },
 	},
 }
 
@@ -324,9 +327,9 @@ function addon.Media.ApplyBarBackgroundTurned(tex, turnFrame, key, rect, w, h)
 end
 
 --- The seam between two bars in one frame (ApplyBarBackground, opts.to):
---- the frame's bottom rim across `upper`'s bottom edge, centered on it, with
---- the art's slicing off so the crop holds. Hides `line` and returns false
---- for a key with no frame. The caller keeps it over the bars' fills.
+--- the frame's bottom rim across `upper`'s bottom edge, centered on it, from
+--- the key's seam file. Hides `line` and returns false for a key with no
+--- frame. The caller keeps it over the bars' fills.
 function addon.Media.ApplyBarSeam(line, key, upper)
 	local atlas = addon.Media.ResolveBarTextureAtlas(key)
 	local seam = atlas and atlas.seam
@@ -337,11 +340,8 @@ function addon.Media.ApplyBarSeam(line, key, upper)
 	line:ClearAllPoints()
 	line:SetPoint("TOPLEFT", upper, "BOTTOMLEFT", 0, seam.height / 2)
 	line:SetPoint("BOTTOMRIGHT", upper, "BOTTOMRIGHT", 0, -seam.height / 2)
+	line:SetTexture(seam.file)
 	line:SetTexCoord(0, 1, 0, 1)
-	line:SetAtlas(atlas.background)
-	if line.SetTextureSliceMargins then line:SetTextureSliceMargins(0, 0, 0, 0) end
-	local l, r, t, b = TexRect(line)
-	line:SetTexCoord(l + (r - l) * 0.25, l + (r - l) * 0.75, t + (b - t) * seam.top, t + (b - t) * seam.bottom)
 	line:Show()
 	return true
 end
