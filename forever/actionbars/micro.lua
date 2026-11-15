@@ -392,6 +392,59 @@ local function Twin(parent, blizzName)
     return btn
 end
 
+-- The pulse is the twin's own alpha loop, never UIFrameFlash: Blizzard's
+-- flash keeps one shared list, FLASHFRAMES, and its OnUpdate walks it from
+-- the newest entry down. A Camelot entry read there runs every older
+-- entry's write as Camelot, Blizzard's own micro buttons' flashTimer among
+-- them (the taint scan of 13 November 2026, on the gamepad radial's errors).
+local function PulseAnim(region)
+    local group = region.camelotPulse
+    if group then return group end
+    group = region:CreateAnimationGroup()
+    group:SetLooping("REPEAT")
+    local fadeIn = group:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(1.0)
+    fadeIn:SetOrder(1)
+    local fadeOut = group:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetDuration(1.0)
+    fadeOut:SetOrder(2)
+    region.camelotPulse = group
+    return group
+end
+
+local function PulseStop(btn)
+    if btn.pulseTimer then
+        btn.pulseTimer:Cancel()
+        btn.pulseTimer = nil
+    end
+    for _, region in ipairs({ btn.FlashBorder, btn.FlashContent }) do
+        if region and region.camelotPulse then
+            region.camelotPulse:Stop()
+            region:Hide()
+        end
+    end
+end
+
+local function PulseStart(btn, duration)
+    PulseStop(btn)
+    for _, region in ipairs({ btn.FlashBorder, btn.FlashContent }) do
+        if region then
+            region:Show()
+            PulseAnim(region):Play()
+        end
+    end
+    if type(duration) == "number" and duration > 0 then
+        btn.pulseTimer = C_Timer.NewTimer(duration, function()
+            btn.pulseTimer = nil
+            PulseStop(btn)
+        end)
+    end
+end
+
 local function HookBlizzard()
     hooksecurefunc("UpdateMicroButtons", Micro.SyncAll)
     hooksecurefunc("MicroButtonPulse", function(blizz, duration)
@@ -399,16 +452,12 @@ local function HookBlizzard()
         if not btn or (MainMenuMicroButton_AreAlertsEnabled and not MainMenuMicroButton_AreAlertsEnabled()) then
             return
         end
-        UIFrameFlash(btn.FlashBorder, 1.0, 1.0, duration or -1, false, 0, 0, "camelotMicro")
-        if btn.FlashContent then
-            UIFrameFlash(btn.FlashContent, 1.0, 1.0, duration or -1, false, 0, 0, "camelotMicro")
-        end
+        PulseStart(btn, duration)
     end)
     hooksecurefunc("MicroButtonPulseStop", function(blizz)
         local btn = byBlizzard[blizz]
         if not btn then return end
-        UIFrameFlashStop(btn.FlashBorder)
-        if btn.FlashContent then UIFrameFlashStop(btn.FlashContent) end
+        PulseStop(btn)
     end)
     -- Forever's buttons announce their own changes (the beta's
     -- MainMenuBarMicroButton_OnLoad); the replica listens where they do.
