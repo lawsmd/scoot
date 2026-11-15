@@ -14,11 +14,11 @@
 -- and nothing is registered into Blizzard's registries; every read is a
 -- plain field or a getter.
 --
--- The holder anchors to Blizzard's frame, whose Edit Mode box stays the
--- handle: Edit Mode moves Blizzard's frame and this one follows, so the
--- cast bar the gamepad map anchors to it stays aligned. The holder's own
--- box is for the Dynamic Layouts view alone, at rest under Blizzard's
--- otherwise. The click targets are secure, so the holder is implicitly
+-- The holder is a Camelot Edit Mode element: its own box drags it, saves
+-- the spot per layout and lists the bar's settings, and Blizzard's box is
+-- hidden. Its default spot is Camelot's own. Blizzard's invisible frame
+-- stays where its layout has it, so a flyout
+-- the controller opens appears there. The click targets are secure, so the holder is implicitly
 -- protected: the layout and the compact fold wait for regen in a fight; the
 -- mirrored state redraws at once on the plain visual buttons.
 --------------------------------------------------------------------------------
@@ -56,11 +56,31 @@ local NUM_STANDARD_PAGE_IMAGES = 3
 DB.RegisterDefaults({
     [PATH .. "enabled"] = true,
     [PATH .. "scale"] = 100,
-    [PATH .. "compact"] = false,
+    -- Blizzard's own is off; the owner's, 13 November 2026: one bar, the
+    -- active one.
+    [PATH .. "compact"] = true,
     [PATH .. "showEmptyBars"] = true,
     [PATH .. "highlight"] = true,
     [PATH .. "expand"] = true,
     [PATH .. "buttonPrompts"] = false,
+    -- Enrolled in Dynamic Layouts under every start, the gamepad preset's
+    -- Classic one included: no preset entry.
+    ["dynamicLayouts.participating.gamepadBar"] = true,
+})
+-- The bar exists only under the gamepad UI, so the layer is where its
+-- starting size goes: 120, the owner's, 13 November 2026.
+DB.RegisterGamepad({ [PATH .. "scale"] = 120 })
+
+-- The dynamic state takes the bar off the bottom edge, as the main cluster's
+-- does under mouse and keyboard; the owner's, 13 November 2026.
+addon.DynamicLayoutsStore.RegisterDefaultRecord("gamepadBar", { offscreen = "BOTTOM" }, true)
+
+-- The replica's switch, a row of the Features page's Action Bars group: on,
+-- Camelot's bar stands in for Blizzard's gamepad bar.
+addon.Features.Register({
+    group = "actionBars", groupLabel = "Action Bars",
+    id = "gamepadBar", label = "Gamepad Bar",
+    path = PATH .. "enabled",
 })
 
 --------------------------------------------------------------------------------
@@ -92,7 +112,7 @@ end
 --------------------------------------------------------------------------------
 
 local holder, face, pageUnit
-local box -- the holder's Edit Mode selection, for the dynamic view
+local box -- the holder's Edit Mode selection
 local blizzard, unit -- GamepadMainActionBarFrame and its PageUnit
 local built = false
 
@@ -139,12 +159,12 @@ end
 --------------------------------------------------------------------------------
 -- The dim
 --------------------------------------------------------------------------------
--- Kept off addon.NativeFrame: the selection box is this replica's Edit Mode
--- handle, and the alpha method hides it. Blizzard's frame goes to alpha 0,
--- its box ignoring parent alpha by its own template, and its bars, buttons
--- and page buttons take no mouse (suppression.lua's rule for a dimmed bar;
--- Blizzard clicks the page buttons itself). The mouse writes are protected,
--- so they run out of combat, once.
+-- Blizzard's frame is dimmed through addon.NativeFrame's alpha method, as
+-- the standard bars are (suppression.lua): alpha 0, and its Edit Mode box,
+-- which ignores parent alpha by its own template, hidden with its mouse
+-- off, since the holder's own box is the handle. Its bars, buttons and page
+-- buttons take no mouse (Blizzard clicks the page buttons itself). The
+-- mouse writes are protected, so they run out of combat, once.
 
 local mouseOff = false
 
@@ -171,7 +191,12 @@ end
 
 local function Dim()
     if not blizzard then return end
-    blizzard:SetAlpha(0)
+    local NativeFrame = addon.NativeFrame
+    if NativeFrame:IsSuppressed(blizzard) then
+        NativeFrame:Reapply(blizzard)
+    else
+        NativeFrame:Suppress(blizzard, OWNER, "alpha")
+    end
     addon.Events.RunOutOfCombat(MouseOff, OWNER .. ".mouseOff")
 end
 
@@ -208,10 +233,17 @@ local function anchorKeyOf(bar)
     return parent and anchorOf[parent] or nil, true
 end
 
-local function syncIcon(key)
+-- Blizzard shows all three icons together. Compact folds their bars onto
+-- one anchor, where Blizzard's three land on top of each other; Camelot
+-- shows only the active bar's there, and none for the top bar, which has no
+-- modifier.
+local function syncIcon(key, anchorKey)
     local source, mirror = unit[key], pageUnit[key]
     if not (source and mirror) then return end
     local shown = source:IsVisible() and true or false
+    if shown and face.useCompactLayout then
+        shown = state.active ~= nil and state.active.anchorKey == anchorKey
+    end
     if state.icons[key] ~= shown then
         state.icons[key] = shown
         mirror:SetShown(shown)
@@ -296,6 +328,17 @@ local function syncBarAlpha()
     end
 end
 
+-- Blizzard's own answer to "may the bars take a press": the field the
+-- binding manager keeps for its core-binding listeners, which the gamepad
+-- bar's UpdateActionBarFocusedState reads. False while a frame (the bags, a
+-- panel, a menu) holds the controller. A missing manager reads as usable.
+local function CoreBindingsActive()
+    local shared = _G.GamepadSharedUtility
+    local manager = shared and shared.InputBindingManager
+    if not manager then return true end
+    return manager.currentCoreBindingActive ~= false
+end
+
 local function Watch(_, elapsed)
     if not unit then return end
 
@@ -340,9 +383,9 @@ local function Watch(_, elapsed)
     end
 
     syncTracker()
-    syncIcon("LeftIcon")
-    syncIcon("RightIcon")
-    syncIcon("CenteredIcons")
+    syncIcon("LeftIcon", "left")
+    syncIcon("RightIcon", "right")
+    syncIcon("CenteredIcons", "bottom")
     syncShoulders()
     syncBarAlpha()
 
@@ -356,7 +399,16 @@ local function Watch(_, elapsed)
         end
     end
 
-    if ours then
+    local usable = CoreBindingsActive()
+    if usable ~= state.usable then
+        state.usable = usable
+        pageUnit:SetUsable(usable)
+        if not usable then
+            for i = 1, NUM_KEYS do pushed[i] = false end
+        end
+    end
+
+    if ours and usable then
         for i = 1, NUM_KEYS do
             local down = false
             for _, key in ipairs(keys[i] or {}) do
@@ -412,63 +464,99 @@ function GamepadBar.Apply()
 end
 
 --- Edit Mode opening or closing: the dim re-asserted.
-function GamepadBar.OnEditMode()
-    if built then Dim() end
+function GamepadBar.OnEditMode(on)
+    if not built then return end
+    Dim()
 end
 
 --------------------------------------------------------------------------------
 -- Edit Mode and Dynamic Layouts
 --------------------------------------------------------------------------------
--- The adapter is the protected tier, as the stance bar's: opacity and scale
--- on the holder; no position channel, since the holder follows Blizzard's
--- frame. The view sets a frame's record through its box's dialog, so the
--- holder carries a box of its own for the view alone: Blizzard's box under
--- it keeps the drag in the regular Edit Mode, and the view hides every
--- Blizzard box.
+-- The holder's own box is the handle, as the stance bar's: a position per
+-- Edit Mode layout in the layout entry, and the bar's settings in the
+-- dialog. A layout with nothing stored reads the default below. The
+-- adapter is the protected tier: opacity, scale and position on the holder.
 
--- The holder's anchor, put back after anything the library writes (a nudge).
-local function Anchor()
-    holder:ClearAllPoints()
-    holder:SetPoint("CENTER", blizzard, "CENTER")
+local store = {
+    get = function(key, layoutName)
+        local entry = DB.GetLayout(key)
+        local positions = entry and entry.positions
+        return positions and positions[layoutName] or nil
+    end,
+    set = function(key, layoutName, point, x, y)
+        local entry = DB.GetLayout(key) or {}
+        entry.positions = entry.positions or {}
+        entry.positions[layoutName] = { point = point, x = x, y = y }
+        DB.SetLayout(key, entry)
+    end,
+}
+GamepadBar.Store = store
+
+-- Where the bar stands until Edit Mode stores a spot, under every start: the
+-- screen's center line, the compact bar midway between the experience bar on
+-- the bottom edge and the Resource Display's spot in a fight (BOTTOM 0, 298).
+-- The compact bar's center is 43 above the holder's bottom
+-- (GamepadActionBarPageUnitTemplate, BottomCenteredAnchor). The owner's
+-- arrangement, 13 November 2026; Blizzard's frame stays at its layout's spot.
+local defaultRecord = { point = "BOTTOM", x = 0, y = 115 }
+GamepadBar.DEFAULT = defaultRecord
+
+local function Stored()
+    local layoutName = addon.EditMode.GetActiveLayoutName and addon.EditMode.GetActiveLayoutName()
+    return layoutName and store.get(GamepadBar.KEY, layoutName) or nil
 end
 
--- Nothing is stored and nothing is restored: the key is nil (endcaps.lua's
--- pattern). A position the library writes reaches apply as a drop, which
--- puts the holder back on Blizzard's frame and reports the drop handled.
-local NO_STORE = { get = function() return nil end, set = function() end }
-local DEFAULT = { point = "CENTER", x = 0, y = 0 }
+local Dynamic = {}
+GamepadBar.Dynamic = Dynamic
 
--- The box rests at alpha 0 with its mouse off outside the view
--- (positionables.lua, dynamicViewOnly) and never moves the holder: the drag
--- is unregistered and a nudge springs back. The view's dialog lists Opacity
--- and Scale from the adapter's channels, and no Position row.
+-- The holder is implicitly protected, so a position asked for in a fight
+-- is restored at regen.
+local function ApplyPosition(frame, point, x, y, reason)
+    if InCombatLockdown() then
+        addon.Events.RunOutOfCombat(function()
+            addon.EditMode.RestorePositionable(frame)
+        end, OWNER .. ".position")
+        return true
+    end
+    frame:ClearAllPoints()
+    frame:SetPoint(point, UIParent, point, x, y)
+    if reason == "restore" then Dynamic.Reassert() end
+    return false
+end
+
+-- The dialog's rows: the settings of the page's Layout section.
+local function Rows()
+    local function toggle(label, field)
+        return { kind = "toggle", label = label,
+                 get = function() return GamepadBar.Get(field) == true end,
+                 set = function(v) GamepadBar.Set(field, v and true or false) end }
+    end
+    local range = GamepadBar.RANGES.scale
+    return {
+        { kind = "slider", label = "Scale", min = range.min, max = range.max, step = range.step, precision = 0,
+          get = function() return number("scale", 100) end,
+          set = function(v) GamepadBar.Set("scale", v) end },
+        toggle("Compact", "compact"),
+        toggle("Show Empty Bars", "showEmptyBars"),
+        toggle("Highlight", "highlight"),
+        toggle("Expand Active Bar", "expand"),
+        toggle("Button Prompts", "buttonPrompts"),
+    }
+end
+
 local function RegisterBox()
     local EM = addon.EditMode
     if not (EM and EM.RegisterPositionable) then return end
     holder.editModeName = GamepadBar.LABEL
     box = EM.RegisterPositionable(holder, {
-        key = nil,
-        default = DEFAULT,
-        store = NO_STORE,
-        apply = function()
-            -- The holder is implicitly protected; the view never opens in
-            -- combat, so this is a safety net.
-            if InCombatLockdown() then
-                addon.Events.RunOutOfCombat(Anchor, OWNER .. ".anchor")
-            else
-                Anchor()
-            end
-            return true
-        end,
-        positionEditable = function() return false end,
-        dynamicViewOnly = true,
-        brand = { navKey = GamepadBar.NAV_KEY, componentId = GamepadBar.NAV_KEY },
+        key = GamepadBar.KEY,
+        default = defaultRecord,
+        restoreDefault = true,
+        store = store,
+        apply = ApplyPosition,
+        brand = { navKey = GamepadBar.NAV_KEY, componentId = GamepadBar.NAV_KEY, mirror = Rows },
     })
-    if box then box:RegisterForDrag() end
 end
-
-local Dynamic = {}
-GamepadBar.Dynamic = Dynamic
 
 local dynamicRegistered = false
 
@@ -482,15 +570,25 @@ function Dynamic.Register()
         group = "gamepadBar",
         frame = holder,
         tier = "protected",
-        channels = { "opacity", "scale" },
+        channels = { "opacity", "scale", "position" },
         base = {
             opacity = function() return 1 end,
             scale = function() return 1 end,
+            position = function()
+                local stored = Stored()
+                if stored and stored.point then return stored.point, stored.x or 0, stored.y or 0 end
+                return defaultRecord.point, defaultRecord.x, defaultRecord.y
+            end,
         },
         -- The click targets take a drop, and under the gamepad UI this is
         -- the bar on screen: a held action brings the layout back.
         dropTarget = true,
     })
+end
+
+function Dynamic.Reassert()
+    local DL = addon.DynamicLayouts
+    if dynamicRegistered and DL and DL.Reassert then DL.Reassert(GamepadBar.KEY) end
 end
 
 function Dynamic.IsRegistered()
@@ -679,6 +777,7 @@ function GamepadBar.Report(push)
         tostring(face.useCompactLayout), tostring(face.showEmptyBars), tostring(face.showHighlight),
         tostring(face.shouldExpand), tostring(face.showButtonIcons))
     push("  icon set %s", tostring(state.iconSet))
+    push("  core bindings active %s (presses and highlight follow it)", tostring(CoreBindingsActive()))
     for _, key in ipairs(ANCHOR_KEYS) do
         local bar, mirror = pageUnit.bars[key], pageUnit.mirrors[key]
         local source = state.overrides[key]
@@ -686,6 +785,10 @@ function GamepadBar.Report(push)
         push("  %-7s bar shown %-5s action %-5s empty %-5s | mirror shown %-5s source %s", key,
             tostring(bar:IsShown()), tostring(first and first.action), tostring(bar:IsBarEmpty()),
             tostring(mirror:IsShown()), source and (source:GetName() or source.DisplayName or "?") or "none")
+        if source then
+            local sourced, shown, textured = mirror:MirrorIconCounts()
+            push("          mirror icons: source shows %d, mirror shows %d, textured %d", sourced, shown, textured)
+        end
     end
     local tracker = pageUnit.PageTracker
     push("  tracker shown %s, width %.0f; icons L %s R %s LR %s", tostring(tracker:IsShown()), tracker:GetWidth(),

@@ -229,7 +229,9 @@ local function UpdateDefault()
     end
     local Clusters = ActionBars.Clusters
     local container = Clusters and Clusters.Container and Clusters.Container(Clusters.PRIMARY)
-    if not (container and container:IsShown()) then return end
+    -- A cluster the gamepad rule hides is laid out all the same, so its
+    -- rect still reads.
+    if not (container and (container:IsShown() or Clusters.HiddenUnderGamepad(Clusters.PRIMARY))) then return end
     local left, top, scale = container:GetLeft(), container:GetTop(), container:GetScale()
     if not (left and top and scale and scale > 0) then return end
     defaultRecord.point = "BOTTOMLEFT"

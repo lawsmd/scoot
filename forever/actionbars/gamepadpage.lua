@@ -1,17 +1,17 @@
 --------------------------------------------------------------------------------
 -- forever/actionbars/gamepadpage.lua
 -- The Gamepad Bars page under the Action Bars group: a Layout section with
--- the replica's switch, Scale and Blizzard's five Edit Mode settings for
--- the gamepad bar, and a Visibility section with the action bars'
--- Visibility rows (page.lua) for its token. Off the gamepad UI the page
--- says so and draws nothing else: the bar is built there alone.
+-- Scale and Blizzard's five Edit Mode settings for the gamepad bar, and a
+-- Visibility section with the action bars' Visibility rows (page.lua) for
+-- its token. The replica's switch is a row of the Features page; with it
+-- off, or off the gamepad UI, the page says so and draws nothing else: the
+-- bar is built under both alone.
 --------------------------------------------------------------------------------
 
 local _, addon = ...
 
 local ActionBars = addon.ActionBars
 local GamepadBar = ActionBars.GamepadBar
-local DB = addon.DB
 local SettingsBuilder = addon.UI.SettingsBuilder
 
 local Page = {}
@@ -44,6 +44,12 @@ local function Render(panel, scrollContent)
         return
     end
 
+    if not GamepadBar.IsEnabled() then
+        builder:AddDescription("Gamepad Bar is off on the Features page.")
+        builder:Finalize()
+        return
+    end
+
     local Gamepad = addon.Gamepad
     if not (Gamepad and Gamepad.IsActive and Gamepad.IsActive()) then
         builder:AddDescription("The gamepad bar draws under Forever's gamepad UI. This session is on mouse and keyboard.")
@@ -69,12 +75,6 @@ local function Render(panel, scrollContent)
         title = "Layout", componentId = NAV_KEY, sectionKey = "layout",
         defaultExpanded = true,
         buildContent = function(_, inner)
-            inner:AddToggle({ label = "Replace the Gamepad Bar",
-                description = "Takes effect after a reload.",
-                get = toggleGet("enabled", true),
-                set = function(v)
-                    edit(function() DB.Set(GamepadBar.PATH .. "enabled", v and true or false) end)
-                end })
             local range = GamepadBar.RANGES.scale
             inner:AddSlider({ label = "Scale", min = range.min, max = range.max, step = range.step, precision = 0,
                 minLabel = range.min .. "%", maxLabel = range.max .. "%", displaySuffix = "%",

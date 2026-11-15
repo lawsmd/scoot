@@ -311,9 +311,13 @@ function CamelotGamepadButtonMixin:ArmMirror(reserved)
     end
 end
 
---- The Blizzard button this mirror copies, or nil.
+--- The Blizzard button this mirror copies, or nil. The cache holds what the
+--- last sync wrote, and the hides below, like a second source's first copy,
+--- go around it: it starts empty with every source, or a bar sourced a
+--- second time reads "icon already shown" and keeps the icon hidden.
 function CamelotGamepadButtonMixin:SetMirror(source)
     self.mirror = source
+    wipe(self.mirrorCache)
     if source then
         self:SyncMirror()
     else
@@ -379,6 +383,9 @@ local function copyShown(cache, key, dst, src)
     end
 end
 
+-- Shared.INACTIVE_BAR_FADE_OPACITY (TargetActionBars/Shared.lua).
+local BLANK_SLOT_ALPHA = 0.3
+
 --- Copy the source button's look: icon, special icon, overlays, flash,
 --- checked and enabled states. Every read is a plain getter on the source;
 --- a value that reads secret is skipped; nothing is written on no change.
@@ -386,6 +393,24 @@ function CamelotGamepadButtonMixin:SyncMirror()
     local src = self.mirror
     if not src then return end
     local cache = self.mirrorCache
+
+    -- A slot whose press does nothing here is drawn as Blizzard draws an
+    -- unused shortcut: no icon, disabled, dimmed (StaticOverrideActionBar.lua,
+    -- SetUpActionButtons and SetButtonEnabled).
+    if self.mirrorBlank then
+        if not cache.blank then
+            cache.blank = true
+            self.icon:Hide()
+            self.SpecialActionIcon:Hide()
+            if self.IconOverlay then self.IconOverlay:Hide() end
+            if self.PermaboundOverlay then self.PermaboundOverlay:Hide() end
+            if self.Flash then self.Flash:Hide() end
+            self:SetAlpha(BLANK_SLOT_ALPHA)
+            self:SetChecked(false)
+            self:SetEnabled(false)
+        end
+        return
+    end
 
     local icon = src.icon
     if icon then
@@ -678,6 +703,18 @@ local PORTRAIT_SLOTS = {
     },
 }
 
+--- The shortcuts bar's d-pad up focuses Blizzard's objective tracker
+--- (ShortcutsActionBar.lua, SetUpDpadTop). With the tracker replica on that
+--- frame is parked and hidden and the press does nothing, so the mirror
+--- draws the slot empty.
+local function DeadShortcut(source, name, index)
+    if not source or name ~= "shortcutsBar" then return false end
+    local tracker = addon.ObjectiveTracker
+    if not (tracker and tracker.IsEnabled and tracker.IsEnabled()) then return false end
+    local top = source.dpadTopButton
+    return top ~= nil and source.actionButtons ~= nil and source.actionButtons[index] == top
+end
+
 --- A mirror bar's source: the Blizzard bar whose buttons it copies, and
 --- its name in the page unit's actionBars, which says which of its slots
 --- are portraits.
@@ -693,6 +730,7 @@ function CamelotGamepadBarMixin:SetSource(source, name)
             unit = portraits.units[logical]
         end
         button.portraitUnit = unit
+        button.mirrorBlank = DeadShortcut(source, name, i)
         button:SetMirror(source and source.actionButtons and source.actionButtons[i] or nil)
     end
 end
@@ -703,6 +741,21 @@ function CamelotGamepadBarMixin:RefreshInputIconSet()
     for _, button in ipairs(self.actionButtons) do
         if button.ButtonIcon then button.ButtonIcon:Refresh() end
     end
+end
+
+--- A mirror bar's icons for the report: how many source buttons show an
+--- icon, how many of this bar's do, and how many of those carry a texture.
+function CamelotGamepadBarMixin:MirrorIconCounts()
+    local sourced, shown, textured = 0, 0, 0
+    for _, button in ipairs(self.actionButtons) do
+        local src = button.mirror
+        if src and src.icon and src.icon:IsShown() then sourced = sourced + 1 end
+        if button.icon:IsShown() then
+            shown = shown + 1
+            if plain(button.icon:GetTexture()) ~= nil then textured = textured + 1 end
+        end
+    end
+    return sourced, shown, textured
 end
 
 --- Copy every mirror's look again.
@@ -1059,9 +1112,28 @@ function CamelotGamepadPageUnitMixin:SetActiveBar(bar)
         self.activeBar:ClearPushed()
     end
     self.activeBar = bar
-    if bar then bar:ShowHighlight() end
+    if bar and self.usable ~= false then bar:ShowHighlight() end
     if self:ShouldUseCompactLayout() then
         self:RefreshActionBarVisibilities()
+    end
+end
+
+--- Blizzard's focus gate (MainActionBarFrame.lua, UpdateActionBarFocusedState):
+--- while a frame holds the controller the core binding set is not the only
+--- one active, Blizzard's bars lose their highlight and expand, and no press
+--- reaches them. Off, the active bar collapses and drops its pushed states;
+--- on, it lights again.
+function CamelotGamepadPageUnitMixin:SetUsable(usable)
+    usable = usable ~= false
+    if usable == (self.usable ~= false) then return end
+    self.usable = usable
+    local bar = self.activeBar
+    if not bar then return end
+    if usable then
+        bar:ShowHighlight()
+    else
+        bar:ClearPushed()
+        bar:HideHighlight()
     end
 end
 

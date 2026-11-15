@@ -93,13 +93,15 @@ local function enabled()
 end
 
 -- Camelot's own records, by frame id: what a profile started as Camelot reads
--- while it stores no record of its own. A preset start has none. The first
--- write stores a copy and merges into it, so a stored record always wins.
+-- while it stores no record of its own. A preset start has none, except for
+-- a record registered for every start. The first write stores a copy and
+-- merges into it, so a stored record always wins.
 local defaultRecords = {}
+local everyStart = {}
 
 local function defaultRecord(id)
     local rec = defaultRecords[id]
-    if not rec or DB.StartingPoint() ~= "camelot" then return nil end
+    if not rec or (DB.StartingPoint() ~= "camelot" and not everyStart[id]) then return nil end
     local copy = {}
     for k, v in pairs(rec) do copy[k] = v end
     return copy
@@ -115,9 +117,11 @@ addon.DynamicLayoutsStore = {
     end,
     --- Register Camelot's record for one frame id, in the stored shape
     --- (the header). Called at load, beside the frame's other defaults.
-    RegisterDefaultRecord = function(id, record)
+    --- `allStarts` true gives a preset start the record too.
+    RegisterDefaultRecord = function(id, record, allStarts)
         if type(id) ~= "string" or type(record) ~= "table" then return false end
         defaultRecords[id] = record
+        everyStart[id] = allStarts == true or nil
         return true
     end,
     GetParticipating = function(key)

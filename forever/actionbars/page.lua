@@ -247,16 +247,19 @@ function Page.VisibilityRows(tab, token)
             apply()
         end })
 
-    -- The eight standard bars hide under the gamepad UI by default, as
-    -- Blizzard's own do; the row shows only there, where the profile is the
-    -- gamepad layout's own. The last row of the section.
-    if Visibility.TakesGamepadRule(token) and addon.Gamepad and addon.Gamepad.IsActive() then
-        tab:AddToggle({ label = "Hide In Gamepad UI",
-            get = function() return not Visibility.GamepadShown(token) end,
-            set = function(v)
-                DB.Set(Visibility.Path(token, "gamepadShown"), (not v) and true or nil)
-                apply()
-            end })
+    -- A cluster holding an action bar hides under the gamepad UI by
+    -- default, in the game and in Edit Mode, as Blizzard's own bars do. The
+    -- toggle is the cluster's, drawn on each of its bars: a hidden cluster
+    -- has no Edit Mode dialog to hold it. The row shows only under the
+    -- gamepad UI. The last row of the section.
+    local Clusters = ActionBars.Clusters
+    local owner = Clusters and Clusters.Owner(token)
+    if owner and Clusters.TakesGamepadRule(owner) and addon.Gamepad and addon.Gamepad.IsActive() then
+        local cluster = Clusters.Find(owner)
+        tab:AddToggle({ label = "Hide in Gamepad UI",
+            description = "Applies to " .. Clusters.Label(cluster) .. ", in the game and in Edit Mode.",
+            get = function() return not Clusters.GamepadShown(owner) end,
+            set = function(v) Clusters.SetGamepadShown(owner, not v) end })
     end
     tab:Finalize()
 end

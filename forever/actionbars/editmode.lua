@@ -279,6 +279,15 @@ local function Mirror(id)
             rows[#rows + 1] = { kind = "end" }
         end
 
+        -- The cluster's gamepad rule, under the gamepad UI alone. Checking it
+        -- hides the cluster and this box with it; the Visibility tab of any
+        -- of its bars brings it back.
+        if Clusters.TakesGamepadRule(id) and addon.Gamepad and addon.Gamepad.IsActive() then
+            rows[#rows + 1] = { kind = "toggle", label = "Hide in Gamepad UI",
+                get = function() return not Clusters.GamepadShown(id) end,
+                set = function(v) Clusters.SetGamepadShown(id, not v) end }
+        end
+
         if #Clusters.Placeable() > 0 then
             rows[#rows + 1] = button("Add Bar", function() Clusters.AddMember(id) end)
         end

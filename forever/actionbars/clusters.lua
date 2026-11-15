@@ -354,6 +354,7 @@ local CLUSTER_FIELDS = {
     endCaps = flag,
     endCapStyle = function(v) return (v == "standing" or v == "sitting") and v or nil end,
     endCapScale = function(v) return clamp(v, 50, 200) end,
+    gamepadShown = flag,
 }
 
 local MEMBER_FIELDS = {
@@ -424,8 +425,8 @@ local function commit(doc)
     return true
 end
 
---- Write one of axis, spacing, endCaps, endCapStyle and endCapScale. The
---- end cap fields draw on cluster 1 only (endcaps.lua).
+--- Write one of axis, spacing, endCaps, endCapStyle, endCapScale and
+--- gamepadShown. The end cap fields draw on cluster 1 only (endcaps.lua).
 function Clusters.SetClusterField(id, field, value)
     local accept = CLUSTER_FIELDS[field]
     if not accept then return false end
@@ -500,6 +501,56 @@ function Clusters.RemoveMember(id, index)
     return commit(doc)
 end
 
+--------------------------------------------------------------------------------
+-- Under the gamepad UI
+--------------------------------------------------------------------------------
+-- A cluster holding an action bar is hidden under Forever's gamepad UI, in
+-- the game and in Edit Mode alike, Blizzard's rule for its own standard
+-- bars (ActionBar.lua, SetShowGrid), unless its Hide in Gamepad UI toggle
+-- is off: the cluster's gamepadShown field. A cluster of other kinds stays,
+-- as the gamepad map places the pet bar. The rule was once per bar, under
+-- actionBars.visibility.<token>.gamepadShown: a cluster whose field was
+-- never written reads its members' old keys, and the first write clears
+-- them.
+
+local function legacyPath(token)
+    return "actionBars.visibility." .. token .. ".gamepadShown"
+end
+
+--- Whether the player unchecked Hide in Gamepad UI for the cluster.
+function Clusters.GamepadShown(id)
+    local cluster = Clusters.Find(id)
+    if not cluster then return false end
+    if cluster.gamepadShown ~= nil then return cluster.gamepadShown == true end
+    for _, m in ipairs(cluster.members or {}) do
+        if DB.Get(legacyPath(m.identity)) == true then return true end
+    end
+    return false
+end
+
+--- Whether the cluster takes the rule at all: it holds an action bar.
+function Clusters.TakesGamepadRule(id)
+    local cluster = Clusters.Find(id)
+    return cluster ~= nil and hasAction(cluster)
+end
+
+--- Whether the gamepad rule hides the cluster now.
+function Clusters.HiddenUnderGamepad(id)
+    if not Clusters.TakesGamepadRule(id) or Clusters.GamepadShown(id) then return false end
+    local Gamepad = addon.Gamepad
+    return (Gamepad and Gamepad.IsActive and Gamepad.IsActive()) and true or false
+end
+
+--- Write the toggle: shown true is Hide in Gamepad UI unchecked.
+function Clusters.SetGamepadShown(id, shown)
+    local cluster = Clusters.Find(id)
+    if not cluster then return false end
+    for _, m in ipairs(cluster.members or {}) do
+        if DB.Get(legacyPath(m.identity)) ~= nil then DB.Set(legacyPath(m.identity), nil) end
+    end
+    return Clusters.SetClusterField(id, "gamepadShown", shown and true or false)
+end
+
 --- A one-member cluster at the screen center, holding the identity or the
 --- lowest free action bar. Returns the new id, or nil when there is none.
 function Clusters.NewCluster(token)
@@ -512,6 +563,10 @@ function Clusters.NewCluster(token)
         id = id, axis = "vertical", spacing = SPACING, endCaps = false, endCapScale = 100,
         members = { recall(token) },
     }
+    -- A cluster made under the gamepad UI is one the player wants there.
+    if addon.Gamepad and addon.Gamepad.IsActive and addon.Gamepad.IsActive() then
+        doc[#doc].gamepadShown = true
+    end
     commit(doc)
     return id
 end
@@ -755,6 +810,13 @@ local function LayoutCluster(cluster)
     -- The bar's own shown state, opacity and hover, after its adoption.
     if ActionBars.Visibility then
         for _, e in ipairs(built) do ActionBars.Visibility.Apply(e.m.identity) end
+    end
+    -- Last, after the layout measured everything under a shown container:
+    -- the gamepad rule hides the container, and with it the bars, the end
+    -- caps and the Edit Mode box, which is its child.
+    if Clusters.HiddenUnderGamepad(cluster.id) then
+        container:Hide()
+        rows.note = "hidden: gamepad UI"
     end
 end
 
